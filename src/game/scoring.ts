@@ -14,7 +14,7 @@ export const computeScores = (G: GState): Record<string, number> => {
 		const k = key(c);
 		const occupants = G.board[k] ?? [];
 		if (occupants.length === 0) continue;
-		for (const color of occupants as Color[]) {
+		for (const color of occupants) {
 			if (visited[color]![k]) continue;
 			const comp: string[] = [];
 			const stack = [c];

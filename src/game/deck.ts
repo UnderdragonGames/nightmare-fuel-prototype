@@ -1,8 +1,8 @@
-import { Card, Color } from './types';
+import type { Card, Color } from './types';
 import { RULES } from './rulesConfig';
 import { shuffleInPlace } from './helpers';
 
-const COLORS = RULES.COLORS as readonly Color[];
+const COLORS = RULES.COLORS;
 
 const combinations = <T,>(arr: readonly T[], k: number): T[][] => {
 	const result: T[][] = [];

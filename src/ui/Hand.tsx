@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Color } from '../game/types';
+import type { Card, Color } from '../game/types';
 import { asVisibleColor, serializeCard } from '../game/helpers';
 
 type Props = {

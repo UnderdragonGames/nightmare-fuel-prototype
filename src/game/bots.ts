@@ -1,12 +1,20 @@
-import { Client } from 'boardgame.io/client';
-import { HexStringsGame } from './game';
-import { GState, Color } from './types';
+import type { Ctx, PlayerID } from 'boardgame.io';
+import type { GState, Color, MovePlayCardArgs, MoveStashArgs } from './types';
 import { RULES } from './rulesConfig';
 import { buildAllCoords, canPlace } from './helpers';
 
 export type BotKind = 'None' | 'Random';
 
-export const playOneRandom = (client: Client<GState>, playerID: string): void => {
+type BGIOClient = {
+	getState(): ({ G: GState; ctx: Ctx } & { playerID?: PlayerID }) | undefined;
+	moves: {
+		playCard(a: MovePlayCardArgs): void;
+		endTurnAndRefill(): void;
+		stashToTreasure(a: MoveStashArgs): void;
+	};
+};
+
+export const playOneRandom = (client: BGIOClient, playerID: PlayerID): void => {
 	const state = client.getState();
 	if (!state || state.ctx.currentPlayer !== playerID) return;
 	const G = state.G;

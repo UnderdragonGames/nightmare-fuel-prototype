@@ -1,3 +1,5 @@
+import type { PlayerID } from 'boardgame.io';
+
 export type Color = 'R' | 'O' | 'Y' | 'G' | 'B' | 'V';
 
 export type Card = { colors: Color[] };
@@ -11,9 +13,9 @@ export type GState = {
 	board: Record<string, Color[]>;
 	deck: Card[];
 	discard: Card[];
-	hands: Record<string, Card[]>;
+	hands: Record<PlayerID, Card[]>;
 	treasure: Card[];
-	prefs: Record<string, PlayerPrefs>;
+	prefs: Record<PlayerID, PlayerPrefs>;
 	stats: { placements: number };
 	meta: {
 		deckExhaustionCycle: number | null; // cycle index when deck was first exhausted
@@ -41,7 +43,7 @@ export type Rules = {
 	MULTI_CAP_FIRST_RINGS: number; // rings [0..N-1] allow capacity 2 per hex
 };
 
-export type Scores = Record<string, number>;
+export type Scores = Record<PlayerID, number>;
 
 export type MovePlayCardArgs = { handIndex: number; pick: Color; coord: Co };
 export type MoveStashArgs = { handIndex: number };

@@ -1,4 +1,4 @@
-import type { Ctx, Game } from 'boardgame.io';
+import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES } from './rulesConfig';
 import { buildAllCoords, canPlace, key } from './helpers';
 import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, PlayerPrefs } from './types';
@@ -17,7 +17,7 @@ const drawOne = (G: GState): Card | null => {
 	return c;
 };
 
-const dealToHand = (G: GState, playerID: string): void => {
+const dealToHand = (G: GState, playerID: PlayerID): void => {
 	while (G.hands[playerID]!.length < RULES.HAND_SIZE) {
 		const c = drawOne(G);
 		if (!c) break;
@@ -41,7 +41,7 @@ const afterRefillMaybeMarkExhaust = (G: GState, ctx: Ctx): void => {
 };
 
 export const HexStringsGame: Game<GState> = {
-	setup: (ctx) => {
+	setup: (context) => {
 		const radius = RULES.RADIUS;
 		const deck = buildDeck();
 		const state: GState = {
@@ -55,11 +55,11 @@ export const HexStringsGame: Game<GState> = {
 			stats: { placements: 0 },
 			meta: { deckExhaustionCycle: null },
 		};
-		for (const pid of (ctx.playOrder as string[])) {
+		for (const pid of context.ctx.playOrder) {
 			state.hands[pid] = [];
 			state.prefs[pid] = defaultPrefs(RULES.COLORS);
 		}
-		for (const pid of (ctx.playOrder as string[])) dealToHand(state, pid);
+		for (const pid of context.ctx.playOrder) dealToHand(state, pid);
 		return state;
 	},
 	moves: {
@@ -119,13 +119,13 @@ export const HexStringsGame: Game<GState> = {
 		if (!RULES.END_ON_DECK_EXHAUST) return undefined;
 		if (G.meta.deckExhaustionCycle === null) return undefined;
 		if (!RULES.EQUAL_TURNS) {
-			return { scores: computeScores(G) } as any;
+			return { scores: computeScores(G) };
 		}
 		const cycleWhenExhausted = G.meta.deckExhaustionCycle;
 		if (cycleWhenExhausted === null) return undefined;
 		const turnsSince = ctx.turn - cycleWhenExhausted;
 		if (turnsSince >= ctx.numPlayers) {
-			return { scores: computeScores(G) } as any;
+			return { scores: computeScores(G) };
 		}
 		return undefined;
 	},

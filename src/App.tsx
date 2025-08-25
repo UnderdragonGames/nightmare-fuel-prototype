@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './App.css';
-import type { Ctx } from 'boardgame.io';
-import { Client } from 'boardgame.io/react';
+import type { Ctx, PlayerID } from 'boardgame.io';
+import { Client, type BoardProps as BGIOBoardProps } from 'boardgame.io/react';
 import { HexStringsGame } from './game/game';
 import { Board as HexBoard } from './ui/Board';
 import type { Color, Co, GState, PlayerPrefs } from './game/types';
@@ -12,15 +12,15 @@ import { computeScores } from './game/scoring';
 import { RULES } from './game/rulesConfig';
 import { buildAllCoords, canPlace } from './game/helpers';
 
-type MovesShape = Record<string, (...args: any[]) => void> & {
-	playCard?: (a: { handIndex: number; pick: Color; coord: Co }) => void;
-	stashToTreasure?: (a: { handIndex: number }) => void;
-	takeFromTreasure?: (a: { index: number }) => void;
-	endTurnAndRefill?: () => void;
-	setPrefs?: (p: PlayerPrefs) => void;
+type MovesShape = {
+	playCard: (a: { handIndex: number; pick: Color; coord: Co }) => void;
+	stashToTreasure: (a: { handIndex: number }) => void;
+	takeFromTreasure: (a: { index: number }) => void;
+	endTurnAndRefill: () => void;
+	setPrefs: (p: PlayerPrefs) => void;
 };
 
-type BoardProps = { G: GState; ctx: Ctx; moves: MovesShape; playerID?: string };
+type BoardProps = { G: GState; ctx: Ctx; moves: MovesShape; playerID?: PlayerID };
 
 const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves }) => {
 	const [selectedCard, setSelectedCard] = useState<number | null>(null);
@@ -116,11 +116,11 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves }) => {
 					) : (
 						<div>Click "Score Now"</div>
 					)}
-					{ctx.gameover && (ctx.gameover as any).scores && (
+					{ctx.gameover && (ctx.gameover as { scores: Record<PlayerID, number> }).scores && (
 						<div style={{ marginTop: 8 }}>
 							<strong>Game Over</strong>
 							<ul>
-								{Object.entries((ctx.gameover as any).scores as Record<string, number>).map(([pid2, s]) => (
+								{Object.entries((ctx.gameover as { scores: Record<PlayerID, number> }).scores).map(([pid2, s]) => (
 									<li key={`go-${pid2}`}>P{pid2}: {s}</li>
 								))}
 							</ul>
@@ -132,14 +132,16 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves }) => {
 	);
 };
 
-const HexStringsClient = Client<GState>({
+type AppBoardProps = BGIOBoardProps<GState> & BoardProps;
+
+const HexStringsClient = Client<GState, AppBoardProps>({
 	game: HexStringsGame,
 	numPlayers: 2,
-	board: GameBoard as any,
+	board: GameBoard,
 });
 
 const App: React.FC = () => {
-	const [activePlayer, setActivePlayer] = useState<string>('0');
+	const [activePlayer, setActivePlayer] = useState<PlayerID>('0');
 	return (
 		<div>
 			<div style={{ padding: 8, display: 'flex', gap: 8 }}>
