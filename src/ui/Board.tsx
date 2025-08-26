@@ -8,34 +8,43 @@ type Props = {
 	board: Record<string, Color[]>;
 	radius: number;
 	onHexClick: (coord: Co) => void;
-	showAxes?: boolean;
 	showRing?: boolean;
+  highlightCoords?: Co[];
+  highlightColor?: string;
 };
 
-export const Board: React.FC<Props> = ({ board, radius, onHexClick, showAxes = RULES.UI.SHOW_AXES, showRing = RULES.UI.SHOW_RING }) => {
+export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = RULES.UI.SHOW_RING, highlightCoords = [], highlightColor = '#000000' }) => {
 	const size = RULES.UI.HEX_SIZE;
 	const coords = buildAllCoords(radius);
-	const margin = size * (radius + 2);
+	const width = size * 3 * (radius + 1);
+	const height = Math.sqrt(3) * size * (radius * 2 + 1);
+	const marginX = width / 2 + size * 2;
+	const marginY = height / 2 + size * 2;
+	const highlightSet = new Set(highlightCoords.map((c) => key(c)));
 
 	return (
-		<svg width={margin * 2} height={margin * 2} viewBox={`${-margin} ${-margin} ${margin * 2} ${margin * 2}`}>
+		<svg width={marginX * 2} height={marginY * 2} viewBox={`${-marginX} ${-marginY} ${marginX * 2} ${marginY * 2}`}>
 			{coords.map((c) => {
 				const center = axialToPixel(c, size);
 				const occupants = board[key(c)] ?? [];
+				const isCenter = c.q === 0 && c.r === 0;
+				const isHighlight = highlightSet.has(key(c)) && occupants.length === 0;
 				return (
-					<Hex key={key(c)} center={center} size={size - 0.5} fill={occupants[0] ? asVisibleColor(occupants[0]) : '#f3f4f6'} stroke="#9ca3af" onClick={() => onHexClick(c)}>
+					<Hex
+						key={key(c)}
+						center={center}
+						size={size - 0.5}
+						fill={occupants[0] ? asVisibleColor(occupants[0]) : isHighlight ? highlightColor : isCenter ? '#d1d5db' : '#f3f4f6'}
+						fillOpacity={isHighlight ? 0.35 : 1}
+						stroke="#9ca3af"
+						onClick={() => onHexClick(c)}
+					>
 						{showRing && (
 							<text x={0} y={4} fontSize={8} textAnchor="middle" fill="#111827">{ringIndex(c)}</text>
 						)}
 					</Hex>
 				);
 			})}
-			{showAxes && (
-				<g>
-					<line x1={-margin} y1={0} x2={margin} y2={0} stroke="#94a3b8" strokeDasharray="4 2" />
-					<line x1={0} y1={-margin} x2={0} y2={margin} stroke="#94a3b8" strokeDasharray="4 2" />
-				</g>
-			)}
 		</svg>
 	);
 };

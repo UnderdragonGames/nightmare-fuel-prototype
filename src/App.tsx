@@ -1,105 +1,226 @@
-import React, { useState } from 'react';
+/* eslint-disable no-console */
+/* eslint-disable no-debugger */
+import React from 'react';
 import './App.css';
 import type { Ctx, PlayerID } from 'boardgame.io';
 import { Client, type BoardProps as BGIOBoardProps } from 'boardgame.io/react';
 import { HexStringsGame } from './game/game';
 import { Board as HexBoard } from './ui/Board';
-import type { Color, Co, GState, PlayerPrefs } from './game/types';
+//
+import type { Color, Co, GState } from './game/types';
 import { Hand } from './ui/Hand';
 import { Treasure } from './ui/Treasure';
-import { Controls } from './ui/Controls';
+//
 import { computeScores } from './game/scoring';
 import { RULES } from './game/rulesConfig';
-import { buildAllCoords, canPlace } from './game/helpers';
+import { buildAllCoords, canPlace, asVisibleColor } from './game/helpers';
+import { useUIStore } from './ui/useUIStore';
+
+// Types
 
 type MovesShape = {
 	playCard: (a: { handIndex: number; pick: Color; coord: Co }) => void;
 	stashToTreasure: (a: { handIndex: number }) => void;
 	takeFromTreasure: (a: { index: number }) => void;
 	endTurnAndRefill: () => void;
-	setPrefs: (p: PlayerPrefs) => void;
 };
 
-type BoardProps = { G: GState; ctx: Ctx; moves: MovesShape; playerID?: PlayerID };
+type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
 
-const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves }) => {
-	const [selectedCard, setSelectedCard] = useState<number | null>(null);
-	const [selectedColor, setSelectedColor] = useState<Color | null>(null);
-	const [scores, setScores] = useState<Record<string, number> | null>(null);
-	const [bot, setBot] = useState<'None' | 'Random'>('None');
-	const [showAxes, setShowAxes] = useState<boolean>(false);
-	const [showRing, setShowRing] = useState<boolean>(false);
+type BoardProps = { G: GState; ctx: Ctx; moves: MovesShape; playerID?: PlayerID } & ExtraBoardProps;
+
+const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSetViewer }) => {
+	const [selectedCard, setSelectedCard] = React.useState<number | null>(null);
+	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
+	const showRing = useUIStore((s) => s.showRing);
+	const setShowRing = useUIStore((s) => s.setShowRing);
+	const botByPlayer = useUIStore((s) => s.botByPlayer);
+	const setBotFor = useUIStore((s) => s.setBotFor);
+	const [placeable, setPlaceable] = React.useState<Co[]>([]);
+
+	const gRef = React.useRef(G);
+	const ctxRef = React.useRef(ctx);
+	React.useEffect(() => { gRef.current = G; ctxRef.current = ctx; }, [G, ctx]);
 
 	const currentPlayer = ctx.currentPlayer;
-	const hand = G.hands[currentPlayer] ?? [];
+	const isMyTurn = playerID === currentPlayer;
+	const myHand = G.hands[playerID ?? currentPlayer] ?? [];
+
+	const nextTick = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms));
 
 	const onHexClick = (coord: Co) => {
-		if (selectedCard === null || !selectedColor || !moves.playCard) return;
-		moves.playCard({ handIndex: selectedCard, pick: selectedColor, coord });
-		setSelectedCard(null);
-		setSelectedColor(null);
+		if (selectedCard === null || !isMyTurn) return;
+		const card = myHand[selectedCard];
+		if (!card) return;
+		if (selectedColor) {
+			if (canPlace(G, coord, selectedColor, RULES)) {
+				moves.playCard({ handIndex: selectedCard, pick: selectedColor, coord });
+				setSelectedCard(null);
+				setSelectedColor(null);
+				setPlaceable([]);
+			}
+			return;
+		}
+		for (const color of card.colors) {
+			if (canPlace(G, coord, color, RULES)) {
+				moves.playCard({ handIndex: selectedCard, pick: color, coord });
+				setSelectedCard(null);
+				setSelectedColor(null);
+				setPlaceable([]);
+				return;
+			}
+		}
 	};
+
+	const recomputePlaceable = (color: Color | null) => {
+		if (!color) { setPlaceable([]); return; }
+		const coords = buildAllCoords(G.radius);
+		setPlaceable(coords.filter((c) => canPlace(G, c, color, RULES)));
+	};
+
 	const onPickColor = (index: number, color: Color) => {
 		setSelectedCard(index);
 		setSelectedColor(color);
+		recomputePlaceable(color);
 	};
-	const onEndTurn = () => moves.endTurnAndRefill && moves.endTurnAndRefill();
-	const onStash = () => {
-		if (selectedCard !== null && moves.stashToTreasure) moves.stashToTreasure({ handIndex: selectedCard });
+
+	const botPlayUntilStuckOnce = async (pid: PlayerID) => {
+		console.log('[bot] start', pid);
+		const isOwnersTurn = (owner: PlayerID) => ctxRef.current.currentPlayer === owner;
+		if (!isOwnersTurn(pid)) return;
+		while (true) {
+			const GG = gRef.current;
+			if (!isOwnersTurn(pid)) break;
+			const coords = buildAllCoords(GG.radius);
+			const handNow = GG.hands[pid] ?? [];
+			let acted = false;
+			outer: for (let i = 0; i < handNow.length; i += 1) {
+				const card = handNow[i]!;
+				for (const color of card.colors) {
+					for (const co of coords) {
+						if (canPlace(GG, co, color, RULES)) {
+							if (!isOwnersTurn(pid)) { acted = true; break outer; }
+							moves.playCard({ handIndex: i, pick: color, coord: co });
+							acted = true;
+							break outer;
+						}
+					}
+				}
+			}
+			if (!acted) break;
+			await nextTick(0);
+		}
+		const GG2 = gRef.current;
+		if (!isOwnersTurn(pid)) return;
+		if ((GG2.hands[pid] ?? []).length > 0 && GG2.treasure.length < RULES.TREASURE_MAX) {
+			moves.stashToTreasure({ handIndex: 0 });
+			await nextTick(0);
+		}
+		if (isOwnersTurn(pid)) {
+			moves.endTurnAndRefill();
+		}
 	};
+
+	// Core autoplayer: if it's a bot's turn, ensure viewer matches owner first; once it does, run exactly one bot turn.
+	const autoPlayingRef = React.useRef(false);
+	React.useEffect(() => {
+		const owner = ctx.currentPlayer as PlayerID;
+		const isBot = !!botByPlayer[owner];
+		if (!isBot) return;
+		// Ensure this board is controlling the owner seat before attempting any moves
+		if (playerID !== owner) {
+			console.log('[autoplay] switching viewer to owner', owner);
+			onSetViewer(owner);
+			return; // new GameBoard will mount for owner
+		}
+		if (autoPlayingRef.current) return;
+		autoPlayingRef.current = true;
+		(void (async () => {
+			// In case turn has advanced between render and async start
+			if (ctxRef.current.currentPlayer !== owner) { autoPlayingRef.current = false; return; }
+			await botPlayUntilStuckOnce(owner);
+			autoPlayingRef.current = false;
+		})());
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ctx.currentPlayer, playerID, viewer, botByPlayer]);
+
+	const onEndTurn = async () => {
+		moves.endTurnAndRefill && moves.endTurnAndRefill();
+	};
+	const onStash = () => { if (selectedCard !== null) moves.stashToTreasure?.({ handIndex: selectedCard }); };
 	const onTakeTreasure = (i: number) => moves.takeFromTreasure && moves.takeFromTreasure({ index: i });
-	const onChangePrefs = (prefs: PlayerPrefs) => moves.setPrefs && moves.setPrefs(prefs);
-	const onScoreNow = () => setScores(computeScores(G));
+
+	const scores = computeScores(G);
 
 	return (
-		<div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, padding: 16 }}>
-			<div>
-				<HexBoard board={G.board} radius={G.radius} onHexClick={onHexClick} showAxes={showAxes} showRing={showRing} />
+		<div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16, padding: 16 }}>
+			<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+				<div style={{ display: 'flex', gap: 8 }}>
+					<button onClick={onEndTurn}>End Turn & Refill</button>
+					<button onClick={onStash}>Stash</button>
+					<button onClick={() => { const owner = ctx.currentPlayer as PlayerID; if (viewer !== owner) onSetViewer(owner); }}>Run Bots</button>
+				</div>
+				<div>
+					<h4>Players</h4>
+					<ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+						{(ctx.playOrder as PlayerID[]).map((pid) => {
+							const isTurn = pid === ctx.currentPlayer;
+							const handLen = (G.hands[pid] ?? []).length;
+							const pf = G.prefs[pid]!;
+							return (
+								<li key={pid} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, background: isTurn ? '#f0fdf4' : 'white', display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: 8 }}>
+									<span style={{ fontWeight: 600 }}>P{pid}</span>
+									<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+										<span title="Score">{scores[pid] ?? 0}</span>
+										<span title="Goals" style={{ display: 'inline-flex', gap: 4 }}>
+											<span style={{ background: asVisibleColor(pf.primary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
+											<span style={{ background: asVisibleColor(pf.secondary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
+											<span style={{ background: asVisibleColor(pf.tertiary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
+										</span>
+										<span title="Cards in hand" style={{ color: '#64748b' }}>{handLen} cards</span>
+									</div>
+									<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+										<input type="checkbox" checked={!!botByPlayer[pid]} onChange={(e) => setBotFor(pid, e.target.checked)} /> Bot
+									</label>
+								</li>
+							);
+						})}
+					</ul>
+				</div>
+			</div>
+			<div style={{ overflow: 'auto', maxHeight: '80vh' }}>
+				<HexBoard
+					board={G.board}
+					radius={G.radius}
+					onHexClick={onHexClick}
+					showRing={showRing}
+					highlightCoords={placeable}
+					highlightColor={selectedColor ? asVisibleColor(selectedColor) : '#000'}
+				/>
 			</div>
 			<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-				<Controls
-					currentPlayer={currentPlayer}
-					deckCount={G.deck.length}
-					discardCount={G.discard.length}
-					onEndTurn={onEndTurn}
-					onStash={onStash}
-					prefs={G.prefs[currentPlayer]!}
-					onChangePrefs={onChangePrefs}
-					onScoreNow={onScoreNow}
-					bot={bot}
-					onBotChange={setBot}
-					onBotPlay={() => {
-						if (bot === 'Random') {
-							const coords = buildAllCoords(G.radius);
-							let acted = false;
-							outer: for (let i = 0; i < hand.length; i += 1) {
-								const card = hand[i]!;
-								for (const color of card.colors) {
-									for (const co of coords) {
-										if (canPlace(G, co, color, RULES) && moves.playCard) {
-											moves.playCard({ handIndex: i, pick: color, coord: co });
-											acted = true;
-											break outer;
-										}
-									}
-								}
-							}
-							if (!acted && hand.length > 0) {
-								if (G.treasure.length < RULES.TREASURE_MAX && moves.stashToTreasure) {
-									moves.stashToTreasure({ handIndex: 0 });
-								}
-							}
-							moves.endTurnAndRefill && moves.endTurnAndRefill();
-						}
-					}}
-				/>
 				<div style={{ display: 'flex', gap: 8 }}>
-					<label><input type="checkbox" checked={showAxes} onChange={(e) => setShowAxes(e.target.checked)} /> Axes</label>
 					<label><input type="checkbox" checked={showRing} onChange={(e) => setShowRing(e.target.checked)} /> Ring</label>
 				</div>
 				<div>
 					<h4>Hand</h4>
-					<Hand cards={hand} selectedIndex={selectedCard} onSelect={setSelectedCard} onPickColor={onPickColor} />
+					<Hand
+						cards={myHand}
+						selectedIndex={selectedCard}
+						onSelect={(index) => {
+							setSelectedCard(index);
+							const c = myHand[index];
+							if (!c) return;
+							if (selectedColor) {
+								recomputePlaceable(selectedColor);
+							} else {
+								const coords = buildAllCoords(G.radius);
+								const union = coords.filter((co) => c.colors.some((col) => canPlace(G, co, col, RULES)));
+								setPlaceable(union);
+							}
+						}}
+						onPickColor={onPickColor}
+					/>
 				</div>
 				<div>
 					<h4>Treasure</h4>
@@ -107,15 +228,11 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves }) => {
 				</div>
 				<div>
 					<h4>Scores</h4>
-					{scores ? (
-						<ul>
-							{Object.entries(scores).map(([pid2, s]) => (
-								<li key={pid2}>P{pid2}: {s}</li>
-							))}
-						</ul>
-					) : (
-						<div>Click "Score Now"</div>
-					)}
+					<ul>
+						{Object.entries(scores).map(([pid2, s]) => (
+							<li key={pid2}>P{pid2}: {s}</li>
+						))}
+					</ul>
 					{ctx.gameover && (ctx.gameover as { scores: Record<PlayerID, number> }).scores && (
 						<div style={{ marginTop: 8 }}>
 							<strong>Game Over</strong>
@@ -132,28 +249,45 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves }) => {
 	);
 };
 
+// App
+
 type AppBoardProps = BGIOBoardProps<GState> & BoardProps;
 
-const HexStringsClient = Client<GState, AppBoardProps>({
-	game: HexStringsGame,
-	numPlayers: 2,
-	board: GameBoard,
-});
-
 const App: React.FC = () => {
-	const [activePlayer, setActivePlayer] = useState<PlayerID>('0');
+	const numPlayers = useUIStore((s) => s.numPlayers);
+	const setNumPlayers = useUIStore((s) => s.setNumPlayers);
+	const resetBotsForCount = useUIStore((s) => s.resetBotsForCount);
+	const viewer = useUIStore((s) => s.viewer);
+	const setViewer = useUIStore((s) => s.setViewer);
+	const ClientComp = React.useMemo(
+		() => Client<GState, AppBoardProps>({ game: HexStringsGame, numPlayers, board: GameBoard }),
+		[numPlayers]
+	);
+	React.useEffect(() => {
+		if (Number(viewer) >= numPlayers) setViewer(String(numPlayers - 1) as PlayerID);
+	}, [numPlayers, viewer, setViewer]);
+
 	return (
-		<div>
-			<div style={{ padding: 8, display: 'flex', gap: 8 }}>
-				<label>Active Seat: </label>
-				<select value={activePlayer} onChange={(e) => setActivePlayer(e.target.value)}>
-					<option value="0">P0</option>
-					<option value="1">P1</option>
-					<option value="2">P2</option>
-					<option value="3">P3</option>
-				</select>
+		<div style={{ display: 'grid', gridTemplateColumns: '260px 1fr' }}>
+			<div style={{ padding: 12, borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 12 }}>
+				<div><strong>Players</strong></div>
+				<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+					<label>Viewer:</label>
+					<select value={viewer} onChange={(e) => setViewer(e.target.value as PlayerID)}>
+						{Array.from({ length: numPlayers }).map((_, i) => (
+							<option key={i} value={String(i)}>{`P${i}`}</option>
+						))}
+					</select>
+				</div>
+				<div style={{ display: 'flex', gap: 8 }}>
+					<button onClick={() => { const next = Math.min(8, numPlayers + 1); setNumPlayers(next); resetBotsForCount(next); }}>Add Player</button>
+					<button onClick={() => { const next = Math.max(2, numPlayers - 1); setNumPlayers(next); resetBotsForCount(next); }} disabled={numPlayers <= 2}>Remove Player</button>
+				</div>
+				<div style={{ color: '#64748b', fontSize: 12 }}>Changing player count restarts the game.</div>
 			</div>
-			<HexStringsClient playerID={activePlayer} />
+			<div>
+				<ClientComp playerID={viewer} viewer={viewer} onSetViewer={setViewer} />
+			</div>
 		</div>
 	);
 };

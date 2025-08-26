@@ -5,11 +5,14 @@ import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTrea
 import { buildDeck } from './deck';
 import { computeScores } from './scoring';
 
-const defaultPrefs = (colors: readonly Color[]): PlayerPrefs => ({
-	primary: colors[0]!,
-	secondary: colors[1]!,
-	tertiary: colors[2]!,
-});
+const randomPrefs = (colors: readonly Color[]): PlayerPrefs => {
+	const shuffled = [...colors].sort(() => Math.random() - 0.5);
+	return {
+		primary: shuffled[0]!,
+		secondary: shuffled[1]!,
+		tertiary: shuffled[2]!,
+	};
+};
 
 const drawOne = (G: GState): Card | null => {
 	const c = G.deck.pop() ?? null;
@@ -57,7 +60,7 @@ export const HexStringsGame: Game<GState> = {
 		};
 		for (const pid of context.ctx.playOrder) {
 			state.hands[pid] = [];
-			state.prefs[pid] = defaultPrefs(RULES.COLORS);
+			state.prefs[pid] = randomPrefs(RULES.COLORS);
 		}
 		for (const pid of context.ctx.playOrder) dealToHand(state, pid);
 		return state;
@@ -107,11 +110,6 @@ export const HexStringsGame: Game<GState> = {
 			dealToHand(G, ctx.currentPlayer);
 			afterRefillMaybeMarkExhaust(G, ctx);
 			events?.endTurn?.();
-		},
-		setPrefs: (context, prefs: PlayerPrefs) => {
-			const { G, ctx } = context;
-			const pid = ctx.currentPlayer;
-			G.prefs[pid] = prefs;
 		},
 	},
 	endIf: (context) => {

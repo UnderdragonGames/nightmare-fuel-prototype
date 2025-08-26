@@ -36,16 +36,15 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 	const targetRing = ringIndex(coord);
 	const outwardOkay = neighbors(coord).some((n) => {
 		const nk = key(n);
-		if (!G.board[nk]) return false;
+		const occ = G.board[nk] ?? [];
+		if (occ.length === 0) return false;
 		return ringIndex(n) <= targetRing;
 	});
 
 	const dir = rules.COLOR_TO_DIR[color];
-	const dirOkay = neighbors(coord).some((n) => {
-		const nk = key(n);
-		if (!G.board[nk]) return false;
-		return coord.q === n.q + dir.q && coord.r === n.r + dir.r;
-	});
+	const origin: Co = { q: coord.q - dir.q, r: coord.r - dir.r };
+	const originOcc = G.board[key(origin)] ?? [];
+	const dirOkay = originOcc.length > 0;
 
 	switch (rules.OUTWARD_RULE) {
 		case 'none':
@@ -69,7 +68,7 @@ export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): bool
 	if (rules.CONNECTIVITY_SCOPE === 'global') {
 		if (!hasOccupiedNeighbor(G, coord)) {
 			// allow center if board empty and center is empty
-			const anyOccupied = Object.values(G.board).some((v) => v !== null);
+			const anyOccupied = Object.values(G.board).some((v) => (v?.length ?? 0) > 0);
 			if (anyOccupied) return false;
 		}
 	}

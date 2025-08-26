@@ -17,7 +17,7 @@ export const RULES: Rules = {
 	TREASURE_MAX: 4,
 	DECK_COUNTS: { twoColor: 36, threeColor: 18, fourColor: 6 },
 	ONE_COLOR_PER_CARD_PLAY: true,
-	OUTWARD_RULE: 'dirOrOutward',
+	OUTWARD_RULE: 'dirOnly',
 	CONNECTIVITY_SCOPE: 'global',
 	CENTER_SEED: 'V',
 	END_ON_DECK_EXHAUST: true,
