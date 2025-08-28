@@ -15,6 +15,8 @@ import { computeScores } from './game/scoring';
 import { RULES } from './game/rulesConfig';
 import { buildAllCoords, canPlace, asVisibleColor } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
+import { Controls } from './ui/Controls';
+import { Players } from './ui/Players';
 
 // Types
 
@@ -45,11 +47,13 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSe
 	const currentPlayer = ctx.currentPlayer;
 	const isMyTurn = playerID === currentPlayer;
 	const myHand = G.hands[playerID ?? currentPlayer] ?? [];
+	const stage = (ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[currentPlayer as PlayerID] : undefined) ?? 'active';
+	const locked = stage !== 'active';
 
 	const nextTick = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms));
 
 	const onHexClick = (coord: Co) => {
-		if (selectedCard === null || !isMyTurn) return;
+		if (selectedCard === null || !isMyTurn || locked) return;
 		const card = myHand[selectedCard];
 		if (!card) return;
 		if (selectedColor) {
@@ -79,10 +83,19 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSe
 	};
 
 	const onPickColor = (index: number, color: Color) => {
+		if (locked) return;
 		setSelectedCard(index);
 		setSelectedColor(color);
 		recomputePlaceable(color);
 	};
+
+	React.useEffect(() => {
+		if (locked) {
+			setSelectedCard(null);
+			setSelectedColor(null);
+			setPlaceable([]);
+		}
+	}, [locked]);
 
 	const botPlayUntilStuckOnce = async (pid: PlayerID) => {
 		console.log('[bot] start', pid);
@@ -144,10 +157,20 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSe
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ctx.currentPlayer, playerID, viewer, botByPlayer]);
 
+	// Ensure that when it's a human's turn, this board controls that seat
+	React.useEffect(() => {
+		const owner = ctx.currentPlayer as PlayerID;
+		const isBot = !!botByPlayer[owner];
+		if (isBot) return;
+		if (playerID !== owner) {
+			onSetViewer(owner);
+		}
+	}, [ctx.currentPlayer, playerID, botByPlayer, onSetViewer]);
+
 	const onEndTurn = async () => {
 		moves.endTurnAndRefill && moves.endTurnAndRefill();
 	};
-	const onStash = () => { if (selectedCard !== null) moves.stashToTreasure?.({ handIndex: selectedCard }); };
+	const onStash = () => { if (selectedCard !== null) { moves.stashToTreasure?.({ handIndex: selectedCard }); setSelectedCard(null); setSelectedColor(null); setPlaceable([]); } };
 	const onTakeTreasure = (i: number) => moves.takeFromTreasure && moves.takeFromTreasure({ index: i });
 
 	const scores = computeScores(G);
@@ -155,38 +178,24 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSe
 	return (
 		<div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16, padding: 16 }}>
 			<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-				<div style={{ display: 'flex', gap: 8 }}>
-					<button onClick={onEndTurn}>End Turn & Refill</button>
-					<button onClick={onStash}>Stash</button>
-					<button onClick={() => { const owner = ctx.currentPlayer as PlayerID; if (viewer !== owner) onSetViewer(owner); }}>Run Bots</button>
-				</div>
-				<div>
-					<h4>Players</h4>
-					<ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-						{(ctx.playOrder as PlayerID[]).map((pid) => {
-							const isTurn = pid === ctx.currentPlayer;
-							const handLen = (G.hands[pid] ?? []).length;
-							const pf = G.prefs[pid]!;
-							return (
-								<li key={pid} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, background: isTurn ? '#f0fdf4' : 'white', display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: 8 }}>
-									<span style={{ fontWeight: 600 }}>P{pid}</span>
-									<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-										<span title="Score">{scores[pid] ?? 0}</span>
-										<span title="Goals" style={{ display: 'inline-flex', gap: 4 }}>
-											<span style={{ background: asVisibleColor(pf.primary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
-											<span style={{ background: asVisibleColor(pf.secondary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
-											<span style={{ background: asVisibleColor(pf.tertiary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
-										</span>
-										<span title="Cards in hand" style={{ color: '#64748b' }}>{handLen} cards</span>
-									</div>
-									<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-										<input type="checkbox" checked={!!botByPlayer[pid]} onChange={(e) => setBotFor(pid, e.target.checked)} /> Bot
-									</label>
-								</li>
-							);
-						})}
-					</ul>
-				</div>
+				<Controls
+					currentPlayer={currentPlayer}
+					deckCount={G.deck.length}
+					discardCount={G.discard.length}
+					onEndTurn={onEndTurn}
+					onStash={onStash}
+					canStash={isMyTurn && selectedCard !== null && stage === 'active' && G.treasure.length < RULES.TREASURE_MAX}
+					canEndTurn={isMyTurn}
+				/>
+				<Players
+					players={ctx.playOrder as PlayerID[]}
+					currentPlayer={ctx.currentPlayer as PlayerID}
+					scores={scores as Record<PlayerID, number>}
+					goalsByPlayer={G.prefs as any}
+					botByPlayer={botByPlayer}
+					onToggleBot={(pid, v) => setBotFor(pid, v)}
+				/>
+				<button onClick={() => { const owner = ctx.currentPlayer as PlayerID; if (viewer !== owner) onSetViewer(owner); }}>Run Bots</button>
 			</div>
 			<div style={{ overflow: 'auto', maxHeight: '80vh' }}>
 				<HexBoard

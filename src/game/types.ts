@@ -31,6 +31,7 @@ export type Rules = {
 	COLOR_TO_DIR: Record<Color, Co>;
 	HAND_SIZE: number;
 	TREASURE_MAX: number;
+	DECK_SIZE: number; // target total number of cards in deck
 	DECK_COUNTS: { twoColor: number; threeColor: number; fourColor: number };
 	ONE_COLOR_PER_CARD_PLAY: boolean;
 	OUTWARD_RULE: OutwardRule;
@@ -40,7 +41,7 @@ export type Rules = {
 	EQUAL_TURNS: boolean;
 	SCORE_COMPONENTS_BY_RIM_TOUCH: boolean;
 	UI: { HEX_SIZE: number; SHOW_AXES: boolean; SHOW_RING: boolean };
-	MULTI_CAP_FIRST_RINGS: number; // rings [0..N-1] allow capacity 2 per hex
+	MULTI_CAP_FIRST_RINGS: number; // rings [1..N] allow capacity 2 per hex (center excluded)
 };
 
 export type Scores = Record<PlayerID, number>;

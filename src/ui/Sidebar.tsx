@@ -21,9 +21,11 @@ type Props = {
 	onToggleRevealHands: (v: boolean) => void;
 	hands: Record<PlayerID, Card[]>;
 	prefs: Record<PlayerID, PlayerPrefs>;
+  canStash?: boolean;
+  canEndTurn?: boolean;
 };
 
-export const Sidebar: React.FC<Props> = ({ currentPlayer, viewer, numPlayers, onSelectViewer, onAddPlayer, onRemovePlayer, deckCount, discardCount, onEndTurn, onStash, botByPlayer, onBotChange, onBotPlay, revealHands, onToggleRevealHands, hands, prefs }) => {
+export const Sidebar: React.FC<Props> = ({ currentPlayer, viewer, numPlayers, onSelectViewer, onAddPlayer, onRemovePlayer, deckCount, discardCount, onEndTurn, onStash, botByPlayer, onBotChange, onBotPlay, revealHands, onToggleRevealHands, hands, prefs, canStash = true, canEndTurn = true }) => {
 	return (
 		<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 			<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -71,8 +73,8 @@ export const Sidebar: React.FC<Props> = ({ currentPlayer, viewer, numPlayers, on
 				<div><strong>Discard</strong>: {discardCount}</div>
 			</div>
 			<div style={{ display: 'flex', gap: 8 }}>
-				<button onClick={onStash}>Stash</button>
-				<button onClick={onEndTurn}>End Turn & Refill</button>
+				<button onClick={onStash} disabled={!canStash}>Stash</button>
+				<button onClick={onEndTurn} disabled={!canEndTurn}>End Turn & Refill</button>
 			</div>
 			<div style={{ height: 1, background: '#e5e7eb', margin: '8px 0' }} />
 			<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

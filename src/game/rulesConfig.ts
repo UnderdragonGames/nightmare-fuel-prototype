@@ -15,16 +15,17 @@ export const RULES: Rules = {
 	COLOR_TO_DIR: DIR,
 	HAND_SIZE: 3,
 	TREASURE_MAX: 4,
+	DECK_SIZE: 100,
 	DECK_COUNTS: { twoColor: 36, threeColor: 18, fourColor: 6 },
 	ONE_COLOR_PER_CARD_PLAY: true,
 	OUTWARD_RULE: 'dirOnly',
 	CONNECTIVITY_SCOPE: 'global',
-	CENTER_SEED: 'V',
+	CENTER_SEED: null,
 	END_ON_DECK_EXHAUST: true,
 	EQUAL_TURNS: true,
 	SCORE_COMPONENTS_BY_RIM_TOUCH: true,
 	UI: { HEX_SIZE: 18, SHOW_AXES: false, SHOW_RING: false },
-	MULTI_CAP_FIRST_RINGS: 1,
+	MULTI_CAP_FIRST_RINGS: 2,
 };
 
 

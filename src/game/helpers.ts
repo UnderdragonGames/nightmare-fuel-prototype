@@ -44,7 +44,10 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 	const dir = rules.COLOR_TO_DIR[color];
 	const origin: Co = { q: coord.q - dir.q, r: coord.r - dir.r };
 	const originOcc = G.board[key(origin)] ?? [];
-	const dirOkay = originOcc.length > 0;
+	// Allow placing the first step in the color direction when the origin is the center and the center is wild (no seed color)
+	const originIsCenter = origin.q === 0 && origin.r === 0;
+	const centerActsAsWild = rules.CENTER_SEED === null;
+	const dirOkay = originOcc.length > 0 || (originIsCenter && centerActsAsWild);
 
 	switch (rules.OUTWARD_RULE) {
 		case 'none':
@@ -62,7 +65,8 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): boolean => {
 	const k = key(coord);
 	if (!inBounds(coord, G.radius)) return false;
-	const capacity = ringIndex(coord) < rules.MULTI_CAP_FIRST_RINGS ? 2 : 1;
+	const ring = ringIndex(coord);
+	const capacity = ring > 0 && ring <= rules.MULTI_CAP_FIRST_RINGS ? 2 : 1;
 	const occupants = G.board[k] ?? [];
 	if (occupants.length >= capacity) return false;
 	if (rules.CONNECTIVITY_SCOPE === 'global') {

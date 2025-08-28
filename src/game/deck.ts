@@ -38,9 +38,16 @@ export const buildDeck = (rng: () => number = Math.random): Card[] => {
 	const triples = combinations(COLORS, 3);
 	const quads = combinations(COLORS, 4);
 
-	const c2 = repeatAndFlatten(pairs, RULES.DECK_COUNTS.twoColor);
-	const c3 = repeatAndFlatten(triples, RULES.DECK_COUNTS.threeColor);
-	const c4 = repeatAndFlatten(quads, RULES.DECK_COUNTS.fourColor);
+	// If DECK_SIZE is specified, scale counts proportionally to the configured weights.
+	const totalWeight = RULES.DECK_COUNTS.twoColor + RULES.DECK_COUNTS.threeColor + RULES.DECK_COUNTS.fourColor;
+	const target = Math.max(1, RULES.DECK_SIZE ?? totalWeight);
+	const t2 = Math.round((RULES.DECK_COUNTS.twoColor / totalWeight) * target);
+	const t3 = Math.round((RULES.DECK_COUNTS.threeColor / totalWeight) * target);
+	const t4 = Math.max(0, target - t2 - t3); // ensure sum matches target
+
+	const c2 = repeatAndFlatten(pairs, t2);
+	const c3 = repeatAndFlatten(triples, t3);
+	const c4 = repeatAndFlatten(quads, t4);
 
 	const deck = [...c2, ...c3, ...c4];
 	shuffleInPlace(deck, rng);

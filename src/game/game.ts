@@ -65,51 +65,63 @@ export const HexStringsGame: Game<GState> = {
 		for (const pid of context.ctx.playOrder) dealToHand(state, pid);
 		return state;
 	},
-	moves: {
-		playCard: {
-			noLimit: true,
-			move: (context, args: MovePlayCardArgs) => {
-				const { G, ctx } = context;
-				const pid = ctx.currentPlayer;
-				const hand = G.hands[pid]!;
-				const card = hand[args.handIndex];
-				if (!card) return;
-				if (RULES.ONE_COLOR_PER_CARD_PLAY) {
-					if (!card.colors.includes(args.pick)) return;
-				}
-				if (!canPlace(G, args.coord, args.pick, RULES)) return;
-				const k = key(args.coord);
-				G.board[k].push(args.pick);
-				G.stats.placements += 1;
-				const [used] = hand.splice(args.handIndex, 1);
-				if (used) G.discard.push(used);
+	turn: {
+		activePlayers: { currentPlayer: 'active' },
+		stages: {
+			active: {
+				moves: {
+					playCard: {
+						noLimit: true,
+						move: (context, args: MovePlayCardArgs) => {
+							const { G } = context;
+							const pid = context.ctx.currentPlayer;
+							const hand = G.hands[pid]!;
+							const card = hand[args.handIndex];
+							if (!card) return;
+							if (RULES.ONE_COLOR_PER_CARD_PLAY) {
+								if (!card.colors.includes(args.pick)) return;
+							}
+							if (!canPlace(G, args.coord, args.pick, RULES)) return;
+							const k = key(args.coord);
+							G.board[k].push(args.pick);
+							G.stats.placements += 1;
+							const [used] = hand.splice(args.handIndex, 1);
+							if (used) G.discard.push(used);
+						},
+					},
+					stashToTreasure: (context, args: MoveStashArgs) => {
+						const { G, ctx, events } = context;
+						const pid = context.ctx.currentPlayer;
+						const hand = G.hands[pid]!;
+						if (G.treasure.length >= RULES.TREASURE_MAX) return;
+						const card = hand[args.handIndex];
+						if (!card) return;
+						G.treasure.push(card);
+						hand.splice(args.handIndex, 1);
+						const drawn = drawOne(G);
+						if (drawn) hand.push(drawn);
+						// auto end turn after refill
+						dealToHand(G, ctx.currentPlayer);
+						afterRefillMaybeMarkExhaust(G, ctx);
+						events?.endTurn?.();
+					},
+					takeFromTreasure: (context, args: MoveTakeTreasureArgs) => {
+						const { G } = context;
+						const pid = context.ctx.currentPlayer;
+						const card = G.treasure[args.index];
+						if (!card) return;
+						G.hands[pid]!.push(card);
+						G.treasure.splice(args.index, 1);
+					},
+					endTurnAndRefill: (context) => {
+						const { G, ctx, events } = context;
+						dealToHand(G, ctx.currentPlayer);
+						afterRefillMaybeMarkExhaust(G, ctx);
+						events?.endTurn?.();
+					},
+				},
 			},
-		},
-		stashToTreasure: (context, args: MoveStashArgs) => {
-			const { G, ctx } = context;
-			const pid = ctx.currentPlayer;
-			const hand = G.hands[pid]!;
-			if (G.treasure.length >= RULES.TREASURE_MAX) return;
-			const card = hand[args.handIndex];
-			if (!card) return;
-			G.treasure.push(card);
-			hand.splice(args.handIndex, 1);
-			const drawn = drawOne(G);
-			if (drawn) hand.push(drawn);
-		},
-		takeFromTreasure: (context, args: MoveTakeTreasureArgs) => {
-			const { G, ctx } = context;
-			const pid = ctx.currentPlayer;
-			const card = G.treasure[args.index];
-			if (!card) return;
-			G.hands[pid]!.push(card);
-			G.treasure.splice(args.index, 1);
-		},
-		endTurnAndRefill: (context) => {
-			const { G, ctx, events } = context;
-			dealToHand(G, ctx.currentPlayer);
-			afterRefillMaybeMarkExhaust(G, ctx);
-			events?.endTurn?.();
+			inactive: { moves: {} },
 		},
 	},
 	endIf: (context) => {
