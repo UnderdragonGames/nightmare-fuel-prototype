@@ -65,6 +65,8 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): boolean => {
 	const k = key(coord);
 	if (!inBounds(coord, G.radius)) return false;
+	// Center is wild and cannot be occupied
+	if (coord.q === 0 && coord.r === 0) return false;
 	const ring = ringIndex(coord);
 	const capacity = ring > 0 && ring <= rules.MULTI_CAP_FIRST_RINGS ? 2 : 1;
 	const occupants = G.board[k] ?? [];
