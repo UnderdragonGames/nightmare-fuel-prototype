@@ -2,6 +2,7 @@ import React from 'react';
 import type { PlayerID } from 'boardgame.io';
 import type { Card, Color, PlayerPrefs } from '../game/types';
 import { asVisibleColor, serializeCard } from '../game/helpers';
+import { RULES } from '../game/rulesConfig';
 
 type Props = {
 	currentPlayer: PlayerID;
@@ -58,9 +59,14 @@ export const Sidebar: React.FC<Props> = ({ currentPlayer, viewer, numPlayers, on
 								</select>
 								<button onClick={() => onBotPlay(pid)} disabled={!isTurn}>Play until stuck</button>
 								<span title="Goals" style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
-									{(['primary','secondary','tertiary'] as const).map((k) => (
-										<span key={k} style={{ background: asVisibleColor(prefs[pid]?.[k] as Color), width: 10, height: 10, borderRadius: 2, display: 'inline-block', opacity: 0.9 }} />
-									))}
+									{(RULES.COLORS as Color[])
+										.filter((col) => {
+											const p = prefs[pid];
+											return !!p && (p.primary === col || p.secondary === col || p.tertiary === col);
+										})
+										.map((col) => (
+											<span key={col} style={{ background: asVisibleColor(col), width: 10, height: 10, borderRadius: 2, display: 'inline-block', opacity: 0.9 }} />
+										))}
 								</span>
 							</div>
 						</li>
@@ -91,9 +97,11 @@ export const Sidebar: React.FC<Props> = ({ currentPlayer, viewer, numPlayers, on
 								<div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
 									{cards.map((c, idx) => (
 										<div key={`${serializeCard(c)}-${idx}`} style={{ display: 'flex', gap: 4 }}>
-											{c.colors.map((col) => (
-												<span key={col} title={col} style={{ background: asVisibleColor(col), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
-											))}
+											{[...c.colors]
+												.sort((a, b) => (RULES.COLORS as Color[]).indexOf(a) - (RULES.COLORS as Color[]).indexOf(b))
+												.map((col) => (
+													<span key={col} title={col} style={{ background: asVisibleColor(col), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
+												))}
 										</div>
 									))}
 								{cards.length === 0 && <div style={{ color: '#64748b' }}>Empty</div>}

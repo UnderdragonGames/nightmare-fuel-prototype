@@ -1,4 +1,5 @@
 import type { Card, Co, Color, GState, Rules } from './types';
+import { RULES } from './rulesConfig';
 
 export const key = (c: Co): string => `${c.q},${c.r}`;
 export const parse = (s: string): Co => {
@@ -29,25 +30,31 @@ export const axialToPixel = (c: Co, size: number): { x: number; y: number } => {
 };
 
 const hasOccupiedNeighbor = (G: GState, coord: Co): boolean => {
-	return neighbors(coord).some((n) => (G.board[key(n)] ?? []).length > 0);
+	return neighbors(coord).some((n) => {
+		const tile = G.board[key(n)];
+		return tile !== undefined && tile.colors.length > 0;
+	});
 };
 
 const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules): boolean => {
 	const targetRing = ringIndex(coord);
 	const outwardOkay = neighbors(coord).some((n) => {
 		const nk = key(n);
-		const occ = G.board[nk] ?? [];
-		if (occ.length === 0) return false;
+		const tile = G.board[nk];
+		if (!tile || tile.colors.length === 0) return false;
 		return ringIndex(n) <= targetRing;
 	});
 
-	const dir = rules.COLOR_TO_DIR[color];
+	// For relative directions, get the edge for this color at rotation 0 (new placement)
+	// Then find which neighbor hex is in that direction
+	const colorEdge = colorToEdgeIndex(color);
+	const dir = edgeIndexToDirection(colorEdge, 0); // 0 rotation for new tile
 	const origin: Co = { q: coord.q - dir.q, r: coord.r - dir.r };
-	const originOcc = G.board[key(origin)] ?? [];
-	// Allow placing the first step in the color direction when the origin is the center and the center is wild (no seed color)
-	const originIsCenter = origin.q === 0 && origin.r === 0;
-	const centerActsAsWild = rules.CENTER_SEED === null;
-	const dirOkay = originOcc.length > 0 || (originIsCenter && centerActsAsWild);
+	const originTile = G.board[key(origin)];
+	// Allow placing the first step in the color direction when the origin is any origin and origins act as wild (no seed color)
+	const originIsOrigin = G.origins.some((o) => o.q === origin.q && o.r === origin.r);
+	const originsActAsWild = rules.CENTER_SEED === null;
+	const dirOkay = (originTile && originTile.colors.length > 0) || (originIsOrigin && originsActAsWild);
 
 	switch (rules.OUTWARD_RULE) {
 		case 'none':
@@ -65,17 +72,24 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): boolean => {
 	const k = key(coord);
 	if (!inBounds(coord, G.radius)) return false;
-	// Center is wild and cannot be occupied
-	if (coord.q === 0 && coord.r === 0) return false;
+	// Origins are wild and cannot be occupied
+	const isOrigin = G.origins.some((o) => o.q === coord.q && o.r === coord.r);
+	if (isOrigin) return false;
 	const ring = ringIndex(coord);
 	const capacity = ring > 0 && ring <= rules.MULTI_CAP_FIRST_RINGS ? 2 : 1;
-	const occupants = G.board[k] ?? [];
-	if (occupants.length >= capacity) return false;
+	const tile = G.board[k];
+	if (tile && tile.colors.length >= capacity) return false;
 	if (rules.CONNECTIVITY_SCOPE === 'global') {
 		if (!hasOccupiedNeighbor(G, coord)) {
-			// allow center if board empty and center is empty
-			const anyOccupied = Object.values(G.board).some((v) => (v?.length ?? 0) > 0);
-			if (anyOccupied) return false;
+			// allow placements adjacent to any origin at any time
+			const isAdjacentToOrigin = neighbors(coord).some((n) =>
+				G.origins.some((o) => o.q === n.q && o.r === n.r)
+			);
+			if (!isAdjacentToOrigin) {
+				// also allow if board is still completely empty (first move)
+				const anyOccupied = Object.values(G.board).some((t) => t && t.colors.length > 0);
+				if (anyOccupied) return false;
+			}
 		}
 	}
 	return satisfiesDirectionRule(G, coord, color, rules);
@@ -119,5 +133,44 @@ export const asVisibleColor = (c: Color): string => {
 };
 
 export const serializeCard = (card: Card): string => card.colors.join('');
+
+// Edge colors going clockwise from North: YGBVRO (edges 0-5)
+const EDGE_COLORS: readonly Color[] = ['Y', 'G', 'B', 'V', 'R', 'O'];
+
+// Get edge index (0-5) for a color in default orientation
+export const colorToEdgeIndex = (color: Color): number => {
+	return EDGE_COLORS.indexOf(color);
+};
+
+// Get color for an edge index considering rotation
+export const edgeIndexToColor = (edgeIndex: number, rotation: number): Color => {
+	const rotatedEdge = (edgeIndex - rotation + 6) % 6;
+	return EDGE_COLORS[rotatedEdge]!;
+};
+
+// Get absolute direction (Co) for a relative edge index considering rotation
+export const edgeIndexToDirection = (edgeIndex: number, rotation: number): Co => {
+	const rotatedEdge = (edgeIndex - rotation + 6) % 6;
+	const color = EDGE_COLORS[rotatedEdge]!;
+	return RULES.COLOR_TO_DIR[color];
+};
+
+// Get relative edge index for an absolute direction considering rotation
+export const directionToEdgeIndex = (dir: Co, rotation: number): number => {
+	// Find which color matches this direction
+	for (const [color, colorDir] of Object.entries(RULES.COLOR_TO_DIR)) {
+		if (colorDir.q === dir.q && colorDir.r === dir.r) {
+			const baseEdge = colorToEdgeIndex(color as Color);
+			return (baseEdge + rotation) % 6;
+		}
+	}
+	return 0; // fallback
+};
+
+// Get color's relative edge index for a tile with given rotation
+export const colorToRelativeEdge = (color: Color, rotation: number): number => {
+	const baseEdge = colorToEdgeIndex(color);
+	return (baseEdge + rotation) % 6;
+};
 
 

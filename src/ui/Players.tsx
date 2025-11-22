@@ -2,14 +2,16 @@ import React from 'react';
 import type { PlayerID } from 'boardgame.io';
 import { asVisibleColor } from '../game/helpers';
 import type { Color } from '../game/types';
+import { RULES } from '../game/rulesConfig';
+import type { BotKind } from '../game/bots';
 
 type Props = {
 	players: PlayerID[];
 	currentPlayer: PlayerID;
 	scores: Record<PlayerID, number>;
 	goalsByPlayer: Record<PlayerID, { primary: Color; secondary: Color; tertiary: Color }>;
-	botByPlayer: Record<PlayerID, boolean>;
-	onToggleBot: (pid: PlayerID, isBot: boolean) => void;
+	botByPlayer: Record<PlayerID, BotKind>;
+	onToggleBot: (pid: PlayerID, bot: BotKind) => void;
 };
 
 export const Players: React.FC<Props> = ({ players, currentPlayer, scores, goalsByPlayer, botByPlayer, onToggleBot }) => {
@@ -26,14 +28,17 @@ export const Players: React.FC<Props> = ({ players, currentPlayer, scores, goals
 							<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
 								<span title="Score">{scores[pid] ?? 0}</span>
 								<span title="Goals" style={{ display: 'inline-flex', gap: 4 }}>
-									<span style={{ background: asVisibleColor(goals.primary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
-									<span style={{ background: asVisibleColor(goals.secondary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
-									<span style={{ background: asVisibleColor(goals.tertiary), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
+									{[goals.primary, goals.secondary, goals.tertiary].map((col) => (
+										<span key={col} style={{ background: asVisibleColor(col), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
+									))}
 								</span>
 							</div>
-							<label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-								<input type="checkbox" checked={!!botByPlayer[pid]} onChange={(e) => onToggleBot(pid, e.target.checked)} /> Bot
-							</label>
+							<select value={botByPlayer[pid] ?? 'None'} onChange={(e) => onToggleBot(pid, e.target.value as BotKind)}>
+								<option value="None">Human</option>
+								<option value="Random">Random</option>
+								<option value="Dumb">Dumb</option>
+								<option value="Smart">Smart</option>
+							</select>
 						</li>
 					);
 				})}

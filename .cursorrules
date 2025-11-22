@@ -1,0 +1,13 @@
+- Use Bun as the runtime and package manager for this project
+- All npm/node commands should use `bun` instead (e.g., `bun install`, `bun run`, `bun add`)
+- Bun can run TypeScript directly, so no need for tsx or compilation steps for development
+- When creating scripts or running commands, prefer Bun's native capabilities
+
+
+
+
+
+
+
+
+

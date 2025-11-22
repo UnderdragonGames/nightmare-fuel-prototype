@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Card, Color } from '../game/types';
 import { asVisibleColor, serializeCard } from '../game/helpers';
+import { RULES } from '../game/rulesConfig';
 
 type Props = {
 	cards: Card[];
@@ -15,9 +16,11 @@ export const Hand: React.FC<Props> = ({ cards, selectedIndex, onSelect, onPickCo
 			{cards.map((c, i) => (
 				<div key={`${serializeCard(c)}-${i}`} style={{ border: i === selectedIndex ? '2px solid #2563eb' : '1px solid #e5e7eb', padding: 8, borderRadius: 6 }} onClick={() => onSelect(i)}>
 					<div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-						{c.colors.map((color) => (
-							<span key={color} style={{ background: asVisibleColor(color), width: 12, height: 12, borderRadius: 2, display: 'inline-block' }} />
-						))}
+						{[...c.colors]
+							.sort((a, b) => (RULES.COLORS as Color[]).indexOf(a) - (RULES.COLORS as Color[]).indexOf(b))
+							.map((color) => (
+								<span key={color} style={{ background: asVisibleColor(color), width: 12, height: 12, borderRadius: 2, display: 'inline-block' }} />
+							))}
 					</div>
 					<div style={{ display: 'flex', gap: 6 }}>
 						{c.colors.map((color) => (
