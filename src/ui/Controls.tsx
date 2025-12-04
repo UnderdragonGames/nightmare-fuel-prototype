@@ -5,17 +5,33 @@ type Props = {
 	currentPlayer: string;
 	deckCount: number;
 	discardCount: number;
+	onUndo: () => void;
 	onEndTurn: () => void;
 	onStash: () => void;
 	canStash: boolean;
 	canEndTurn: boolean;
+	canUndo: boolean;
 	stashBonus?: number;
 	rotationMode?: boolean;
 	onToggleRotationMode?: () => void;
 	canRotate?: boolean;
 };
 
-export const Controls: React.FC<Props> = ({ currentPlayer, deckCount, discardCount, onEndTurn, onStash, canStash, canEndTurn, stashBonus = 0, rotationMode = false, onToggleRotationMode, canRotate = false }) => {
+export const Controls: React.FC<Props> = ({
+	currentPlayer,
+	deckCount,
+	discardCount,
+	onUndo,
+	onEndTurn,
+	onStash,
+	canStash,
+	canEndTurn,
+	canUndo,
+	stashBonus = 0,
+	rotationMode = false,
+	onToggleRotationMode,
+	canRotate = false,
+}) => {
 	return (
 		<div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
 			<div><strong>Player</strong>: {currentPlayer}</div>
@@ -33,6 +49,9 @@ export const Controls: React.FC<Props> = ({ currentPlayer, deckCount, discardCou
 					🔄 Rotate Mode
 				</button>
 			)}
+			<button onClick={onUndo} disabled={!canUndo}>
+				Undo
+			</button>
 			<button onClick={onStash} disabled={!canStash}>
 				Stash{stashBonus > 0 && <span style={{ marginLeft: 4, color: '#22c55e' }}>+{stashBonus}</span>}
 			</button>

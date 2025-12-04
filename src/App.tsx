@@ -22,19 +22,20 @@ import { playOneRandom, playOneDumb, playOneSmart, type BotKind } from './game/b
 
 // Types
 
-type MovesShape = {
-	playCard: (a: { handIndex: number; pick: Color; coord: Co }) => void;
-	stashToTreasure: (a: { handIndex: number }) => void;
-	takeFromTreasure: (a: { index: number }) => void;
-	endTurnAndRefill: () => void;
-	rotateTile: (a: { coord: Co; handIndex: number; rotation: number }) => void;
-};
-
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
 
-type BoardProps = { G: GState; ctx: Ctx; moves: MovesShape; playerID?: PlayerID } & ExtraBoardProps;
+type AppBoardProps = BGIOBoardProps<GState> & ExtraBoardProps;
 
-const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSetViewer }) => {
+const GameBoard: React.FC<AppBoardProps> = ({
+	G,
+	ctx,
+	moves,
+	playerID,
+	viewer,
+	onSetViewer,
+	undo,
+	log,
+}) => {
 	const [selectedCard, setSelectedCard] = React.useState<number | null>(null);
 	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
 	const [rotationMode, setRotationMode] = React.useState(false);
@@ -241,10 +242,20 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSe
 					currentPlayer={currentPlayer}
 					deckCount={G.deck.length}
 					discardCount={G.discard.length}
+					onUndo={() => {
+						undo();
+						setSelectedCard(null);
+						setSelectedColor(null);
+						setPlaceable([]);
+						setPendingRotationTile(null);
+						setRotatable([]);
+						setRotationMode(false);
+					}}
 					onEndTurn={onEndTurn}
 					onStash={onStash}
 					canStash={isMyTurn && selectedCard !== null && stage === 'active' && G.treasure.length < RULES.TREASURE_MAX}
 					canEndTurn={isMyTurn}
+					canUndo={isMyTurn && Array.isArray(log) && log.length > 0}
 					stashBonus={isMyTurn ? (G.meta.stashBonus[currentPlayer as PlayerID] ?? 0) : 0}
 					rotationMode={rotationMode}
 					onToggleRotationMode={() => {
@@ -281,12 +292,12 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSe
 			<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 				{rotationMode && (
 					<div style={{ padding: 8, background: '#dbeafe', border: '1px solid #3b82f6', borderRadius: 4, fontSize: 12 }}>
-						<strong>Rotation Mode:</strong> Select a card from your hand, then click a highlighted tile and choose rotation amount (costs 1 card).
+						<strong>Rotation Mode:</strong> Select a card from your hand, then click a highlighted tile and use the arrows next to it to rotate (costs 1 card).
 					</div>
 				)}
 				{pendingRotationTile !== null && (
 					<div style={{ padding: 8, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, fontSize: 12 }}>
-						Click an arrow around the tile to rotate, or click elsewhere to cancel.
+						Click a rotation arrow next to the tile to rotate, or click another hex to cancel.
 					</div>
 				)}
 				<div style={{ display: 'flex', gap: 8 }}>
@@ -340,8 +351,6 @@ const GameBoard: React.FC<BoardProps> = ({ G, ctx, moves, playerID, viewer, onSe
 };
 
 // App
-
-type AppBoardProps = BGIOBoardProps<GState> & BoardProps;
 
 const App: React.FC = () => {
 	const numPlayers = useUIStore((s) => s.numPlayers);

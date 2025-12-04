@@ -1,6 +1,6 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES } from './rulesConfig';
-import { buildAllCoords, canPlace, key, shuffleInPlace, inBounds, ringIndex } from './helpers';
+import { buildAllCoords, canPlace, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation } from './helpers';
 import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co } from './types';
 import { buildDeck } from './deck';
 import { computeScores } from './scoring';
@@ -213,7 +213,8 @@ export const HexStringsGame: Game<GState> = {
 							if (tile) {
 								tile.colors.push(args.pick);
 							} else {
-								G.board[k] = { colors: [args.pick], rotation: 0 };
+								const rotation = inferPlacementRotation(G, args.coord, args.pick, RULES);
+								G.board[k] = { colors: [args.pick], rotation };
 							}
 							G.stats.placements += 1;
 							const [used] = hand.splice(args.handIndex, 1);

@@ -101,6 +101,7 @@ export const computeScores = (G: GState): Record<string, number> => {
 			}
 		}
 		const originToOriginTiles = new Set<string>();
+		let originToOriginPathCount = 0;
 		if (originAdjacentSets.length >= 2) {
 			if (RULES.SCORING.SHORTEST_PATH) {
 				// Only count tiles on shortest paths between origins
@@ -155,7 +156,7 @@ export const computeScores = (G: GState): Record<string, number> => {
 						const okI = key(originI);
 						const okJ = key(originJ);
 						
-						// Find shortest path length
+						// Find shortest path length (in edges)
 						let minPathLength = Infinity;
 						for (const [tileK, distFromI] of distI) {
 							const distFromJ = distJ.get(tileK);
@@ -165,8 +166,13 @@ export const computeScores = (G: GState): Record<string, number> => {
 							}
 						}
 						
-						// Mark tiles on shortest paths
+						// Mark tiles on shortest paths and accumulate path length
 						if (minPathLength !== Infinity) {
+							// Each connection contributes (edges - 1) scoring tiles (excluding the origins).
+							if (minPathLength > 0) {
+								originToOriginPathCount += Math.max(0, minPathLength - 1);
+							}
+
 							for (const [tileK, distFromI] of distI) {
 								if (tileK === okI || tileK === okJ) continue;
 								const distFromJ = distJ.get(tileK);
@@ -310,26 +316,31 @@ export const computeScores = (G: GState): Record<string, number> => {
 			}
 		}
 		
-		// Origin-to-origin connections: count tiles that connect multiple origins
-		// If ORIGIN_TO_ORIGIN is enabled, count these in addition to origin-to-rim connections
-		if (RULES.SCORING.ORIGIN_TO_ORIGIN && originToOriginTiles.size > 0) {
-			// Find which origin-to-origin tiles also reach the rim (already counted above)
-			const originToOriginReachingRim = new Set<string>();
-			if (fromRim.size > 0) {
-				for (const kC of originToOriginTiles) {
-					if (fromRim.has(kC)) {
-						originToOriginReachingRim.add(kC);
+		// Origin-to-origin connections.
+		// If ORIGIN_TO_ORIGIN is enabled, count these in addition to origin-to-rim connections.
+		if (RULES.SCORING.ORIGIN_TO_ORIGIN) {
+			if (RULES.SCORING.SHORTEST_PATH) {
+				// Under SHORTEST_PATH, score by number of tiles on shortest paths between each origin pair.
+				count += originToOriginPathCount;
+			} else if (originToOriginTiles.size > 0) {
+				// Legacy behaviour: score by distinct tiles that connect multiple origins, avoiding double-counting
+				// tiles that are already part of origin-to-rim intersections.
+				const originToOriginReachingRim = new Set<string>();
+				if (fromRim.size > 0) {
+					for (const kC of originToOriginTiles) {
+						if (fromRim.has(kC)) {
+							originToOriginReachingRim.add(kC);
+						}
 					}
 				}
-			}
-			
-			// Count origin-to-origin tiles that don't reach rim (to avoid double-counting)
-			for (const kC of originToOriginTiles) {
-				// Skip origin coordinates
-				if (originKeys.has(kC)) continue;
-				// Skip tiles already counted as intersection tiles
-				if (originToOriginReachingRim.has(kC)) continue;
-				count += 1;
+
+				for (const kC of originToOriginTiles) {
+					// Skip origin coordinates
+					if (originKeys.has(kC)) continue;
+					// Skip tiles already counted as intersection tiles
+					if (originToOriginReachingRim.has(kC)) continue;
+					count += 1;
+				}
 			}
 		}
 		

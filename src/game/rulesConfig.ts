@@ -13,7 +13,7 @@ const DIR: Record<Color, Co> = {
 
 export const RULES: Rules = {
 	// Maximum distance from center (ring count) - board is a hex of radius N
-	RADIUS: 7,
+	RADIUS: 6,
 	// Available colors in the game
 	COLORS: ['R', 'O', 'Y', 'G', 'B', 'V'],
 	// Maps each color to its directional offset vector in hex coordinates
@@ -53,7 +53,7 @@ export const RULES: Rules = {
 	// Discard a card to rotate a tile: true (any rotation), 'non-backwards' (only forward rotations), false (disabled)
 	DISCARD_TO_ROTATE: true,
 	// Origin rule: 'center' (single origin at 0,0), 'random' (random origins only, excluding center), or 'random-and-center' (center + random origins)
-	ORIGIN: 'random-and-center',
+	ORIGIN: 'center',
 	// Number of origins when ORIGIN='random' or 'random-and-center'
 	ORIGIN_COUNT: 7,
 	// Origin direction: 'aligned' (evenly spaced in cardinal directions) or 'random' (completely random positions) - only used when ORIGIN includes 'random'

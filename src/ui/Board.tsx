@@ -1,5 +1,5 @@
 import React from 'react';
-import { axialToPixel, asVisibleColor, buildAllCoords, key, ringIndex, edgeIndexToColor } from '../game/helpers';
+import { axialToPixel, asVisibleColor, buildAllCoords, key, ringIndex, edgeIndexToColor, neighbors } from '../game/helpers';
 import { Hex } from './Hex';
 import { RULES } from '../game/rulesConfig';
 import type { Color, Co, HexTile } from '../game/types';
@@ -113,63 +113,50 @@ export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = R
 						{/* Rotation arrows - show when tile is pending rotation */}
 						{isPendingRotation && onRotationSelect && (
 							<g>
-								{[1, 2, 4, 5].map((rot) => {
-									// Position arrows at 4 positions: top (0°), right (90°), left (270°), bottom-right (240°)
-									// Map rotations: 1→top, 2→right, 4→bottom-right, 5→left
-									const positions: Record<number, number> = {
-										1: 0,    // top
-										2: 90,   // right
-										4: 240,  // bottom-right
-										5: 270,  // left
-									};
-									const angle = positions[rot]!;
-									const angleRad = (angle * Math.PI) / 180;
-									const arrowRadius = size * 1.3;
-									const arrowX = center.x + arrowRadius * Math.cos(angleRad);
-									const arrowY = center.y + arrowRadius * Math.sin(angleRad);
-									const rotationDeg = rot * 60;
-									
-									return (
-										<g
-											key={`arrow-${rot}`}
-											transform={`translate(${arrowX}, ${arrowY})`}
-											onClick={(e) => {
-												e.stopPropagation();
-												onRotationSelect(rot);
-											}}
-											style={{ cursor: 'pointer' }}
-										>
-											<circle
-												cx={0}
-												cy={0}
-												r={size * 0.4}
-												fill="#3b82f6"
-												stroke="white"
-												strokeWidth={2}
-												opacity={0.95}
-											/>
-											<text
-												x={0}
-												y={0}
-												fontSize={size * 0.3}
-												textAnchor="middle"
-												dominantBaseline="central"
-												fill="white"
-												fontWeight="bold"
-												style={{ pointerEvents: 'none', userSelect: 'none' }}
+								{(() => {
+									// Place arrows in neighbouring hex spaces visually.
+									const neigh = neighbors(c);
+									const arrowConfigs: Array<{ coord: Co; rot: number; cw: boolean }> = [];
+
+									// Approximate 2 o'clock & 4 o'clock with "right-ish" neighbours (clockwise).
+									if (neigh[0]) arrowConfigs.push({ coord: neigh[0]!, rot: 1, cw: true }); // E
+									if (neigh[1]) arrowConfigs.push({ coord: neigh[1]!, rot: 1, cw: true }); // NE
+
+									// Approximate 10 o'clock & 8 o'clock with "left-ish" neighbours (counter-clockwise).
+									if (neigh[3]) arrowConfigs.push({ coord: neigh[3]!, rot: 5, cw: false }); // W
+									if (neigh[4]) arrowConfigs.push({ coord: neigh[4]!, rot: 5, cw: false }); // SW
+
+									return arrowConfigs.map(({ coord, rot, cw }) => {
+										const pos = axialToPixel(coord, size);
+										return (
+											<g
+												key={`arrow-${rot}-${coord.q},${coord.r}`}
+												transform={`translate(${pos.x}, ${pos.y})`}
+												onClick={(e) => {
+													e.stopPropagation();
+													onRotationSelect(rot);
+												}}
+												style={{ cursor: 'pointer' }}
 											>
-												{rotationDeg}°
-											</text>
-											{/* Arrow pointing clockwise around the hex */}
-											<g transform={`rotate(${angle + 90})`} style={{ pointerEvents: 'none' }}>
-												<path
-													d={`M ${size * 0.2} 0 L ${-size * 0.1} ${-size * 0.1} L ${-size * 0.05} 0 L ${-size * 0.1} ${size * 0.1} Z`}
-													fill="white"
+												<circle
+													cx={0}
+													cy={0}
+													r={size * 0.4}
+													fill="#3b82f6"
+													stroke="white"
+													strokeWidth={2}
+													opacity={0.9}
 												/>
+												<g transform={`rotate(${cw ? 0 : 180})`} style={{ pointerEvents: 'none' }}>
+													<path
+														d={`M ${-size * 0.15} 0 L ${size * 0.1} ${-size * 0.1} L ${size * 0.05} 0 L ${size * 0.1} ${size * 0.1} Z`}
+														fill="white"
+													/>
+												</g>
 											</g>
-										</g>
-									);
-								})}
+										);
+									});
+								})()}
 							</g>
 						)}
 						{/* Colored edge markers - rectangular, positioned along edges - only on placed tiles */}

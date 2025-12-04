@@ -45,16 +45,41 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 		return ringIndex(n) <= targetRing;
 	});
 
-	// For relative directions, get the edge for this color at rotation 0 (new placement)
-	// Then find which neighbor hex is in that direction
-	const colorEdge = colorToEdgeIndex(color);
-	const dir = edgeIndexToDirection(colorEdge, 0); // 0 rotation for new tile
-	const origin: Co = { q: coord.q - dir.q, r: coord.r - dir.r };
-	const originTile = G.board[key(origin)];
-	// Allow placing the first step in the color direction when the origin is any origin and origins act as wild (no seed color)
-	const originIsOrigin = G.origins.some((o) => o.q === origin.q && o.r === origin.r);
-	const originsActAsWild = rules.CENTER_SEED === null;
-	const dirOkay = (originTile && originTile.colors.length > 0) || (originIsOrigin && originsActAsWild);
+	// Directional rule: purely local, edge-colour + rotation based.
+	// A placement is direction-ok if there exists at least one neighbouring
+	// tile/origin whose edge facing this coord has colour `color`.
+
+	let dirOkay = false;
+
+	for (const n of neighbors(coord)) {
+		// Treat origins as permanent tiles with fixed rotation 0.
+		const isOrigin = G.origins.some((o) => o.q === n.q && o.r === n.r);
+		const neighborTile = G.board[key(n)];
+		const hasTile = neighborTile && neighborTile.colors.length > 0;
+		if (!isOrigin && !hasTile) continue;
+
+		const rotation = isOrigin ? 0 : neighborTile!.rotation;
+
+		// Vector from neighbour to candidate coord.
+		const dirVec: Co = { q: coord.q - n.q, r: coord.r - n.r };
+
+		// Map this direction to a canonical edge index using COLOR_TO_DIR / EDGE_COLORS.
+		let edgeIndexFacingCoord = -1;
+		for (const [cKey, d] of Object.entries(rules.COLOR_TO_DIR)) {
+			if (d.q === dirVec.q && d.r === dirVec.r) {
+				edgeIndexFacingCoord = colorToEdgeIndex(cKey as Color);
+				break;
+			}
+		}
+		if (edgeIndexFacingCoord === -1) continue;
+
+		// What colour is on that edge, given the neighbour's rotation?
+		const edgeCol = edgeIndexToColor(edgeIndexFacingCoord, rotation);
+		if (edgeCol === color) {
+			dirOkay = true;
+			break;
+		}
+	}
 
 	switch (rules.OUTWARD_RULE) {
 		case 'none':
@@ -67,6 +92,35 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 		default:
 			return outwardOkay || dirOkay;
 	}
+};
+
+// Infer initial rotation for a newly placed tile of `color` at `coord`.
+// If we extend from a neighbouring tile/origin whose edge of colour `color`
+// faces this coord, copy that neighbour's rotation so the new tile keeps
+// the chain's orientation. Otherwise, default to rotation 0.
+export const inferPlacementRotation = (G: GState, coord: Co, color: Color, rules: Rules): number => {
+	// 1) If there is any neighbouring tile, prefer to inherit *some* rotation
+	//    rather than always defaulting to 0. When multiple neighbours exist,
+	//    use the first one that contains `color`; otherwise fall back to the
+	//    first neighbouring tile we see.
+	let fallbackRotation: number | null = null;
+
+	for (const n of neighbors(coord)) {
+		const neighborTile = G.board[key(n)];
+		if (!neighborTile || neighborTile.colors.length === 0) continue;
+
+		if (fallbackRotation === null) {
+			fallbackRotation = neighborTile.rotation;
+		}
+
+		if (neighborTile.colors.includes(color)) {
+			return neighborTile.rotation;
+		}
+	}
+
+	// 2) If no neighbour has the colour, but there is at least one neighbour
+	//    tile, inherit its rotation as a best-effort guess. Otherwise 0.
+	return fallbackRotation ?? 0;
 };
 
 export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): boolean => {
