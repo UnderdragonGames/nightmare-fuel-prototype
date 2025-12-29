@@ -1,6 +1,5 @@
 import type { Ctx, PlayerID } from 'boardgame.io';
-import type { GState, Color, MovePlayCardArgs, MoveStashArgs, Card } from './types';
-import { RULES } from './rulesConfig';
+import type { GState, Color, MovePlayCardArgs, MoveStashArgs, Card, Rules } from './types';
 import { buildAllCoords, canPlace, key } from './helpers';
 import { computeScores } from './scoring';
 
@@ -8,14 +7,14 @@ export type BotKind = 'None' | 'Random' | 'Dumb' | 'Smart';
 
 // Calculate expected value of drawing a card based on deck composition
 // Each player has 3 objective colors out of 6 total, so probability is the same for all
-const calculateDrawValue = (_prefs: { primary: Color; secondary: Color; tertiary: Color }): number => {
-	const totalColors = RULES.COLORS.length; // 6
+const calculateDrawValue = (rules: Rules, _prefs: { primary: Color; secondary: Color; tertiary: Color }): number => {
+	const totalColors = rules.COLORS.length; // 6
 	const nonObjectiveCount = totalColors - 3; // 3 non-objective colors
 	
 	// Calculate probability that a random card contains at least one objective color
 	// Based on deck composition: twoColor, threeColor, fourColor
 	
-	const totalWeight = RULES.DECK_COUNTS.twoColor + RULES.DECK_COUNTS.threeColor + RULES.DECK_COUNTS.fourColor;
+	const totalWeight = rules.DECK_COUNTS.twoColor + rules.DECK_COUNTS.threeColor + rules.DECK_COUNTS.fourColor;
 	
 	// Combinations: C(n,k) = n! / (k! * (n-k)!)
 	// For twoColor: C(6,2) = 15 total, C(3,2) = 3 non-objective
@@ -33,9 +32,9 @@ const calculateDrawValue = (_prefs: { primary: Color; secondary: Color; tertiary
 	
 	// Weighted average probability
 	const weightedProb = (
-		probTwoColor * RULES.DECK_COUNTS.twoColor +
-		probThreeColor * RULES.DECK_COUNTS.threeColor +
-		probFourColor * RULES.DECK_COUNTS.fourColor
+		probTwoColor * rules.DECK_COUNTS.twoColor +
+		probThreeColor * rules.DECK_COUNTS.threeColor +
+		probFourColor * rules.DECK_COUNTS.fourColor
 	) / totalWeight;
 	
 	// Expected value: probability of objective color × average objective value
@@ -74,6 +73,7 @@ const evaluateStashValue = (
 	playerID: PlayerID
 ): number => {
 	if (move.move !== 'stashToTreasure') return 0;
+	const rules = G.rules;
 	
 	const args = move.args[0] as MoveStashArgs;
 	const hand = G.hands[playerID] ?? [];
@@ -85,7 +85,7 @@ const evaluateStashValue = (
 	
 	// Stash cards you DON'T want (non-objective) - they give bonus draws
 	// Each bonus draw has expected value calculated from deck composition
-	const drawValue = calculateDrawValue(prefs);
+	const drawValue = calculateDrawValue(rules, prefs);
 	const stashBonusValue = drawValue; // 1 stash = 1 bonus draw
 	
 	// Stashing non-objective cards is good (removes bad cards, gets bonus draws)
@@ -161,6 +161,7 @@ export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Pro
 		if (!state || state.ctx.currentPlayer !== playerID) break;
 		
 		const G = state.G;
+		const rules = G.rules;
 		const coords = buildAllCoords(G.radius);
 		const hand = G.hands[playerID] ?? [];
 		const placementsBefore = G.stats.placements;
@@ -174,7 +175,7 @@ export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Pro
 			const card = hand[i]!;
 			for (const color of card.colors) {
 				for (const co of coords) {
-					if (canPlace(G, co, color as Color, RULES)) {
+						if (canPlace(G, co, color as Color, rules)) {
 						client.moves.playCard({ handIndex: i, pick: color as Color, coord: co });
 						madeMove = true;
 						movesMade += 1;
@@ -208,7 +209,7 @@ export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Pro
 		}
 		
 		// otherwise stash first available if treasure space
-		if ((G.treasure.length ?? 0) < RULES.TREASURE_MAX && hand.length > 0) {
+		if ((G.treasure.length ?? 0) < rules.TREASURE_MAX && hand.length > 0) {
 			client.moves.stashToTreasure({ handIndex: 0 });
 			madeMove = true;
 			movesMade += 1;
@@ -240,6 +241,7 @@ export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Pro
 
 const enumerateMoves = (G: GState, playerID: PlayerID): Move[] => {
 	const moves: Move[] = [];
+	const rules = G.rules;
 	const coords = buildAllCoords(G.radius);
 	const hand = G.hands[playerID] ?? [];
 	
@@ -248,7 +250,7 @@ const enumerateMoves = (G: GState, playerID: PlayerID): Move[] => {
 		const card = hand[i]!;
 		for (const color of card.colors) {
 			for (const co of coords) {
-				if (canPlace(G, co, color as Color, RULES)) {
+				if (canPlace(G, co, color as Color, rules)) {
 					moves.push({ move: 'playCard', args: [{ handIndex: i, pick: color, coord: co }] });
 				}
 			}
@@ -256,7 +258,7 @@ const enumerateMoves = (G: GState, playerID: PlayerID): Move[] => {
 	}
 	
 	// Enumerate stashToTreasure moves
-	if (G.treasure.length < RULES.TREASURE_MAX && hand.length > 0) {
+	if (G.treasure.length < rules.TREASURE_MAX && hand.length > 0) {
 		for (let i = 0; i < hand.length; i += 1) {
 			moves.push({ move: 'stashToTreasure', args: [{ handIndex: i }] });
 		}
@@ -273,14 +275,15 @@ const deepClone = <T,>(obj: T): T => JSON.parse(JSON.stringify(obj));
 const applyMoveToState = (G: GState, ctx: Ctx, move: Move, playerID: PlayerID): { G: GState; ctx: Ctx } | null => {
 	const newG = deepClone(G);
 	const newCtx = { ...ctx };
+	const rules = newG.rules;
 	
 	if (move.move === 'playCard') {
 		const args = move.args[0] as MovePlayCardArgs;
 		const hand = newG.hands[playerID]!;
 		const card = hand[args.handIndex];
 		if (!card) return null;
-		if (RULES.ONE_COLOR_PER_CARD_PLAY && !card.colors.includes(args.pick)) return null;
-		if (!canPlace(newG, args.coord, args.pick, RULES)) return null;
+		if (rules.ONE_COLOR_PER_CARD_PLAY && !card.colors.includes(args.pick)) return null;
+		if (!canPlace(newG, args.coord, args.pick, rules)) return null;
 		
 		const k = key(args.coord);
 		const tile = newG.board[k];
@@ -295,7 +298,7 @@ const applyMoveToState = (G: GState, ctx: Ctx, move: Move, playerID: PlayerID): 
 	} else if (move.move === 'stashToTreasure') {
 		const args = move.args[0] as MoveStashArgs;
 		const hand = newG.hands[playerID]!;
-		if (newG.treasure.length >= RULES.TREASURE_MAX) return null;
+		if (newG.treasure.length >= rules.TREASURE_MAX) return null;
 		const card = hand[args.handIndex];
 		if (!card) return null;
 		newG.treasure.push(card);
@@ -326,7 +329,8 @@ const applyMoveToState = (G: GState, ctx: Ctx, move: Move, playerID: PlayerID): 
 };
 
 const dealToHand = (g: GState, pid: PlayerID): void => {
-	while (g.hands[pid]!.length < RULES.HAND_SIZE) {
+	const rules = g.rules;
+	while (g.hands[pid]!.length < rules.HAND_SIZE) {
 		const c = g.deck.pop() ?? null;
 		if (!c) break;
 		g.hands[pid]!.push(c);
@@ -441,18 +445,19 @@ const playOneMonteCarloMove = async (
 	
 	// Try moves in order of preference until one succeeds
 	for (const { move } of moveScores) {
+		const rules = stateBefore.G.rules;
 		// Re-validate move is still valid before executing
 		if (move.move === 'playCard') {
 			const args = move.args[0] as MovePlayCardArgs;
 			const hand = stateBefore.G.hands[playerID] ?? [];
 			const card = hand[args.handIndex];
 			if (!card) continue;
-			if (RULES.ONE_COLOR_PER_CARD_PLAY && !card.colors.includes(args.pick)) continue;
-			if (!canPlace(stateBefore.G, args.coord, args.pick, RULES)) continue;
+			if (rules.ONE_COLOR_PER_CARD_PLAY && !card.colors.includes(args.pick)) continue;
+			if (!canPlace(stateBefore.G, args.coord, args.pick, rules)) continue;
 		} else if (move.move === 'stashToTreasure') {
 			const args = move.args[0] as MoveStashArgs;
 			const hand = stateBefore.G.hands[playerID] ?? [];
-			if (stateBefore.G.treasure.length >= RULES.TREASURE_MAX) continue;
+			if (stateBefore.G.treasure.length >= rules.TREASURE_MAX) continue;
 			if (!hand[args.handIndex]) continue;
 		}
 		

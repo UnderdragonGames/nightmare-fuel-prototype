@@ -14,6 +14,7 @@ export type HexTile = {
 };
 
 export type GState = {
+	rules: Rules;
 	radius: number;
 	board: Record<string, HexTile>;
 	deck: Card[];
@@ -60,6 +61,10 @@ export type PlacementRules = {
 	MULTI_CAP_FIRST_RINGS: number;
 	// Hard cap on lanes per coord / path
 	MAX_LANES_PER_PATH: number;
+	// Path-mode option: for any same-color junction that splits into N outward branches,
+	// require at least N same-color "lanes" connecting that junction back to center.
+	// (i.e., forks must be "supported" by parallel trunk paths.)
+	FORK_SUPPORT: boolean;
 	// Special placement: discard 2 of same color to place ignoring direction rules
 	TWO_TO_ROTATE: boolean;
 	// Overwrite rule: 'none' (disabled), 'match-4' (discard 4 of same color to overwrite a lane)
@@ -73,6 +78,10 @@ export type Rules = {
 	RADIUS: number;
 	// Available colors in the game
 	COLORS: readonly Color[];
+	// Edge colors going clockwise from North (edges 0-5). Also defines tile default orientation.
+	EDGE_COLORS: readonly Color[];
+	// If true, shuffle EDGE_COLORS once per new game (and derive COLOR_TO_DIR from that shuffled order).
+	RANDOM_CARDINAL_DIRECTIONS: boolean;
 	// Maps each color to its directional offset vector in hex coordinates
 	COLOR_TO_DIR: Record<Color, Co>;
 	// Number of cards each player holds in hand

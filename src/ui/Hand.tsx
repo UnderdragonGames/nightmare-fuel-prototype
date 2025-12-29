@@ -1,23 +1,23 @@
 import React from 'react';
-import type { Card, Color } from '../game/types';
+import type { Card, Color, Rules } from '../game/types';
 import { asVisibleColor, serializeCard } from '../game/helpers';
-import { RULES } from '../game/rulesConfig';
 
 type Props = {
+	rules: Rules;
 	cards: Card[];
 	selectedIndex: number | null;
 	onSelect: (index: number) => void;
 	onPickColor: (index: number, color: Color) => void;
 };
 
-export const Hand: React.FC<Props> = ({ cards, selectedIndex, onSelect, onPickColor }) => {
+export const Hand: React.FC<Props> = ({ rules, cards, selectedIndex, onSelect, onPickColor }) => {
 	return (
 		<div style={{ display: 'flex', gap: 8 }}>
 			{cards.map((c, i) => (
 				<div key={`${serializeCard(c)}-${i}`} style={{ border: i === selectedIndex ? '2px solid #2563eb' : '1px solid #e5e7eb', padding: 8, borderRadius: 6 }} onClick={() => onSelect(i)}>
 					<div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
 						{[...c.colors]
-							.sort((a, b) => (RULES.COLORS as Color[]).indexOf(a) - (RULES.COLORS as Color[]).indexOf(b))
+							.sort((a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b))
 							.map((color) => (
 								<span key={color} style={{ background: asVisibleColor(color), width: 12, height: 12, borderRadius: 2, display: 'inline-block' }} />
 							))}

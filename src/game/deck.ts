@@ -1,8 +1,5 @@
-import type { Card, Color } from './types';
-import { RULES } from './rulesConfig';
+import type { Card, Color, Rules } from './types';
 import { shuffleInPlace } from './helpers';
-
-const COLORS = RULES.COLORS;
 
 const combinations = <T,>(arr: readonly T[], k: number): T[][] => {
 	const result: T[][] = [];
@@ -33,16 +30,17 @@ const repeatAndFlatten = (items: Color[][], targetCount: number): Card[] => {
 	return out;
 };
 
-export const buildDeck = (rng: () => number = Math.random): Card[] => {
-	const pairs = combinations(COLORS, 2);
-	const triples = combinations(COLORS, 3);
-	const quads = combinations(COLORS, 4);
+export const buildDeck = (rules: Rules, rng: () => number = Math.random): Card[] => {
+	const colors = rules.COLORS;
+	const pairs = combinations(colors, 2);
+	const triples = combinations(colors, 3);
+	const quads = combinations(colors, 4);
 
 	// If DECK_SIZE is specified, scale counts proportionally to the configured weights.
-	const totalWeight = RULES.DECK_COUNTS.twoColor + RULES.DECK_COUNTS.threeColor + RULES.DECK_COUNTS.fourColor;
-	const target = Math.max(1, RULES.DECK_SIZE ?? totalWeight);
-	const t2 = Math.round((RULES.DECK_COUNTS.twoColor / totalWeight) * target);
-	const t3 = Math.round((RULES.DECK_COUNTS.threeColor / totalWeight) * target);
+	const totalWeight = rules.DECK_COUNTS.twoColor + rules.DECK_COUNTS.threeColor + rules.DECK_COUNTS.fourColor;
+	const target = Math.max(1, rules.DECK_SIZE);
+	const t2 = Math.round((rules.DECK_COUNTS.twoColor / totalWeight) * target);
+	const t3 = Math.round((rules.DECK_COUNTS.threeColor / totalWeight) * target);
 	const t4 = Math.max(0, target - t2 - t3); // ensure sum matches target
 
 	const c2 = repeatAndFlatten(pairs, t2);

@@ -1,21 +1,21 @@
 import React from 'react';
-import type { Card, Color } from '../game/types';
+import type { Card, Color, Rules } from '../game/types';
 import { asVisibleColor, serializeCard } from '../game/helpers';
-import { RULES } from '../game/rulesConfig';
 
 type Props = {
+	rules: Rules;
 	cards: Card[];
 	onTake: (index: number) => void;
 };
 
-export const Treasure: React.FC<Props> = ({ cards, onTake }) => {
+export const Treasure: React.FC<Props> = ({ rules, cards, onTake }) => {
 	return (
 		<div style={{ display: 'flex', gap: 8 }}>
 			{cards.map((c, i) => (
 				<div key={`${serializeCard(c)}-${i}`} style={{ border: '1px dashed #94a3b8', padding: 8, borderRadius: 6 }}>
 					<div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
 						{[...c.colors]
-							.sort((a, b) => (RULES.COLORS as Color[]).indexOf(a) - (RULES.COLORS as Color[]).indexOf(b))
+							.sort((a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b))
 							.map((color) => (
 								<span key={color} style={{ background: asVisibleColor(color), width: 12, height: 12, borderRadius: 2, display: 'inline-block' }} />
 							))}

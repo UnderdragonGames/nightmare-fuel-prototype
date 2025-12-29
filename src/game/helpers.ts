@@ -1,5 +1,4 @@
 import type { Card, Co, Color, GState, Rules } from './types';
-import { RULES } from './rulesConfig';
 
 export const key = (c: Co): string => `${c.q},${c.r}`;
 export const parse = (s: string): Co => {
@@ -67,14 +66,14 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 		let edgeIndexFacingCoord = -1;
 		for (const [cKey, d] of Object.entries(rules.COLOR_TO_DIR)) {
 			if (d.q === dirVec.q && d.r === dirVec.r) {
-				edgeIndexFacingCoord = colorToEdgeIndex(cKey as Color);
+				edgeIndexFacingCoord = colorToEdgeIndex(cKey as Color, rules);
 				break;
 			}
 		}
 		if (edgeIndexFacingCoord === -1) continue;
 
 		// What colour is on that edge, given the neighbour's rotation?
-		const edgeCol = edgeIndexToColor(edgeIndexFacingCoord, rotation);
+		const edgeCol = edgeIndexToColor(edgeIndexFacingCoord, rotation, rules);
 		if (edgeCol === color) {
 			dirOkay = true;
 			break;
@@ -98,7 +97,7 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 // If we extend from a neighbouring tile/origin whose edge of colour `color`
 // faces this coord, copy that neighbour's rotation so the new tile keeps
 // the chain's orientation. Otherwise, default to rotation 0.
-export const inferPlacementRotation = (G: GState, coord: Co, color: Color, rules: Rules): number => {
+export const inferPlacementRotation = (G: GState, coord: Co, color: Color): number => {
 	// 1) If there is any neighbouring tile, prefer to inherit *some* rotation
 	//    rather than always defaulting to 0. When multiple neighbours exist,
 	//    use the first one that contains `color`; otherwise fall back to the
@@ -152,7 +151,11 @@ export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): bool
 			if (anyOccupied) return false;
 		}
 	}
-	return satisfiesDirectionRule(G, coord, color, rules);
+	if (!satisfiesDirectionRule(G, coord, color, rules)) return false;
+	if (rules.MODE === 'path' && rules.PLACEMENT.FORK_SUPPORT) {
+		if (!forkSupportOkAfterPlacement(G, coord, color, rules)) return false;
+	}
+	return true;
 };
 
 export const shuffleInPlace = <T,>(arr: T[], rng: () => number = Math.random): void => {
@@ -194,43 +197,242 @@ export const asVisibleColor = (c: Color): string => {
 
 export const serializeCard = (card: Card): string => card.colors.join('');
 
-// Edge colors going clockwise from North: YGBVRO (edges 0-5)
-const EDGE_COLORS: readonly Color[] = ['Y', 'G', 'B', 'V', 'R', 'O'];
-
 // Get edge index (0-5) for a color in default orientation
-export const colorToEdgeIndex = (color: Color): number => {
-	return EDGE_COLORS.indexOf(color);
+export const colorToEdgeIndex = (color: Color, rules: Rules): number => {
+	const idx = rules.EDGE_COLORS.indexOf(color);
+	if (idx === -1) throw new Error(`Color ${color} missing from rules.EDGE_COLORS`);
+	return idx;
 };
 
 // Get color for an edge index considering rotation
-export const edgeIndexToColor = (edgeIndex: number, rotation: number): Color => {
+export const edgeIndexToColor = (edgeIndex: number, rotation: number, rules: Rules): Color => {
 	const rotatedEdge = (edgeIndex - rotation + 6) % 6;
-	return EDGE_COLORS[rotatedEdge]!;
+	const col = rules.EDGE_COLORS[rotatedEdge];
+	if (!col) throw new Error(`Invalid edge index ${edgeIndex} / rotation ${rotation}`);
+	return col;
 };
 
 // Get absolute direction (Co) for a relative edge index considering rotation
-export const edgeIndexToDirection = (edgeIndex: number, rotation: number): Co => {
+export const edgeIndexToDirection = (edgeIndex: number, rotation: number, rules: Rules): Co => {
 	const rotatedEdge = (edgeIndex - rotation + 6) % 6;
-	const color = EDGE_COLORS[rotatedEdge]!;
-	return RULES.COLOR_TO_DIR[color];
+	const color = rules.EDGE_COLORS[rotatedEdge];
+	if (!color) throw new Error(`Invalid edge index ${edgeIndex} / rotation ${rotation}`);
+	return rules.COLOR_TO_DIR[color];
 };
 
 // Get relative edge index for an absolute direction considering rotation
-export const directionToEdgeIndex = (dir: Co, rotation: number): number => {
+export const directionToEdgeIndex = (dir: Co, rotation: number, rules: Rules): number => {
 	// Find which color matches this direction
-	for (const [color, colorDir] of Object.entries(RULES.COLOR_TO_DIR)) {
+	for (const [color, colorDir] of Object.entries(rules.COLOR_TO_DIR)) {
 		if (colorDir.q === dir.q && colorDir.r === dir.r) {
-			const baseEdge = colorToEdgeIndex(color as Color);
+			const baseEdge = colorToEdgeIndex(color as Color, rules);
 			return (baseEdge + rotation) % 6;
 		}
 	}
-	return 0; // fallback
+	throw new Error(`Direction not found in rules.COLOR_TO_DIR: (${dir.q},${dir.r})`);
 };
 
 // Get color's relative edge index for a tile with given rotation
-export const colorToRelativeEdge = (color: Color, rotation: number): number => {
-	const baseEdge = colorToEdgeIndex(color);
+export const colorToRelativeEdge = (color: Color, rotation: number, rules: Rules): number => {
+	const baseEdge = colorToEdgeIndex(color, rules);
 	return (baseEdge + rotation) % 6;
+};
+
+type FlowEdge = { to: number; rev: number; cap: number };
+
+const INF_CAP = 1_000_000_000;
+const CENTER: Co = { q: 0, r: 0 };
+
+const countColorInTile = (tile: { colors: Color[] } | undefined, color: Color): number => {
+	if (!tile) return 0;
+	let n = 0;
+	for (const c of tile.colors) if (c === color) n += 1;
+	return n;
+};
+
+const buildColorCountsAfterPlacement = (
+	G: GState,
+	placeCoord: Co,
+	color: Color
+): Map<string, number> => {
+	const counts = new Map<string, number>();
+	for (const [k, tile] of Object.entries(G.board)) {
+		if (!tile || tile.colors.length === 0) continue;
+		const n = countColorInTile(tile, color);
+		if (n > 0) counts.set(k, n);
+	}
+	const pk = key(placeCoord);
+	counts.set(pk, (counts.get(pk) ?? 0) + 1);
+	return counts;
+};
+
+const reachableFromCenterForColor = (
+	counts: Map<string, number>,
+	color: Color,
+	rules: Rules
+): Set<string> => {
+	// In this ruleset, a color can only connect directly from center in its own direction.
+	const dir = rules.COLOR_TO_DIR[color];
+	const start: Co = { q: CENTER.q + dir.q, r: CENTER.r + dir.r };
+	const startKey = key(start);
+	if ((counts.get(startKey) ?? 0) <= 0) return new Set<string>();
+
+	const seen = new Set<string>();
+	const q: string[] = [startKey];
+	seen.add(startKey);
+
+	while (q.length > 0) {
+		const curKey = q.shift()!;
+		const cur = parse(curKey);
+		for (const n of neighbors(cur)) {
+			const nk = key(n);
+			if (seen.has(nk)) continue;
+			if ((counts.get(nk) ?? 0) <= 0) continue;
+			seen.add(nk);
+			q.push(nk);
+		}
+	}
+	return seen;
+};
+
+const outwardBranchCount = (coord: Co, reachable: Set<string>, counts: Map<string, number>): number => {
+	const baseRing = ringIndex(coord);
+	let branches = 0;
+	for (const n of neighbors(coord)) {
+		const nk = key(n);
+		if (!reachable.has(nk)) continue;
+		if ((counts.get(nk) ?? 0) <= 0) continue;
+		if (ringIndex(n) > baseRing) branches += 1;
+	}
+	return branches;
+};
+
+const addFlowEdge = (g: FlowEdge[][], u: number, v: number, cap: number): void => {
+	const fromList = g[u]!;
+	const toList = g[v]!;
+	const fwd: FlowEdge = { to: v, rev: toList.length, cap };
+	const rev: FlowEdge = { to: u, rev: fromList.length, cap: 0 };
+	fromList.push(fwd);
+	toList.push(rev);
+};
+
+const dinicMaxFlow = (g: FlowEdge[][], s: number, t: number): number => {
+	const n = g.length;
+	let flow = 0;
+	const level = new Array<number>(n);
+	const it = new Array<number>(n);
+
+	const bfs = (): boolean => {
+		level.fill(-1);
+		const q: number[] = [];
+		level[s] = 0;
+		q.push(s);
+		while (q.length > 0) {
+			const v = q.shift()!;
+			for (const e of g[v]!) {
+				if (e.cap <= 0) continue;
+				if (level[e.to]! >= 0) continue;
+				level[e.to] = level[v]! + 1;
+				q.push(e.to);
+			}
+		}
+		return level[t]! >= 0;
+	};
+
+	const dfs = (v: number, pushed: number): number => {
+		if (pushed === 0) return 0;
+		if (v === t) return pushed;
+		for (; it[v]! < g[v]!.length; it[v]! += 1) {
+			const i = it[v]!;
+			const e = g[v]![i]!;
+			if (e.cap <= 0) continue;
+			if (level[e.to] !== level[v]! + 1) continue;
+			const tr = dfs(e.to, Math.min(pushed, e.cap));
+			if (tr === 0) continue;
+			e.cap -= tr;
+			g[e.to]![e.rev]!.cap += tr;
+			return tr;
+		}
+		return 0;
+	};
+
+	while (bfs()) {
+		it.fill(0);
+		while (true) {
+			const pushed = dfs(s, INF_CAP);
+			if (pushed === 0) break;
+			flow += pushed;
+		}
+	}
+	return flow;
+};
+
+const maxSupportedLanesTo = (
+	reachable: Set<string>,
+	counts: Map<string, number>,
+	color: Color,
+	rules: Rules,
+	targetKey: string
+): number => {
+	// Node capacity model: each coord node has capacity = count(color at coord).
+	// Use node-splitting (in -> out edge with that capacity).
+	const keys = Array.from(reachable);
+	const allKeys = ['CENTER', ...keys];
+	const idx = new Map<string, number>();
+	for (let i = 0; i < allKeys.length; i += 1) idx.set(allKeys[i]!, i);
+
+	const nodeCount = allKeys.length * 2;
+	const g: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
+
+	const inNode = (k: string): number => 2 * (idx.get(k)!);
+	const outNode = (k: string): number => 2 * (idx.get(k)!) + 1;
+
+	// capacity edges
+	addFlowEdge(g, inNode('CENTER'), outNode('CENTER'), INF_CAP);
+	for (const k of keys) {
+		addFlowEdge(g, inNode(k), outNode(k), counts.get(k)!);
+	}
+
+	// adjacency edges (within reachable)
+	for (const k of keys) {
+		const c = parse(k);
+		for (const n of neighbors(c)) {
+			const nk = key(n);
+			if (!reachable.has(nk)) continue;
+			addFlowEdge(g, outNode(k), inNode(nk), INF_CAP);
+		}
+	}
+
+	// center -> first coord edge for this color
+	const dir = rules.COLOR_TO_DIR[color];
+	const startKey = key({ q: CENTER.q + dir.q, r: CENTER.r + dir.r });
+	if (reachable.has(startKey)) {
+		addFlowEdge(g, outNode('CENTER'), inNode(startKey), INF_CAP);
+	}
+
+	const s = outNode('CENTER');
+	const t = outNode(targetKey);
+	return dinicMaxFlow(g, s, t);
+};
+
+const forkSupportOkAfterPlacement = (G: GState, placeCoord: Co, color: Color, rules: Rules): boolean => {
+	const counts = buildColorCountsAfterPlacement(G, placeCoord, color);
+	const reachable = reachableFromCenterForColor(counts, color, rules);
+	if (reachable.size === 0) return true; // rule only constrains forks that are actually center-connected
+
+	for (const k of reachable) {
+		const coord = parse(k);
+		const branches = outwardBranchCount(coord, reachable, counts);
+		if (branches <= 1) continue; // not a fork
+
+		const capHere = counts.get(k) ?? 0;
+		if (capHere < branches) return false;
+
+		const supported = maxSupportedLanesTo(reachable, counts, color, rules, k);
+		if (supported < branches) return false;
+	}
+
+	return true;
 };
 
 

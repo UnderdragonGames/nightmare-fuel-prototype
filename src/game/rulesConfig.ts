@@ -1,14 +1,32 @@
 import type { Color, Co, ObjectiveScoringRules, PlacementRules, Rules } from './types';
 
-// Edge colors going clockwise from North: YGBVRO
-// Each color maps to the hex coordinate offset in that direction
-const DIR: Record<Color, Co> = {
-	Y: { q: 0, r: -1 },  // N (edge 0)
-	G: { q: +1, r: -1 }, // NE (edge 1)
-	B: { q: +1, r: 0 },  // E (edge 2)
-	V: { q: 0, r: +1 },  // SE (edge 3)
-	R: { q: -1, r: +1 }, // SW (edge 4)
-	O: { q: -1, r: 0 },  // NW (edge 5)
+// Canonical hex edge directions going clockwise from North (edges 0-5).
+export const BASE_DIRECTIONS: readonly Co[] = [
+	{ q: 0, r: -1 }, // N (edge 0)
+	{ q: +1, r: -1 }, // NE (edge 1)
+	{ q: +1, r: 0 }, // E (edge 2)
+	{ q: 0, r: +1 }, // SE (edge 3)
+	{ q: -1, r: +1 }, // SW (edge 4)
+	{ q: -1, r: 0 }, // NW (edge 5)
+];
+
+// Default edge colors going clockwise from North (edges 0-5): YGBVRO
+export const BASE_EDGE_COLORS: readonly Color[] = ['Y', 'G', 'B', 'V', 'R', 'O'];
+
+export const buildColorToDir = (edgeColors: readonly Color[]): Record<Color, Co> => {
+	if (edgeColors.length !== 6) {
+		throw new Error(`EDGE_COLORS must be length 6, got ${edgeColors.length}`);
+	}
+	const uniq = new Set(edgeColors);
+	if (uniq.size !== 6) {
+		throw new Error(`EDGE_COLORS must contain 6 unique colors, got ${edgeColors.join('')}`);
+	}
+	const out = {} as Record<Color, Co>;
+	for (let i = 0; i < 6; i += 1) {
+		const color = edgeColors[i]!;
+		out[color] = BASE_DIRECTIONS[i]!;
+	}
+	return out;
 };
 
 const HEX_PLACEMENT: PlacementRules = {
@@ -21,6 +39,8 @@ const HEX_PLACEMENT: PlacementRules = {
 	MULTI_CAP_FIRST_RINGS: 2,
 	// Hard cap on lanes per coord / path (hex mode effectively uses up to 2)
 	MAX_LANES_PER_PATH: 2,
+	// Path-mode only (ignored in hex mode)
+	FORK_SUPPORT: false,
 	// Special placement rules (disabled for base hex mode)
 	TWO_TO_ROTATE: false,
 	OVERWRITE: 'none',
@@ -40,8 +60,12 @@ export const HEX_RULES: Rules = {
 	RADIUS: 6,
 	// Available colors in the game
 	COLORS: ['R', 'O', 'Y', 'G', 'B', 'V'],
-	// Maps each color to its directional offset vector in hex coordinates
-	COLOR_TO_DIR: DIR,
+	// Edge colors going clockwise from North (edges 0-5). Also defines tile default orientation.
+	EDGE_COLORS: BASE_EDGE_COLORS,
+	// If true, shuffle EDGE_COLORS once per new game (and derive COLOR_TO_DIR from that shuffled order).
+	RANDOM_CARDINAL_DIRECTIONS: true,
+	// Maps each color to its directional offset vector in hex coordinates (derived from EDGE_COLORS)
+	COLOR_TO_DIR: buildColorToDir(BASE_EDGE_COLORS),
 	// Number of cards each player holds in hand
 	HAND_SIZE: 3,
 	// Maximum number of cards that can be stashed in the treasure pile
@@ -85,6 +109,9 @@ export const PATH_RULES: Rules = {
 		...HEX_PLACEMENT,
 		// In path mode, allow up to 3 lanes per path; keep other defaults identical for now.
 		MAX_LANES_PER_PATH: 3,
+		// New path-mode rule option:
+		// require forks to be supported by parallel same-color lanes back to center.
+		FORK_SUPPORT: true,
 	},
 	SCORING: {
 		...HEX_SCORING,

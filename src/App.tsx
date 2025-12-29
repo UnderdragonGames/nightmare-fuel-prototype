@@ -2,7 +2,7 @@
 /* eslint-disable no-debugger */
 import React from 'react';
 import './App.css';
-import type { Ctx, PlayerID } from 'boardgame.io';
+import type { PlayerID } from 'boardgame.io';
 import { Client, type BoardProps as BGIOBoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
@@ -13,7 +13,6 @@ import { Hand } from './ui/Hand';
 import { Treasure } from './ui/Treasure';
 //
 import { computeScores } from './game/scoring';
-import { RULES } from './game/rulesConfig';
 import { buildAllCoords, canPlace, asVisibleColor, key } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
 import { Controls } from './ui/Controls';
@@ -36,6 +35,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	undo,
 	log,
 }) => {
+	const rules = G.rules;
 	const [selectedCard, setSelectedCard] = React.useState<number | null>(null);
 	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
 	const [rotationMode, setRotationMode] = React.useState(false);
@@ -57,13 +57,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const myHand = G.hands[playerID ?? currentPlayer] ?? [];
 	const stage = (ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[currentPlayer as PlayerID] : undefined) ?? 'active';
 	const locked = stage !== 'active';
-	const isPathMode = RULES.MODE === 'path';
+	const isPathMode = rules.MODE === 'path';
 
 	// Helper: get color that connects source to destination (if they're neighbors)
 	const getColorForDirection = (source: Co, dest: Co): Color | null => {
 		const dq = dest.q - source.q;
 		const dr = dest.r - source.r;
-		for (const [color, dir] of Object.entries(RULES.COLOR_TO_DIR)) {
+		for (const [color, dir] of Object.entries(rules.COLOR_TO_DIR)) {
 			// Find the color whose direction matches source→dest
 			if (dir.q === dq && dir.r === dr) {
 				return color as Color;
@@ -85,13 +85,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		
 		// Check ALL 6 directions for origins (not just card colors)
 		// because we need to find origins even if the "pointing toward" color isn't in the card
-		for (const [, dir] of Object.entries(RULES.COLOR_TO_DIR)) {
+		for (const [, dir] of Object.entries(rules.COLOR_TO_DIR)) {
 			const neighbor: Co = { q: source.q + dir.q, r: source.r + dir.r };
 			if (isOriginCoord(neighbor)) {
 				// This neighbor is an origin - path would be placed on source
 				// Need the color that points from source TOWARD origin (for rendering)
 				const colorToPlace = getColorForDirection(neighbor, source);
-				if (colorToPlace && cardColors.includes(colorToPlace) && !sourceIsOrigin && canPlace(G, source, colorToPlace, RULES)) {
+				if (colorToPlace && cardColors.includes(colorToPlace) && !sourceIsOrigin && canPlace(G, source, colorToPlace, rules)) {
 					if (!dests.some((d) => d.q === neighbor.q && d.r === neighbor.r)) {
 						dests.push(neighbor);
 					}
@@ -101,9 +101,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		
 		// Check card colors for non-origin destinations
 		for (const color of cardColors) {
-			const dir = RULES.COLOR_TO_DIR[color];
+			const dir = rules.COLOR_TO_DIR[color];
 			const dest: Co = { q: source.q + dir.q, r: source.r + dir.r };
-			if (!isOriginCoord(dest) && canPlace(G, dest, color, RULES)) {
+			if (!isOriginCoord(dest) && canPlace(G, dest, color, rules)) {
 				if (!dests.some((d) => d.q === dest.q && d.r === dest.r)) {
 					dests.push(dest);
 				}
@@ -126,7 +126,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		// Rotation mode: click tile to show rotation options (requires card selected) - NOT in path mode
 		if (rotationMode && !isPathMode) {
 			const tile = G.board[key(coord)];
-			if (tile && tile.colors.length > 0 && selectedCard !== null && RULES.PLACEMENT.DISCARD_TO_ROTATE !== false) {
+			if (tile && tile.colors.length > 0 && selectedCard !== null && rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
 				setPendingRotationTile(coord);
 				return;
 			}
@@ -167,7 +167,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			if (destIsOrigin) {
 				// Destination is an origin - place on source instead with opposite color
 				const oppositeColor = getColorForDirection(coord, selectedSourceDot);
-				if (oppositeColor && card.colors.includes(oppositeColor) && canPlace(G, selectedSourceDot, oppositeColor, RULES)) {
+					if (oppositeColor && card.colors.includes(oppositeColor) && canPlace(G, selectedSourceDot, oppositeColor, rules)) {
 					moves.playCard({ handIndex: selectedCard, pick: oppositeColor, coord: selectedSourceDot });
 					setSelectedCard(null);
 					setSelectedColor(null);
@@ -177,7 +177,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				}
 			} else {
 				const color = getColorForDirection(selectedSourceDot, coord);
-				if (color && card.colors.includes(color) && canPlace(G, coord, color, RULES)) {
+					if (color && card.colors.includes(color) && canPlace(G, coord, color, rules)) {
 					moves.playCard({ handIndex: selectedCard, pick: color, coord });
 					setSelectedCard(null);
 					setSelectedColor(null);
@@ -211,14 +211,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		
 		// Check if hex has an existing tile - if so, show rotation options
 		const tile = G.board[key(coord)];
-		if (tile && tile.colors.length > 0 && RULES.PLACEMENT.DISCARD_TO_ROTATE !== false) {
+		if (tile && tile.colors.length > 0 && rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
 			setPendingRotationTile(coord);
 			return;
 		}
 		
 		// Otherwise, try to place the card
 		if (selectedColor) {
-			if (canPlace(G, coord, selectedColor, RULES)) {
+			if (canPlace(G, coord, selectedColor, rules)) {
 				moves.playCard({ handIndex: selectedCard, pick: selectedColor, coord });
 				setSelectedCard(null);
 				setSelectedColor(null);
@@ -227,7 +227,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			return;
 		}
 		for (const color of card.colors) {
-			if (canPlace(G, coord, color, RULES)) {
+			if (canPlace(G, coord, color, rules)) {
 				moves.playCard({ handIndex: selectedCard, pick: color, coord });
 				setSelectedCard(null);
 				setSelectedColor(null);
@@ -240,7 +240,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const recomputePlaceable = (color: Color | null) => {
 		if (!color) { setPlaceable([]); return; }
 		const coords = buildAllCoords(G.radius);
-		setPlaceable(coords.filter((c) => canPlace(G, c, color, RULES)));
+		setPlaceable(coords.filter((c) => canPlace(G, c, color, rules)));
 	};
 
 	// For path mode: compute all valid source dots (dots that have at least one valid destination for card colors)
@@ -402,7 +402,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					}}
 					onEndTurn={onEndTurn}
 					onStash={onStash}
-					canStash={isMyTurn && selectedCard !== null && stage === 'active' && G.treasure.length < RULES.TREASURE_MAX}
+					canStash={isMyTurn && selectedCard !== null && stage === 'active' && G.treasure.length < rules.TREASURE_MAX}
 					canEndTurn={isMyTurn}
 					canUndo={isMyTurn && Array.isArray(log) && log.length > 0}
 					stashBonus={isMyTurn ? (G.meta.stashBonus[currentPlayer as PlayerID] ?? 0) : 0}
@@ -413,7 +413,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						setSelectedColor(null);
 						setPlaceable([]);
 					}}
-					canRotate={isMyTurn && !locked && !isPathMode && RULES.PLACEMENT.DISCARD_TO_ROTATE !== false}
+					canRotate={isMyTurn && !locked && !isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false}
 				/>
 				<Players
 					players={ctx.playOrder as PlayerID[]}
@@ -427,6 +427,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			</div>
 			<div style={{ overflow: 'auto', maxHeight: '80vh' }}>
 				<HexBoard
+					rules={rules}
 					board={G.board}
 					radius={G.radius}
 					onHexClick={onHexClick}
@@ -467,6 +468,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div>
 					<h4>Hand</h4>
 					<Hand
+						rules={rules}
 						cards={myHand}
 						selectedIndex={selectedCard}
 						onSelect={(index) => {
@@ -482,7 +484,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								recomputePlaceable(selectedColor);
 							} else {
 								const coords = buildAllCoords(G.radius);
-								const union = coords.filter((co) => c.colors.some((col) => canPlace(G, co, col, RULES)));
+								const union = coords.filter((co) => c.colors.some((col) => canPlace(G, co, col, rules)));
 								setPlaceable(union);
 							}
 						}}
@@ -491,7 +493,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				</div>
 				<div>
 					<h4>Treasure</h4>
-					<Treasure cards={G.treasure} onTake={onTakeTreasure} />
+					<Treasure rules={rules} cards={G.treasure} onTake={onTakeTreasure} />
 				</div>
 				<div>
 					<h4>Scores</h4>

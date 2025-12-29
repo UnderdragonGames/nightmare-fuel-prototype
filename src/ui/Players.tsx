@@ -2,7 +2,6 @@ import React from 'react';
 import type { PlayerID } from 'boardgame.io';
 import { asVisibleColor } from '../game/helpers';
 import type { Color } from '../game/types';
-import { RULES } from '../game/rulesConfig';
 import type { BotKind } from '../game/bots';
 
 type Props = {

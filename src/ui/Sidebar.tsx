@@ -1,10 +1,10 @@
 import React from 'react';
 import type { PlayerID } from 'boardgame.io';
-import type { Card, Color, PlayerPrefs } from '../game/types';
+import type { Card, Color, PlayerPrefs, Rules } from '../game/types';
 import { asVisibleColor, serializeCard } from '../game/helpers';
-import { RULES } from '../game/rulesConfig';
 
 type Props = {
+	rules: Rules;
 	currentPlayer: PlayerID;
 	viewer: PlayerID;
 	numPlayers: number;
@@ -26,7 +26,7 @@ type Props = {
   canEndTurn?: boolean;
 };
 
-export const Sidebar: React.FC<Props> = ({ currentPlayer, viewer, numPlayers, onSelectViewer, onAddPlayer, onRemovePlayer, deckCount, discardCount, onEndTurn, onStash, botByPlayer, onBotChange, onBotPlay, revealHands, onToggleRevealHands, hands, prefs, canStash = true, canEndTurn = true }) => {
+export const Sidebar: React.FC<Props> = ({ rules, currentPlayer, viewer, numPlayers, onSelectViewer, onAddPlayer, onRemovePlayer, deckCount, discardCount, onEndTurn, onStash, botByPlayer, onBotChange, onBotPlay, revealHands, onToggleRevealHands, hands, prefs, canStash = true, canEndTurn = true }) => {
 	return (
 		<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 			<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -59,7 +59,7 @@ export const Sidebar: React.FC<Props> = ({ currentPlayer, viewer, numPlayers, on
 								</select>
 								<button onClick={() => onBotPlay(pid)} disabled={!isTurn}>Play until stuck</button>
 								<span title="Goals" style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
-									{(RULES.COLORS as Color[])
+									{(rules.COLORS as Color[])
 										.filter((col) => {
 											const p = prefs[pid];
 											return !!p && (p.primary === col || p.secondary === col || p.tertiary === col);
@@ -98,7 +98,7 @@ export const Sidebar: React.FC<Props> = ({ currentPlayer, viewer, numPlayers, on
 									{cards.map((c, idx) => (
 										<div key={`${serializeCard(c)}-${idx}`} style={{ display: 'flex', gap: 4 }}>
 											{[...c.colors]
-												.sort((a, b) => (RULES.COLORS as Color[]).indexOf(a) - (RULES.COLORS as Color[]).indexOf(b))
+												.sort((a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b))
 												.map((col) => (
 													<span key={col} title={col} style={{ background: asVisibleColor(col), width: 10, height: 10, borderRadius: 2, display: 'inline-block' }} />
 												))}

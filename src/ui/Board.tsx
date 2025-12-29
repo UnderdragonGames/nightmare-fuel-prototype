@@ -1,10 +1,10 @@
 import React from 'react';
 import { axialToPixel, asVisibleColor, buildAllCoords, key, ringIndex, edgeIndexToColor, neighbors } from '../game/helpers';
 import { Hex } from './Hex';
-import { RULES } from '../game/rulesConfig';
-import type { Color, Co, HexTile } from '../game/types';
+import type { Color, Co, HexTile, Rules } from '../game/types';
 
 type Props = {
+	rules: Rules;
 	board: Record<string, HexTile>;
 	radius: number;
 	onHexClick: (coord: Co) => void;
@@ -18,8 +18,9 @@ type Props = {
 	selectedSourceDot?: Co | null; // for path mode: currently selected source dot
 };
 
-export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = RULES.UI.SHOW_RING, highlightCoords = [], highlightColor = '#000000', origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null }) => {
-	const size = RULES.UI.HEX_SIZE;
+export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showRing, highlightCoords = [], highlightColor = '#000000', origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null }) => {
+	const size = rules.UI.HEX_SIZE;
+	const effectiveShowRing = showRing ?? rules.UI.SHOW_RING;
 	const coords = buildAllCoords(radius);
 	const width = size * 3 * (radius + 1);
 	const height = Math.sqrt(3) * size * (radius * 2 + 1);
@@ -28,7 +29,7 @@ export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = R
 	const highlightSet = new Set(highlightCoords.map((c) => key(c)));
 	const originSet = new Set(origins.map((c) => key(c)));
 	
-	const isPathMode = RULES.MODE === 'path';
+	const isPathMode = rules.MODE === 'path';
 	
 	// Lane segment width and offset for parallel rendering
 	const laneWidth = size * 0.2;
@@ -46,7 +47,7 @@ export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = R
 			for (let laneIdx = 0; laneIdx < tile.colors.length; laneIdx += 1) {
 				const laneColor = tile.colors[laneIdx];
 				if (!laneColor) continue;
-				const dirVec = RULES.COLOR_TO_DIR[laneColor];
+				const dirVec = rules.COLOR_TO_DIR[laneColor];
 				// Draw from this tile toward the neighbor in the OPPOSITE direction (source)
 				const source = axialToPixel({ q: c.q - dirVec.q, r: c.r - dirVec.r }, size);
 				
@@ -95,8 +96,8 @@ export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = R
 		<svg width={marginX * 2} height={marginY * 2} viewBox={`${-marginX} ${-marginY} ${marginX * 2} ${marginY * 2}`}>
 			{/* Corner circles indicating color directions, aligned to COLOR_TO_DIR */}
 			<g>
-				{(RULES.COLORS as Color[]).map((col) => {
-					const dir = RULES.COLOR_TO_DIR[col];
+				{(rules.COLORS as Color[]).map((col) => {
+					const dir = rules.COLOR_TO_DIR[col];
 					const step = axialToPixel(dir, 1);
 					const len = Math.hypot(step.x, step.y) || 1;
 					const ux = step.x / len;
@@ -116,7 +117,7 @@ export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = R
 				const tile = board[key(c)];
 				const occupants = tile?.colors ?? [];
 				const rotation = tile?.rotation ?? 0;
-				const order = RULES.COLORS as Color[];
+				const order = rules.COLORS as Color[];
 				const sortedOccupants = occupants.length > 1 ? [...occupants].sort((a, b) => order.indexOf(a) - order.indexOf(b)) : occupants;
 				const isOrigin = originSet.has(key(c));
 				const isHighlighted = highlightSet.has(key(c));
@@ -142,7 +143,7 @@ export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = R
 							strokeWidth={isRotatable && !isPathMode ? 3 : (isOrigin ? 2 : 1)}
 							onClick={() => !isPathMode && onHexClick(c)}
 						>
-							{showRing && (
+							{effectiveShowRing && (
 								<text x={0} y={4} fontSize={8} textAnchor="middle" fill="#111827">{ringIndex(c)}</text>
 							)}
 							{isOrigin && occupants.length === 0 && !isPathMode && (
@@ -190,7 +191,7 @@ export const Board: React.FC<Props> = ({ board, radius, onHexClick, showRing = R
 							const markers: Array<{ x: number; y: number; angle: number; color: Color }> = [];
 							for (let i = 0; i < 6; i += 1) {
 								const baseAngle = (Math.PI / 180) * (-90 + 60 * i);
-								const edgeColor = edgeIndexToColor(i, rotation);
+								const edgeColor = edgeIndexToColor(i, rotation, rules);
 								markers.push({
 									x: center.x + edgeRadius * Math.cos(baseAngle),
 									y: center.y + edgeRadius * Math.sin(baseAngle),

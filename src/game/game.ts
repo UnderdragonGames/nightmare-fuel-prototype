@@ -1,7 +1,7 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
-import { RULES } from './rulesConfig';
+import { RULES, buildColorToDir } from './rulesConfig';
 import { buildAllCoords, canPlace, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation } from './helpers';
-import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co } from './types';
+import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
 import { buildDeck } from './deck';
 import { computeScores } from './scoring';
 
@@ -36,35 +36,35 @@ const drawOne = (G: GState): Card | null => {
 	return c;
 };
 
-const dealToHand = (G: GState, playerID: PlayerID): void => {
-	while (G.hands[playerID]!.length < RULES.HAND_SIZE) {
+const dealToHand = (G: GState, playerID: PlayerID, rules: Rules): void => {
+	while (G.hands[playerID]!.length < rules.HAND_SIZE) {
 		const c = drawOne(G);
 		if (!c) break;
 		G.hands[playerID]!.push(c);
 	}
 };
 
-const initBoard = (radius: number, origins: Co[]): Record<string, HexTile> => {
+const initBoard = (radius: number, origins: Co[], rules: Rules): Record<string, HexTile> => {
 	const b: Record<string, HexTile> = {};
 	for (const c of buildAllCoords(radius)) {
 		b[key(c)] = { colors: [], rotation: 0 };
 	}
 	// Only seed center if it's an origin
 	const centerIsOrigin = origins.some((o) => o.q === 0 && o.r === 0);
-	if (RULES.CENTER_SEED && centerIsOrigin) {
-		b['0,0'] = { colors: [RULES.CENTER_SEED], rotation: 0 };
+	if (rules.CENTER_SEED && centerIsOrigin) {
+		b['0,0'] = { colors: [rules.CENTER_SEED], rotation: 0 };
 	}
 	return b;
 };
 
-const initOrigins = (radius: number): Co[] => {
-	if (RULES.ORIGIN === 'center') {
+const initOrigins = (radius: number, rules: Rules): Co[] => {
+	if (rules.ORIGIN === 'center') {
 		return [{ q: 0, r: 0 }];
 	}
 	const center = { q: 0, r: 0 };
 	
 	let randomOrigins: Co[];
-	if (RULES.ORIGIN_DIRECTION === 'aligned') {
+	if (rules.ORIGIN_DIRECTION === 'aligned') {
 		// Place origins evenly spaced in the 6 cardinal directions
 		// Use ring positions that avoid center
 		const targetRing = Math.max(2, Math.floor(radius / 2));
@@ -77,7 +77,7 @@ const initOrigins = (radius: number): Co[] => {
 			{ q: -1, r: 0 },  // NW
 		];
 		randomOrigins = [];
-		for (let i = 0; i < RULES.ORIGIN_COUNT; i += 1) {
+		for (let i = 0; i < rules.ORIGIN_COUNT; i += 1) {
 			const dirIndex = i % directions.length;
 			const ringOffset = Math.floor(i / directions.length);
 			const dir = directions[dirIndex]!;
@@ -98,10 +98,10 @@ const initOrigins = (radius: number): Co[] => {
 		const candidateCoords = allCoords.filter((c) => c.q !== 0 || c.r !== 0);
 		
 		// Apply MIN_ORIGIN_DISTANCE constraint if set
-		const validCoords = RULES.MIN_ORIGIN_DISTANCE > 0
+		const validCoords = rules.MIN_ORIGIN_DISTANCE > 0
 			? candidateCoords.filter((c) => {
 				const ring = ringIndex(c);
-				return ring <= radius - RULES.MIN_ORIGIN_DISTANCE; // At least MIN_ORIGIN_DISTANCE spaces from edge
+				return ring <= radius - rules.MIN_ORIGIN_DISTANCE; // At least MIN_ORIGIN_DISTANCE spaces from edge
 			})
 			: candidateCoords;
 		
@@ -111,24 +111,24 @@ const initOrigins = (radius: number): Co[] => {
 		
 		// Greedily select origins ensuring minimum distance between them
 		// If 'random-and-center', also check distance from center origin
-		const originsToCheckAgainst = RULES.ORIGIN === 'random-and-center' ? [center] : [];
+		const originsToCheckAgainst = rules.ORIGIN === 'random-and-center' ? [center] : [];
 		
 		for (const coord of shuffled) {
-			if (randomOrigins.length >= RULES.ORIGIN_COUNT) break;
-			if (RULES.MIN_ORIGIN_DISTANCE > 0) {
+			if (randomOrigins.length >= rules.ORIGIN_COUNT) break;
+			if (rules.MIN_ORIGIN_DISTANCE > 0) {
 				// Check if this coord is at least MIN_ORIGIN_DISTANCE + 1 spaces from all existing origins
 				const tooCloseToExisting = randomOrigins.some((existing) => {
 					const dq = coord.q - existing.q;
 					const dr = coord.r - existing.r;
 					const dist = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(-dq - dr));
-					return dist <= RULES.MIN_ORIGIN_DISTANCE; // Need at least MIN_ORIGIN_DISTANCE spaces between
+					return dist <= rules.MIN_ORIGIN_DISTANCE; // Need at least MIN_ORIGIN_DISTANCE spaces between
 				});
 				// Also check distance from center if using 'random-and-center'
 				const tooCloseToCenter = originsToCheckAgainst.some((existing) => {
 					const dq = coord.q - existing.q;
 					const dr = coord.r - existing.r;
 					const dist = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(-dq - dr));
-					return dist <= RULES.MIN_ORIGIN_DISTANCE;
+					return dist <= rules.MIN_ORIGIN_DISTANCE;
 				});
 				if (tooCloseToExisting || tooCloseToCenter) continue;
 			}
@@ -136,12 +136,12 @@ const initOrigins = (radius: number): Co[] => {
 		}
 	}
 	
-	if (RULES.ORIGIN === 'random-and-center') {
+	if (rules.ORIGIN === 'random-and-center') {
 		// Include center if not already in random origins
 		const hasCenter = randomOrigins.some((c) => c.q === 0 && c.r === 0);
 		if (!hasCenter) {
 			// Replace one random origin with center, or append if we have fewer than ORIGIN_COUNT
-			if (randomOrigins.length >= RULES.ORIGIN_COUNT) {
+			if (randomOrigins.length >= rules.ORIGIN_COUNT) {
 				randomOrigins[0] = center;
 			} else {
 				randomOrigins.push(center);
@@ -153,23 +153,32 @@ const initOrigins = (radius: number): Co[] => {
 	return randomOrigins;
 };
 
-const afterRefillMaybeMarkExhaust = (G: GState, ctx: Ctx): void => {
-	if (!RULES.END_ON_DECK_EXHAUST) return;
+const afterRefillMaybeMarkExhaust = (G: GState, ctx: Ctx, rules: Rules): void => {
+	if (!rules.END_ON_DECK_EXHAUST) return;
 	const deckEmpty = G.deck.length === 0;
 	if (deckEmpty && G.meta.deckExhaustionCycle === null) {
 		G.meta.deckExhaustionCycle = ctx.turn; // mark first turn index when deck exhausted
 	}
 };
 
+const initRulesForNewGame = (baseRules: Rules): Rules => {
+	if (!baseRules.RANDOM_CARDINAL_DIRECTIONS) return baseRules;
+	const edgeColors = [...baseRules.EDGE_COLORS];
+	shuffleInPlace(edgeColors);
+	return { ...baseRules, EDGE_COLORS: edgeColors, COLOR_TO_DIR: buildColorToDir(edgeColors) };
+};
+
 export const HexStringsGame: Game<GState> = {
 		setup: (context) => {
-		const radius = RULES.RADIUS;
-		const deck = buildDeck();
-		const origins = initOrigins(radius);
+		const rules = initRulesForNewGame(RULES);
+		const radius = rules.RADIUS;
+		const deck = buildDeck(rules);
+		const origins = initOrigins(radius, rules);
 		const stashBonus: Record<PlayerID, number> = {};
 		const state: GState = {
+			rules,
 			radius,
-			board: initBoard(radius, origins),
+			board: initBoard(radius, origins, rules),
 			deck,
 			discard: [],
 			hands: {},
@@ -188,7 +197,7 @@ export const HexStringsGame: Game<GState> = {
 			state.prefs[pid] = assigned;
 			stashBonus[pid] = 0;
 		}
-		for (const pid of context.ctx.playOrder) dealToHand(state, pid);
+		for (const pid of context.ctx.playOrder) dealToHand(state, pid, rules);
 		return state;
 	},
 	turn: {
@@ -200,20 +209,21 @@ export const HexStringsGame: Game<GState> = {
 						noLimit: true,
 						move: (context, args: MovePlayCardArgs) => {
 							const { G } = context;
+							const rules = G.rules;
 							const pid = context.ctx.currentPlayer;
 							const hand = G.hands[pid]!;
 							const card = hand[args.handIndex];
 							if (!card) return;
-							if (RULES.ONE_COLOR_PER_CARD_PLAY) {
+							if (rules.ONE_COLOR_PER_CARD_PLAY) {
 								if (!card.colors.includes(args.pick)) return;
 							}
-							if (!canPlace(G, args.coord, args.pick, RULES)) return;
+							if (!canPlace(G, args.coord, args.pick, rules)) return;
 							const k = key(args.coord);
 							const tile = G.board[k];
 							if (tile) {
 								tile.colors.push(args.pick);
 							} else {
-								const rotation = inferPlacementRotation(G, args.coord, args.pick, RULES);
+								const rotation = inferPlacementRotation(G, args.coord, args.pick);
 								G.board[k] = { colors: [args.pick], rotation };
 							}
 							G.stats.placements += 1;
@@ -224,11 +234,12 @@ export const HexStringsGame: Game<GState> = {
 					rotateTile: {
 						move: (context, args: MoveRotateTileArgs) => {
 							const { G } = context;
+							const rules = G.rules;
 							const pid = context.ctx.currentPlayer;
 							const hand = G.hands[pid]!;
 							const tile = G.board[key(args.coord)];
 							if (!tile || tile.colors.length === 0) return;
-							if (RULES.PLACEMENT.DISCARD_TO_ROTATE === false) return;
+							if (rules.PLACEMENT.DISCARD_TO_ROTATE === false) return;
 							const card = hand[args.handIndex];
 							if (!card) return;
 							
@@ -236,7 +247,7 @@ export const HexStringsGame: Game<GState> = {
 							if (args.rotation < 1 || args.rotation > 5 || args.rotation === 3) return;
 							
 							// match-color mode: card must contain a color from the tile
-							if (RULES.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
+							if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
 								const hasMatchingColor = card.colors.some((c) => tile.colors.includes(c));
 								if (!hasMatchingColor) return;
 							}
@@ -251,9 +262,10 @@ export const HexStringsGame: Game<GState> = {
 					},
 					stashToTreasure: (context, args: MoveStashArgs) => {
 						const { G } = context;
+						const rules = G.rules;
 						const pid = context.ctx.currentPlayer;
 						const hand = G.hands[pid]!;
-						if (G.treasure.length >= RULES.TREASURE_MAX) return;
+						if (G.treasure.length >= rules.TREASURE_MAX) return;
 						const card = hand[args.handIndex];
 						if (!card) return;
 						G.treasure.push(card);
@@ -272,11 +284,12 @@ export const HexStringsGame: Game<GState> = {
 					},
 					endTurnAndRefill: (context) => {
 						const { G, ctx, events } = context;
+						const rules = G.rules;
 						const pid = ctx.currentPlayer;
 						// Reset stash bonus counter for next turn
 						G.meta.stashBonus[pid] = 0;
-						dealToHand(G, ctx.currentPlayer);
-						afterRefillMaybeMarkExhaust(G, ctx);
+						dealToHand(G, ctx.currentPlayer, rules);
+						afterRefillMaybeMarkExhaust(G, ctx, rules);
 						events?.endTurn?.();
 					},
 				},
@@ -286,9 +299,10 @@ export const HexStringsGame: Game<GState> = {
 	},
 	endIf: (context) => {
 		const { G, ctx } = context;
-		if (!RULES.END_ON_DECK_EXHAUST) return undefined;
+		const rules = G.rules;
+		if (!rules.END_ON_DECK_EXHAUST) return undefined;
 		if (G.meta.deckExhaustionCycle === null) return undefined;
-		if (!RULES.EQUAL_TURNS) {
+		if (!rules.EQUAL_TURNS) {
 			return { scores: computeScores(G) };
 		}
 		const cycleWhenExhausted = G.meta.deckExhaustionCycle;
@@ -301,6 +315,7 @@ export const HexStringsGame: Game<GState> = {
 	},
 	ai: {
 		enumerate: (G: GState, ctx: Ctx) => {
+			const rules = G.rules;
 			const moves: Array<{ move: string; args: unknown[] }> = [];
 			const playerID = ctx.currentPlayer as PlayerID;
 			const coords = buildAllCoords(G.radius);
@@ -311,7 +326,7 @@ export const HexStringsGame: Game<GState> = {
 				const card = hand[i]!;
 				for (const color of card.colors) {
 					for (const co of coords) {
-						if (canPlace(G, co, color as Color, RULES)) {
+						if (canPlace(G, co, color as Color, rules)) {
 							moves.push({ move: 'playCard', args: [{ handIndex: i, pick: color, coord: co }] });
 						}
 					}
@@ -319,7 +334,7 @@ export const HexStringsGame: Game<GState> = {
 			}
 			
 			// Enumerate stashToTreasure moves
-			if (G.treasure.length < RULES.TREASURE_MAX && hand.length > 0) {
+			if (G.treasure.length < rules.TREASURE_MAX && hand.length > 0) {
 				for (let i = 0; i < hand.length; i += 1) {
 					moves.push({ move: 'stashToTreasure', args: [{ handIndex: i }] });
 				}
