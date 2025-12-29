@@ -243,70 +243,6 @@ type FlowEdge = { to: number; rev: number; cap: number };
 const INF_CAP = 1_000_000_000;
 const CENTER: Co = { q: 0, r: 0 };
 
-const countColorInTile = (tile: { colors: Color[] } | undefined, color: Color): number => {
-	if (!tile) return 0;
-	let n = 0;
-	for (const c of tile.colors) if (c === color) n += 1;
-	return n;
-};
-
-const buildColorCountsAfterPlacement = (
-	G: GState,
-	placeCoord: Co,
-	color: Color
-): Map<string, number> => {
-	const counts = new Map<string, number>();
-	for (const [k, tile] of Object.entries(G.board)) {
-		if (!tile || tile.colors.length === 0) continue;
-		const n = countColorInTile(tile, color);
-		if (n > 0) counts.set(k, n);
-	}
-	const pk = key(placeCoord);
-	counts.set(pk, (counts.get(pk) ?? 0) + 1);
-	return counts;
-};
-
-const reachableFromCenterForColor = (
-	counts: Map<string, number>,
-	color: Color,
-	rules: Rules
-): Set<string> => {
-	// In this ruleset, a color can only connect directly from center in its own direction.
-	const dir = rules.COLOR_TO_DIR[color];
-	const start: Co = { q: CENTER.q + dir.q, r: CENTER.r + dir.r };
-	const startKey = key(start);
-	if ((counts.get(startKey) ?? 0) <= 0) return new Set<string>();
-
-	const seen = new Set<string>();
-	const q: string[] = [startKey];
-	seen.add(startKey);
-
-	while (q.length > 0) {
-		const curKey = q.shift()!;
-		const cur = parse(curKey);
-		for (const n of neighbors(cur)) {
-			const nk = key(n);
-			if (seen.has(nk)) continue;
-			if ((counts.get(nk) ?? 0) <= 0) continue;
-			seen.add(nk);
-			q.push(nk);
-		}
-	}
-	return seen;
-};
-
-const outwardBranchCount = (coord: Co, reachable: Set<string>, counts: Map<string, number>): number => {
-	const baseRing = ringIndex(coord);
-	let branches = 0;
-	for (const n of neighbors(coord)) {
-		const nk = key(n);
-		if (!reachable.has(nk)) continue;
-		if ((counts.get(nk) ?? 0) <= 0) continue;
-		if (ringIndex(n) > baseRing) branches += 1;
-	}
-	return branches;
-};
-
 const addFlowEdge = (g: FlowEdge[][], u: number, v: number, cap: number): void => {
 	const fromList = g[u]!;
 	const toList = g[v]!;
@@ -367,68 +303,107 @@ const dinicMaxFlow = (g: FlowEdge[][], s: number, t: number): number => {
 	return flow;
 };
 
-const maxSupportedLanesTo = (
-	reachable: Set<string>,
-	counts: Map<string, number>,
-	color: Color,
-	rules: Rules,
-	targetKey: string
-): number => {
-	// Node capacity model: each coord node has capacity = count(color at coord).
-	// Use node-splitting (in -> out edge with that capacity).
-	const keys = Array.from(reachable);
-	const allKeys = ['CENTER', ...keys];
-	const idx = new Map<string, number>();
-	for (let i = 0; i < allKeys.length; i += 1) idx.set(allKeys[i]!, i);
+type EdgeCaps = Map<string, number>; // key: `${uKey}->${vKey}`
 
-	const nodeCount = allKeys.length * 2;
-	const g: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
+const edgeKey = (uKey: string, vKey: string): string => `${uKey}->${vKey}`;
 
-	const inNode = (k: string): number => 2 * (idx.get(k)!);
-	const outNode = (k: string): number => 2 * (idx.get(k)!) + 1;
+const buildEdgeCapsAfterPlacement = (G: GState, placeCoord: Co, placeColor: Color, rules: Rules): EdgeCaps => {
+	const caps: EdgeCaps = new Map();
 
-	// capacity edges
-	addFlowEdge(g, inNode('CENTER'), outNode('CENTER'), INF_CAP);
-	for (const k of keys) {
-		addFlowEdge(g, inNode(k), outNode(k), counts.get(k)!);
-	}
+	const add = (src: Co, dst: Co, inc: number): void => {
+		if (!inBounds(src, G.radius) || !inBounds(dst, G.radius)) return;
+		const k = edgeKey(key(src), key(dst));
+		caps.set(k, (caps.get(k) ?? 0) + inc);
+	};
 
-	// adjacency edges (within reachable)
-	for (const k of keys) {
-		const c = parse(k);
-		for (const n of neighbors(c)) {
-			const nk = key(n);
-			if (!reachable.has(nk)) continue;
-			addFlowEdge(g, outNode(k), inNode(nk), INF_CAP);
+	// Existing lanes: each tile color occurrence is an edge from (coord - dir(color)) -> coord.
+	for (const [dstKey, tile] of Object.entries(G.board)) {
+		if (!tile || tile.colors.length === 0) continue;
+		const dst = parse(dstKey);
+		for (const c of tile.colors) {
+			const dir = rules.COLOR_TO_DIR[c];
+			const src: Co = { q: dst.q - dir.q, r: dst.r - dir.r };
+			add(src, dst, 1);
 		}
 	}
 
-	// center -> first coord edge for this color
-	const dir = rules.COLOR_TO_DIR[color];
-	const startKey = key({ q: CENTER.q + dir.q, r: CENTER.r + dir.r });
-	if (reachable.has(startKey)) {
-		addFlowEdge(g, outNode('CENTER'), inNode(startKey), INF_CAP);
+	// Hypothetical new lane
+	{
+		const dst = placeCoord;
+		const dir = rules.COLOR_TO_DIR[placeColor];
+		const src: Co = { q: dst.q - dir.q, r: dst.r - dir.r };
+		add(src, dst, 1);
 	}
 
-	const s = outNode('CENTER');
-	const t = outNode(targetKey);
-	return dinicMaxFlow(g, s, t);
+	return caps;
 };
 
-const forkSupportOkAfterPlacement = (G: GState, placeCoord: Co, color: Color, rules: Rules): boolean => {
-	const counts = buildColorCountsAfterPlacement(G, placeCoord, color);
-	const reachable = reachableFromCenterForColor(counts, color, rules);
-	if (reachable.size === 0) return true; // rule only constrains forks that are actually center-connected
+const collectNodesFromEdges = (caps: EdgeCaps): string[] => {
+	const nodes = new Set<string>();
+	nodes.add(key(CENTER));
+	for (const k of caps.keys()) {
+		const [u, v] = k.split('->');
+		if (!u || !v) continue;
+		nodes.add(u);
+		nodes.add(v);
+	}
+	return Array.from(nodes);
+};
 
-	for (const k of reachable) {
-		const coord = parse(k);
-		const branches = outwardBranchCount(coord, reachable, counts);
-		if (branches <= 1) continue; // not a fork
+const buildDinicGraph = (nodes: string[], caps: EdgeCaps): { g: FlowEdge[][]; idx: Map<string, number> } => {
+	const idx = new Map<string, number>();
+	for (let i = 0; i < nodes.length; i += 1) idx.set(nodes[i]!, i);
+	const g: FlowEdge[][] = Array.from({ length: nodes.length }, () => []);
 
-		const capHere = counts.get(k) ?? 0;
-		if (capHere < branches) return false;
+	for (const [k, cap] of caps.entries()) {
+		if (cap <= 0) continue;
+		const [uKey, vKey] = k.split('->');
+		if (!uKey || !vKey) continue;
+		const u = idx.get(uKey);
+		const v = idx.get(vKey);
+		if (u === undefined || v === undefined) continue;
+		addFlowEdge(g, u, v, cap);
+	}
+	return { g, idx };
+};
 
-		const supported = maxSupportedLanesTo(reachable, counts, color, rules, k);
+const countOutwardBranches = (node: Co, caps: EdgeCaps): number => {
+	const uKey = key(node);
+	const baseRing = ringIndex(node);
+	let branches = 0;
+	for (const n of neighbors(node)) {
+		if (ringIndex(n) <= baseRing) continue;
+		const vKey = key(n);
+		branches += caps.get(edgeKey(uKey, vKey)) ?? 0;
+	}
+	return branches;
+};
+
+const forkSupportOkAfterPlacement = (G: GState, placeCoord: Co, placeColor: Color, rules: Rules): boolean => {
+	// In path mode, lanes are edges: each tile color occurrence is an edge from (dst - dir(color)) -> dst.
+	// Fork at node U = total outward outgoing edge capacity from U is > 1.
+	// Constraint: for every fork node, max flow from center to that node must be >= outward branches.
+	const caps = buildEdgeCapsAfterPlacement(G, placeCoord, placeColor, rules);
+	const nodes = collectNodesFromEdges(caps);
+
+	const centerKey = key(CENTER);
+	const centerIdx = nodes.indexOf(centerKey);
+	if (centerIdx < 0) return true;
+
+	// Only need to check nodes that can be forks (have 2+ outward outgoing lanes).
+	for (const nodeKey of nodes) {
+		if (nodeKey === centerKey) continue;
+		const node = parse(nodeKey);
+		const branches = countOutwardBranches(node, caps);
+		if (branches <= 1) continue;
+
+		// Build a fresh residual graph per sink (Dinic mutates capacities).
+		const { g, idx } = buildDinicGraph(nodes, caps);
+		const s = idx.get(centerKey);
+		const t = idx.get(nodeKey);
+		if (s === undefined || t === undefined) return false;
+
+		const supported = dinicMaxFlow(g, s, t);
 		if (supported < branches) return false;
 	}
 
