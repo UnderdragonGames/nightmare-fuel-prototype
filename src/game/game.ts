@@ -228,16 +228,18 @@ export const HexStringsGame: Game<GState> = {
 							const hand = G.hands[pid]!;
 							const tile = G.board[key(args.coord)];
 							if (!tile || tile.colors.length === 0) return;
-							if (RULES.DISCARD_TO_ROTATE === false) return;
+							if (RULES.PLACEMENT.DISCARD_TO_ROTATE === false) return;
 							const card = hand[args.handIndex];
 							if (!card) return;
 							
 							// Validate rotation amount: 1-5, excluding 3 (180°)
 							if (args.rotation < 1 || args.rotation > 5 || args.rotation === 3) return;
 							
-							// Check if rotation is allowed
-							const isBackwards = args.handIndex === 0 && hand.length > 1; // simplified: backwards if rotating using first card
-							if (RULES.DISCARD_TO_ROTATE === 'non-backwards' && isBackwards) return;
+							// match-color mode: card must contain a color from the tile
+							if (RULES.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
+								const hasMatchingColor = card.colors.some((c) => tile.colors.includes(c));
+								if (!hasMatchingColor) return;
+							}
 							
 							// Rotate tile by specified amount (rotation 0-5 wraps)
 							tile.rotation = (tile.rotation + args.rotation) % 6;

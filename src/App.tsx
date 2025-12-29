@@ -40,6 +40,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
 	const [rotationMode, setRotationMode] = React.useState(false);
 	const [pendingRotationTile, setPendingRotationTile] = React.useState<Co | null>(null);
+	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null); // Path mode: source dot for click-click UX
 	const showRing = useUIStore((s) => s.showRing);
 	const setShowRing = useUIStore((s) => s.setShowRing);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
@@ -56,7 +57,60 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const myHand = G.hands[playerID ?? currentPlayer] ?? [];
 	const stage = (ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[currentPlayer as PlayerID] : undefined) ?? 'active';
 	const locked = stage !== 'active';
+	const isPathMode = RULES.MODE === 'path';
 
+	// Helper: get color that connects source to destination (if they're neighbors)
+	const getColorForDirection = (source: Co, dest: Co): Color | null => {
+		const dq = dest.q - source.q;
+		const dr = dest.r - source.r;
+		for (const [color, dir] of Object.entries(RULES.COLOR_TO_DIR)) {
+			// Find the color whose direction matches source→dest
+			if (dir.q === dq && dir.r === dr) {
+				return color as Color;
+			}
+		}
+		return null;
+	};
+
+	// Helper: check if a coord is an origin
+	const isOriginCoord = (coord: Co): boolean => {
+		return G.origins.some((o) => o.q === coord.q && o.r === coord.r);
+	};
+
+	// Helper: get valid destination dots from a source (neighbors where card colors can connect)
+	// This includes origins as destinations (path will be placed on source instead)
+	const getValidDestinations = (source: Co, cardColors: Color[]): Co[] => {
+		const dests: Co[] = [];
+		const sourceIsOrigin = isOriginCoord(source);
+		
+		// Check ALL 6 directions for origins (not just card colors)
+		// because we need to find origins even if the "pointing toward" color isn't in the card
+		for (const [, dir] of Object.entries(RULES.COLOR_TO_DIR)) {
+			const neighbor: Co = { q: source.q + dir.q, r: source.r + dir.r };
+			if (isOriginCoord(neighbor)) {
+				// This neighbor is an origin - path would be placed on source
+				// Need the color that points from source TOWARD origin (for rendering)
+				const colorToPlace = getColorForDirection(neighbor, source);
+				if (colorToPlace && cardColors.includes(colorToPlace) && !sourceIsOrigin && canPlace(G, source, colorToPlace, RULES)) {
+					if (!dests.some((d) => d.q === neighbor.q && d.r === neighbor.r)) {
+						dests.push(neighbor);
+					}
+				}
+			}
+		}
+		
+		// Check card colors for non-origin destinations
+		for (const color of cardColors) {
+			const dir = RULES.COLOR_TO_DIR[color];
+			const dest: Co = { q: source.q + dir.q, r: source.r + dir.r };
+			if (!isOriginCoord(dest) && canPlace(G, dest, color, RULES)) {
+				if (!dests.some((d) => d.q === dest.q && d.r === dest.r)) {
+					dests.push(dest);
+				}
+			}
+		}
+		return dests;
+	};
 
 	const onHexClick = (coord: Co) => {
 		if (!isMyTurn || locked) return;
@@ -69,24 +123,95 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			return;
 		}
 		
-		// Rotation mode: click tile to show rotation options (requires card selected)
-		if (rotationMode) {
+		// Rotation mode: click tile to show rotation options (requires card selected) - NOT in path mode
+		if (rotationMode && !isPathMode) {
 			const tile = G.board[key(coord)];
-			if (tile && tile.colors.length > 0 && selectedCard !== null && RULES.DISCARD_TO_ROTATE !== false) {
+			if (tile && tile.colors.length > 0 && selectedCard !== null && RULES.PLACEMENT.DISCARD_TO_ROTATE !== false) {
 				setPendingRotationTile(coord);
 				return;
 			}
 			return;
 		}
 		
-		// Normal placement mode
+		// PATH MODE: click source → click destination UX
+		if (isPathMode) {
+			if (selectedCard === null) return;
+			const card = myHand[selectedCard];
+			if (!card) return;
+
+			// If no source selected yet, select this as source (if it's a valid source)
+			if (selectedSourceDot === null) {
+				const validDests = getValidDestinations(coord, card.colors);
+				if (validDests.length > 0) {
+					setSelectedSourceDot(coord);
+					setPlaceable(validDests);
+					// Infer color for preview: use the first valid color from this source
+					const firstDest = validDests[0]!;
+					const color = getColorForDirection(coord, firstDest);
+					setSelectedColor(color);
+				}
+				return;
+			}
+
+			// Source is already selected
+			// Click on source again → deselect
+			if (key(coord) === key(selectedSourceDot)) {
+				setSelectedSourceDot(null);
+				setPlaceable([]);
+				setSelectedColor(null);
+				return;
+			}
+
+			// Click on a valid destination → place the path
+			const destIsOrigin = isOriginCoord(coord);
+			if (destIsOrigin) {
+				// Destination is an origin - place on source instead with opposite color
+				const oppositeColor = getColorForDirection(coord, selectedSourceDot);
+				if (oppositeColor && card.colors.includes(oppositeColor) && canPlace(G, selectedSourceDot, oppositeColor, RULES)) {
+					moves.playCard({ handIndex: selectedCard, pick: oppositeColor, coord: selectedSourceDot });
+					setSelectedCard(null);
+					setSelectedColor(null);
+					setSelectedSourceDot(null);
+					setPlaceable([]);
+					return;
+				}
+			} else {
+				const color = getColorForDirection(selectedSourceDot, coord);
+				if (color && card.colors.includes(color) && canPlace(G, coord, color, RULES)) {
+					moves.playCard({ handIndex: selectedCard, pick: color, coord });
+					setSelectedCard(null);
+					setSelectedColor(null);
+					setSelectedSourceDot(null);
+					setPlaceable([]);
+					return;
+				}
+			}
+
+			// Click on invalid destination → try to switch source to this coord
+			const validDests = getValidDestinations(coord, card.colors);
+			if (validDests.length > 0) {
+				setSelectedSourceDot(coord);
+				setPlaceable(validDests);
+				const firstDest = validDests[0]!;
+				const inferredColor = getColorForDirection(coord, firstDest);
+				setSelectedColor(inferredColor);
+			} else {
+				// Invalid click, deselect
+				setSelectedSourceDot(null);
+				setPlaceable([]);
+				setSelectedColor(null);
+			}
+			return;
+		}
+		
+		// HEX MODE: original placement logic
 		if (selectedCard === null) return;
 		const card = myHand[selectedCard];
 		if (!card) return;
 		
-		// Check if hex has an existing tile - if so, show rotation options (legacy behavior)
+		// Check if hex has an existing tile - if so, show rotation options
 		const tile = G.board[key(coord)];
-		if (tile && tile.colors.length > 0 && RULES.DISCARD_TO_ROTATE !== false) {
+		if (tile && tile.colors.length > 0 && RULES.PLACEMENT.DISCARD_TO_ROTATE !== false) {
 			setPendingRotationTile(coord);
 			return;
 		}
@@ -118,11 +243,34 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		setPlaceable(coords.filter((c) => canPlace(G, c, color, RULES)));
 	};
 
+	// For path mode: compute all valid source dots (dots that have at least one valid destination for card colors)
+	const computeValidSources = (cardColors: Color[]): Co[] => {
+		const coords = buildAllCoords(G.radius);
+		const sources: Co[] = [];
+		for (const coord of coords) {
+			// A coord is a valid source if it has any valid destinations
+			const validDests = getValidDestinations(coord, cardColors);
+			if (validDests.length > 0) {
+				sources.push(coord);
+			}
+		}
+		return sources;
+	};
+
 	const onPickColor = (index: number, color: Color) => {
 		if (locked) return;
 		setSelectedCard(index);
 		setSelectedColor(color);
+		setSelectedSourceDot(null); // Reset source selection when color changes
+		if (isPathMode) {
+			// In path mode, show valid sources (not destinations yet)
+			const card = myHand[index];
+			if (card) {
+				setPlaceable(computeValidSources(card.colors));
+			}
+		} else {
 		recomputePlaceable(color);
+		}
 	};
 
 	const handleRotation = (rotation: number) => {
@@ -143,6 +291,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			setRotationMode(false);
 			setRotatable([]);
 			setPendingRotationTile(null);
+			setSelectedSourceDot(null);
 		}
 	}, [locked]);
 
@@ -264,7 +413,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						setSelectedColor(null);
 						setPlaceable([]);
 					}}
-					canRotate={isMyTurn && !locked && RULES.DISCARD_TO_ROTATE !== false}
+					canRotate={isMyTurn && !locked && !isPathMode && RULES.PLACEMENT.DISCARD_TO_ROTATE !== false}
 				/>
 				<Players
 					players={ctx.playOrder as PlayerID[]}
@@ -287,15 +436,27 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					origins={G.origins}
 					pendingRotationTile={pendingRotationTile}
 					onRotationSelect={handleRotation}
+					selectedColor={rotationMode ? null : selectedColor}
+					selectedSourceDot={selectedSourceDot}
 				/>
 			</div>
 			<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-				{rotationMode && (
+				{isPathMode && selectedCard !== null && !selectedSourceDot && (
+					<div style={{ padding: 8, background: '#ecfdf5', border: '1px solid #10b981', borderRadius: 4, fontSize: 12 }}>
+						<strong>Path Mode:</strong> Click a dot to select it as the <em>source</em>, then click a neighboring dot to place a path.
+					</div>
+				)}
+				{isPathMode && selectedSourceDot && (
+					<div style={{ padding: 8, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, fontSize: 12 }}>
+						Source selected! Click a highlighted neighboring dot to place the path, or click the source again to deselect.
+					</div>
+				)}
+				{!isPathMode && rotationMode && (
 					<div style={{ padding: 8, background: '#dbeafe', border: '1px solid #3b82f6', borderRadius: 4, fontSize: 12 }}>
 						<strong>Rotation Mode:</strong> Select a card from your hand, then click a highlighted tile and use the arrows next to it to rotate (costs 1 card).
 					</div>
 				)}
-				{pendingRotationTile !== null && (
+				{!isPathMode && pendingRotationTile !== null && (
 					<div style={{ padding: 8, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, fontSize: 12 }}>
 						Click a rotation arrow next to the tile to rotate, or click another hex to cancel.
 					</div>
@@ -310,9 +471,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						selectedIndex={selectedCard}
 						onSelect={(index) => {
 							setSelectedCard(index);
+							setSelectedSourceDot(null); // Reset source when card changes
 							const c = myHand[index];
 							if (!c) return;
-							if (selectedColor) {
+							if (isPathMode) {
+								// In path mode, show valid sources
+								setPlaceable(computeValidSources(c.colors));
+								setSelectedColor(null);
+							} else if (selectedColor) {
 								recomputePlaceable(selectedColor);
 							} else {
 								const coords = buildAllCoords(G.radius);

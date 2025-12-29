@@ -1,5 +1,5 @@
 import type { GState, Color } from './types';
-import { buildAllCoords, key, neighbors, ringIndex, parse } from './helpers';
+import { buildAllCoords, key, neighbors, ringIndex, parse, inBounds } from './helpers';
 import { RULES } from './rulesConfig';
 
 export const computeScores = (G: GState): Record<string, number> => {
@@ -12,6 +12,69 @@ export const computeScores = (G: GState): Record<string, number> => {
 		const tile = G.board[k];
 		return tile !== undefined && tile.colors.includes(color);
 	};
+	const hasAnyAt = (q: number, r: number): boolean => {
+		const k = `${q},${r}`;
+		const tile = G.board[k];
+		return tile !== undefined && tile.colors.length > 0;
+	};
+
+	// Origins are conceptual start nodes for connectivity even if they don't have a tile/color on them.
+	const originKeys = new Set(G.origins.map((o) => key(o)));
+	const isOriginKey = (k: string): boolean => originKeys.has(k);
+
+	// Multi-color connectivity from origins: treat any occupied tile as traversable, plus origin coordinates.
+	// This enables "path can change colors; only rim color segment scores".
+	const originDistAny = new Map<string, number>();
+	{
+		const queue: Array<{ q: number; r: number }> = [];
+		for (const o of G.origins) {
+			const ok = key(o);
+			if (originDistAny.has(ok)) continue;
+			originDistAny.set(ok, 0);
+			queue.push(o);
+		}
+		while (queue.length) {
+			const cur = queue.shift()!;
+			const curK = key(cur);
+			const curDist = originDistAny.get(curK) ?? 0;
+			for (const n of neighbors(cur)) {
+				if (!inBounds(n, radius)) continue;
+				const nk = key(n);
+				// Only traverse through occupied tiles or origins (origins may be empty but still connect)
+				if (!isOriginKey(nk) && !hasAnyAt(n.q, n.r)) continue;
+				if (originDistAny.has(nk)) continue;
+				originDistAny.set(nk, curDist + 1);
+				queue.push(n);
+			}
+		}
+	}
+
+	// Rim distances on the same multi-color traversable graph (used only in SHORTEST_PATH mode).
+	const rimDistAny = new Map<string, number>();
+	if (RULES.SCORING.SHORTEST_PATH) {
+		const queue: Array<{ q: number; r: number }> = [];
+		for (const c of coords) {
+			if (!isRim(c.q, c.r)) continue;
+			const ck = key(c);
+			if (!isOriginKey(ck) && !hasAnyAt(c.q, c.r)) continue;
+			if (rimDistAny.has(ck)) continue;
+			rimDistAny.set(ck, 0);
+			queue.push(c);
+		}
+		while (queue.length) {
+			const cur = queue.shift()!;
+			const curK = key(cur);
+			const curDist = rimDistAny.get(curK) ?? 0;
+			for (const n of neighbors(cur)) {
+				if (!inBounds(n, radius)) continue;
+				const nk = key(n);
+				if (!isOriginKey(nk) && !hasAnyAt(n.q, n.r)) continue;
+				if (rimDistAny.has(nk)) continue;
+				rimDistAny.set(nk, curDist + 1);
+				queue.push(n);
+			}
+		}
+	}
 
 
 	const intersectionCountByColor: Record<Color, number> = {
@@ -49,38 +112,6 @@ export const computeScores = (G: GState): Record<string, number> => {
 					if (fromOrigins.has(nk)) continue;
 					fromOrigins.add(nk);
 					stack.push(n);
-				}
-			}
-		}
-
-		// Compute shortest distances from origins (for shortest path calculation)
-		const originDistances = new Map<string, number>();
-		if (RULES.SCORING.SHORTEST_PATH && fromOrigins.size > 0) {
-			const originQueue: Array<{ coord: { q: number; r: number }; dist: number }> = [];
-			for (const origin of G.origins) {
-				if (hasColorAt(origin.q, origin.r, color)) {
-					const ok = key(origin);
-					originDistances.set(ok, 0);
-					originQueue.push({ coord: origin, dist: 0 });
-				}
-				for (const n of neighbors(origin)) {
-					if (hasColorAt(n.q, n.r, color)) {
-						const nk = key(n);
-						if (!originDistances.has(nk)) {
-							originDistances.set(nk, 1);
-							originQueue.push({ coord: n, dist: 1 });
-						}
-					}
-				}
-			}
-			while (originQueue.length > 0) {
-				const { coord: cur, dist } = originQueue.shift()!;
-				for (const n of neighbors(cur)) {
-					if (!hasColorAt(n.q, n.r, color)) continue;
-					const nk = key(n);
-					if (originDistances.has(nk)) continue;
-					originDistances.set(nk, dist + 1);
-					originQueue.push({ coord: n, dist: dist + 1 });
 				}
 			}
 		}
@@ -236,7 +267,6 @@ export const computeScores = (G: GState): Record<string, number> => {
 
 		// Same-color connectivity from rim (multi-source BFS)
 		const fromRim = new Set<string>();
-		const rimDistances = new Map<string, number>();
 		const queue: { q: number; r: number }[] = [];
 		for (const c of coords) {
 			if (!isRim(c.q, c.r)) continue;
@@ -244,74 +274,67 @@ export const computeScores = (G: GState): Record<string, number> => {
 			const ck = key(c);
 			if (!fromRim.has(ck)) {
 				fromRim.add(ck);
-				if (RULES.SCORING.SHORTEST_PATH) {
-					rimDistances.set(ck, 0);
-				}
 				queue.push(c);
 			}
 		}
 		while (queue.length) {
 			const cur = queue.shift()!;
 			const curK = key(cur);
-			const curDist = rimDistances.get(curK) ?? 0;
 			for (const n of neighbors(cur)) {
 				if (!hasColorAt(n.q, n.r, color)) continue;
 				const nk = key(n);
 				if (fromRim.has(nk)) continue;
 				fromRim.add(nk);
-				if (RULES.SCORING.SHORTEST_PATH) {
-					rimDistances.set(nk, curDist + 1);
-				}
 				queue.push(n);
 			}
 		}
 
 		// Count intersection tiles (tiles in both fromOrigins and fromRim)
-		// Each tile counts individually, but exclude origin coordinates themselves
-		// Being in both sets means there's a path from origin to rim through that tile
-		const originKeys = new Set(G.origins.map((o) => key(o)));
+		// NEW RULE:
+		// - Connectivity from origins is multi-color (occupied-graph), so the path may change colors.
+		// - Only the rim-connected color segment scores: (same-color-from-rim) ∩ (any-color-from-origins).
+		// Always exclude origin coordinates themselves from scoring.
 		let count = 0;
 		
-		if (fromOrigins.size > 0 && fromRim.size > 0) {
+		if (fromRim.size > 0 && originDistAny.size > 0) {
 			if (RULES.SCORING.SHORTEST_PATH) {
-				// Only count tiles on shortest paths from origins to rim tiles
-				// Find the overall shortest path length from any origin to any rim tile
-				// Then count tiles where originDist + rimDist = shortestPathLength
+				// Only count rim-color tiles that lie on shortest paths (in the occupied-graph)
+				// from any origin to any rim node.
 				const shortestPathTiles = new Set<string>();
-				
-				// Find shortest path length: min over all tiles of (originDist + rimDist)
+
+				// Find shortest path length: min over all traversable nodes of (originDistAny + rimDistAny)
 				let minPathLength = Infinity;
-				for (const kC of fromOrigins) {
-					if (originKeys.has(kC)) continue;
-					if (!fromRim.has(kC)) continue;
-					const originDist = originDistances.get(kC) ?? Infinity;
-					const rimDist = rimDistances.get(kC) ?? Infinity;
-					if (originDist !== Infinity && rimDist !== Infinity) {
-						minPathLength = Math.min(minPathLength, originDist + rimDist);
-					}
+				for (const [kC, oDist] of originDistAny) {
+					const rDist = rimDistAny.get(kC);
+					if (rDist === undefined) continue;
+					minPathLength = Math.min(minPathLength, oDist + rDist);
 				}
 				
-				// Count tiles that are on shortest paths (originDist + rimDist = minPathLength)
+				// Mark traversable nodes on shortest paths (originDistAny + rimDistAny = minPathLength),
+				// then count only those nodes that belong to the rim-connected same-color component.
 				if (minPathLength !== Infinity) {
-					for (const kC of fromOrigins) {
+					for (const [kC, oDist] of originDistAny) {
 						if (originKeys.has(kC)) continue;
-						if (!fromRim.has(kC)) continue;
-						const originDist = originDistances.get(kC) ?? Infinity;
-						const rimDist = rimDistances.get(kC) ?? Infinity;
-						if (originDist + rimDist === minPathLength) {
-							shortestPathTiles.add(kC);
-						}
+						const rDist = rimDistAny.get(kC);
+						if (rDist === undefined) continue;
+						if (oDist + rDist !== minPathLength) continue;
+						// Exclude empty non-origin nodes (origins can be empty, but they are excluded above anyway).
+						const { q, r } = parse(kC);
+						if (!hasAnyAt(q, r)) continue;
+						shortestPathTiles.add(kC);
 					}
-					count = shortestPathTiles.size;
-				}
-			} else {
-				// Original logic: count all tiles in intersection
-				for (const kC of fromOrigins) {
-					// Skip origin coordinates - they can't be placed on and shouldn't score
-					if (originKeys.has(kC)) continue;
-					if (fromRim.has(kC)) {
+					for (const kC of shortestPathTiles) {
+						if (!fromRim.has(kC)) continue;
 						count += 1;
 					}
+				}
+			} else {
+				// Count all rim-connected same-color tiles that are connected back to any origin
+				// through occupied adjacency (multi-color).
+				for (const kC of fromRim) {
+					if (originKeys.has(kC)) continue;
+					if (!originDistAny.has(kC)) continue;
+					count += 1;
 				}
 			}
 		}
@@ -348,12 +371,13 @@ export const computeScores = (G: GState): Record<string, number> => {
 	}
 
 	const scores: Record<string, number> = {};
+	const [primaryWeight, secondaryWeight, tertiaryWeight] = RULES.SCORING.COLOR_POINTS;
 	for (const pid of Object.keys(G.prefs)) {
 		scores[pid] = 0;
 		const { primary, secondary, tertiary } = G.prefs[pid]!;
-		scores[pid] += 3 * intersectionCountByColor[primary];
-		scores[pid] += 2 * intersectionCountByColor[secondary];
-		scores[pid] += 1 * intersectionCountByColor[tertiary];
+		scores[pid] += primaryWeight * intersectionCountByColor[primary];
+		scores[pid] += secondaryWeight * intersectionCountByColor[secondary];
+		scores[pid] += tertiaryWeight * intersectionCountByColor[tertiary];
 	}
 	return scores;
 };

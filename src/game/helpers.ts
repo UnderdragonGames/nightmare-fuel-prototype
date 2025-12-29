@@ -81,7 +81,7 @@ const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules
 		}
 	}
 
-	switch (rules.OUTWARD_RULE) {
+	switch (rules.PLACEMENT.OUTWARD_RULE) {
 		case 'none':
 			return true;
 		case 'outwardOnly':
@@ -130,20 +130,26 @@ export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): bool
 	const isOrigin = G.origins.some((o) => o.q === coord.q && o.r === coord.r);
 	if (isOrigin) return false;
 	const ring = ringIndex(coord);
-	const capacity = ring > 0 && ring <= rules.MULTI_CAP_FIRST_RINGS ? 2 : 1;
+	// Path mode: always allow up to MAX_LANES_PER_PATH
+	// Hex mode: ring 1..N uses higher cap; outer rings use 1
+	const capacity =
+		rules.MODE === 'path'
+			? rules.PLACEMENT.MAX_LANES_PER_PATH
+			: (ring > 0 && ring <= rules.PLACEMENT.MULTI_CAP_FIRST_RINGS
+				? rules.PLACEMENT.MAX_LANES_PER_PATH
+				: 1);
 	const tile = G.board[k];
 	if (tile && tile.colors.length >= capacity) return false;
-	if (rules.CONNECTIVITY_SCOPE === 'global') {
-		if (!hasOccupiedNeighbor(G, coord)) {
-			// allow placements adjacent to any origin at any time
-			const isAdjacentToOrigin = neighbors(coord).some((n) =>
-				G.origins.some((o) => o.q === n.q && o.r === n.r)
-			);
-			if (!isAdjacentToOrigin) {
-				// also allow if board is still completely empty (first move)
-				const anyOccupied = Object.values(G.board).some((t) => t && t.colors.length > 0);
-				if (anyOccupied) return false;
-			}
+	// Global connectivity (always enforced)
+	if (!hasOccupiedNeighbor(G, coord)) {
+		// allow placements adjacent to any origin at any time
+		const isAdjacentToOrigin = neighbors(coord).some((n) =>
+			G.origins.some((o) => o.q === n.q && o.r === n.r)
+		);
+		if (!isAdjacentToOrigin) {
+			// also allow if board is still completely empty (first move)
+			const anyOccupied = Object.values(G.board).some((t) => t && t.colors.length > 0);
+			if (anyOccupied) return false;
 		}
 	}
 	return satisfiesDirectionRule(G, coord, color, rules);
