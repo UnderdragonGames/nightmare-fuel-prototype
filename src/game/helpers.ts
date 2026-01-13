@@ -139,18 +139,41 @@ export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): bool
 				: 1);
 	const tile = G.board[k];
 	if (tile && tile.colors.length >= capacity) return false;
+
 	// Global connectivity (always enforced)
-	if (!hasOccupiedNeighbor(G, coord)) {
-		// allow placements adjacent to any origin at any time
-		const isAdjacentToOrigin = neighbors(coord).some((n) =>
-			G.origins.some((o) => o.q === n.q && o.r === n.r)
-		);
-		if (!isAdjacentToOrigin) {
-			// also allow if board is still completely empty (first move)
-			const anyOccupied = Object.values(G.board).some((t) => t && t.colors.length > 0);
-			if (anyOccupied) return false;
+	// Must be adjacent to either an occupied tile OR an origin
+	const hasNeighbor = hasOccupiedNeighbor(G, coord);
+	const isAdjacentToOrigin = neighbors(coord).some((n) =>
+		G.origins.some((o) => o.q === n.q && o.r === n.r)
+	);
+	if (!hasNeighbor && !isAdjacentToOrigin) {
+		return false; // Disconnected placement - not allowed
+	}
+
+	// Compute the source of this edge: where the color "comes from"
+	const dir = rules.COLOR_TO_DIR[color];
+	const edgeSource: Co = { q: coord.q - dir.q, r: coord.r - dir.r };
+
+	// NO_BUILD_FROM_RIM: Can't build from tiles at the rim (paths terminate at rim)
+	if (rules.PLACEMENT.NO_BUILD_FROM_RIM) {
+		const sourceRing = ringIndex(edgeSource);
+		if (sourceRing === G.radius) {
+			return false; // Source is at rim, can't build from it
 		}
 	}
+
+	// NO_INTERSECT: All edges at a tile must come from the same source
+	if (rules.PLACEMENT.NO_INTERSECT && tile && tile.colors.length > 0) {
+		// Check that existing colors at this tile all come from the same source as the new color
+		for (const existingColor of tile.colors) {
+			const existingDir = rules.COLOR_TO_DIR[existingColor];
+			const existingSource: Co = { q: coord.q - existingDir.q, r: coord.r - existingDir.r };
+			if (existingSource.q !== edgeSource.q || existingSource.r !== edgeSource.r) {
+				return false; // Different sources = intersection not allowed
+			}
+		}
+	}
+
 	if (!satisfiesDirectionRule(G, coord, color, rules)) return false;
 	if (rules.MODE === 'path' && rules.PLACEMENT.FORK_SUPPORT) {
 		if (!forkSupportOkAfterPlacement(G, coord, color, rules)) return false;
@@ -181,17 +204,17 @@ export const buildAllCoords = (radius: number): Co[] => {
 export const asVisibleColor = (c: Color): string => {
 	switch (c) {
 		case 'R':
-			return '#ef4444';
+			return '#ff4444'; // Arterial red
 		case 'O':
-			return '#f97316';
+			return '#ff8c22'; // Fever orange
 		case 'Y':
-			return '#eab308';
+			return '#ffdd33'; // Electric yellow
 		case 'G':
-			return '#22c55e';
+			return '#33ff88'; // Toxic green
 		case 'B':
-			return '#3b82f6';
+			return '#4499ff'; // Spectral blue
 		case 'V':
-			return '#8b5cf6';
+			return '#aa66ff'; // Nightmare violet
 	}
 };
 
@@ -238,71 +261,7 @@ export const colorToRelativeEdge = (color: Color, rotation: number, rules: Rules
 	return (baseEdge + rotation) % 6;
 };
 
-type FlowEdge = { to: number; rev: number; cap: number };
-
-const INF_CAP = 1_000_000_000;
-const CENTER: Co = { q: 0, r: 0 };
-
-const addFlowEdge = (g: FlowEdge[][], u: number, v: number, cap: number): void => {
-	const fromList = g[u]!;
-	const toList = g[v]!;
-	const fwd: FlowEdge = { to: v, rev: toList.length, cap };
-	const rev: FlowEdge = { to: u, rev: fromList.length, cap: 0 };
-	fromList.push(fwd);
-	toList.push(rev);
-};
-
-const dinicMaxFlow = (g: FlowEdge[][], s: number, t: number): number => {
-	const n = g.length;
-	let flow = 0;
-	const level = new Array<number>(n);
-	const it = new Array<number>(n);
-
-	const bfs = (): boolean => {
-		level.fill(-1);
-		const q: number[] = [];
-		level[s] = 0;
-		q.push(s);
-		while (q.length > 0) {
-			const v = q.shift()!;
-			for (const e of g[v]!) {
-				if (e.cap <= 0) continue;
-				if (level[e.to]! >= 0) continue;
-				level[e.to] = level[v]! + 1;
-				q.push(e.to);
-			}
-		}
-		return level[t]! >= 0;
-	};
-
-	const dfs = (v: number, pushed: number): number => {
-		if (pushed === 0) return 0;
-		if (v === t) return pushed;
-		for (; it[v]! < g[v]!.length; it[v]! += 1) {
-			const i = it[v]!;
-			const e = g[v]![i]!;
-			if (e.cap <= 0) continue;
-			if (level[e.to] !== level[v]! + 1) continue;
-			const tr = dfs(e.to, Math.min(pushed, e.cap));
-			if (tr === 0) continue;
-			e.cap -= tr;
-			g[e.to]![e.rev]!.cap += tr;
-			return tr;
-		}
-		return 0;
-	};
-
-	while (bfs()) {
-		it.fill(0);
-		while (true) {
-			const pushed = dfs(s, INF_CAP);
-			if (pushed === 0) break;
-			flow += pushed;
-		}
-	}
-	return flow;
-};
-
+// Edge capacity map: key is `${srcKey}->${dstKey}`, value is edge count
 type EdgeCaps = Map<string, number>; // key: `${uKey}->${vKey}`
 
 const edgeKey = (uKey: string, vKey: string): string => `${uKey}->${vKey}`;
@@ -338,73 +297,92 @@ const buildEdgeCapsAfterPlacement = (G: GState, placeCoord: Co, placeColor: Colo
 	return caps;
 };
 
-const collectNodesFromEdges = (caps: EdgeCaps): string[] => {
+/**
+ * Collect all nodes that appear in the edge graph.
+ */
+const collectNodesFromEdges = (caps: EdgeCaps): Set<string> => {
 	const nodes = new Set<string>();
-	nodes.add(key(CENTER));
 	for (const k of caps.keys()) {
 		const [u, v] = k.split('->');
-		if (!u || !v) continue;
-		nodes.add(u);
-		nodes.add(v);
+		if (u) nodes.add(u);
+		if (v) nodes.add(v);
 	}
-	return Array.from(nodes);
+	return nodes;
 };
 
-const buildDinicGraph = (nodes: string[], caps: EdgeCaps): { g: FlowEdge[][]; idx: Map<string, number> } => {
-	const idx = new Map<string, number>();
-	for (let i = 0; i < nodes.length; i += 1) idx.set(nodes[i]!, i);
-	const g: FlowEdge[][] = Array.from({ length: nodes.length }, () => []);
-
-	for (const [k, cap] of caps.entries()) {
-		if (cap <= 0) continue;
-		const [uKey, vKey] = k.split('->');
-		if (!uKey || !vKey) continue;
-		const u = idx.get(uKey);
-		const v = idx.get(vKey);
-		if (u === undefined || v === undefined) continue;
-		addFlowEdge(g, u, v, cap);
+/**
+ * Count incoming edges to a node: IN(N) = |{edges (X → N)}|
+ */
+const countIncoming = (nodeKey: string, caps: EdgeCaps, allNodes: Set<string>): number => {
+	let count = 0;
+	for (const srcKey of allNodes) {
+		count += caps.get(edgeKey(srcKey, nodeKey)) ?? 0;
 	}
-	return { g, idx };
+	return count;
 };
 
-const countOutwardBranches = (node: Co, caps: EdgeCaps): number => {
-	const uKey = key(node);
-	const baseRing = ringIndex(node);
-	let branches = 0;
-	for (const n of neighbors(node)) {
-		if (ringIndex(n) <= baseRing) continue;
-		const vKey = key(n);
-		branches += caps.get(edgeKey(uKey, vKey)) ?? 0;
+/**
+ * Count outgoing edges from a node: OUT(N) = |{edges (N → Y)}|
+ */
+const countOutgoing = (nodeKey: string, caps: EdgeCaps, allNodes: Set<string>): number => {
+	let count = 0;
+	for (const dstKey of allNodes) {
+		count += caps.get(edgeKey(nodeKey, dstKey)) ?? 0;
 	}
-	return branches;
+	return count;
 };
 
+const DEBUG_FORK_SUPPORT = false; // Set to true to enable debug logging
+
+/**
+ * FORK SUPPORT INVARIANT (Kirchhoff's Law)
+ * =========================================
+ *
+ * Mathematical Model:
+ * - Graph G = (V, E) where each tile at position P with color C creates edge: (P - dir(C)) → P
+ * - Origins are source nodes (infinite supply)
+ *
+ * The Invariant:
+ *   For every non-origin node N: OUT(N) ≤ IN(N)
+ *
+ *   Where:
+ *     IN(N)  = count of edges (X → N)
+ *     OUT(N) = count of edges (N → Y)
+ *
+ * In plain English: You cannot fork into more branches than paths feeding into you.
+ */
 const forkSupportOkAfterPlacement = (G: GState, placeCoord: Co, placeColor: Color, rules: Rules): boolean => {
-	// In path mode, lanes are edges: each tile color occurrence is an edge from (dst - dir(color)) -> dst.
-	// Fork at node U = total outward outgoing edge capacity from U is > 1.
-	// Constraint: for every fork node, max flow from center to that node must be >= outward branches.
 	const caps = buildEdgeCapsAfterPlacement(G, placeCoord, placeColor, rules);
-	const nodes = collectNodesFromEdges(caps);
+	const allNodes = collectNodesFromEdges(caps);
+	const originKeys = new Set(G.origins.map((o) => key(o)));
 
-	const centerKey = key(CENTER);
-	const centerIdx = nodes.indexOf(centerKey);
-	if (centerIdx < 0) return true;
+	if (DEBUG_FORK_SUPPORT) {
+		const dir = rules.COLOR_TO_DIR[placeColor];
+		const segmentSrc: Co = { q: placeCoord.q - dir.q, r: placeCoord.r - dir.r };
+		console.log('[ForkSupport] Placing edge:', key(segmentSrc), '→', key(placeCoord), `(color: ${placeColor})`);
+		console.log('[ForkSupport] Origins:', Array.from(originKeys).join(', '));
+		console.log('[ForkSupport] All edges:', Array.from(caps.entries()).map(([k, v]) => `${k}(${v})`).join(', '));
+	}
 
-	// Only need to check nodes that can be forks (have 2+ outward outgoing lanes).
-	for (const nodeKey of nodes) {
-		if (nodeKey === centerKey) continue;
-		const node = parse(nodeKey);
-		const branches = countOutwardBranches(node, caps);
-		if (branches <= 1) continue;
+	// Check the invariant: OUT(N) ≤ IN(N) for every non-origin node
+	for (const nodeKey of allNodes) {
+		// Origins have infinite supply, skip them
+		if (originKeys.has(nodeKey)) continue;
 
-		// Build a fresh residual graph per sink (Dinic mutates capacities).
-		const { g, idx } = buildDinicGraph(nodes, caps);
-		const s = idx.get(centerKey);
-		const t = idx.get(nodeKey);
-		if (s === undefined || t === undefined) return false;
+		const inCount = countIncoming(nodeKey, caps, allNodes);
+		const outCount = countOutgoing(nodeKey, caps, allNodes);
 
-		const supported = dinicMaxFlow(g, s, t);
-		if (supported < branches) return false;
+		if (DEBUG_FORK_SUPPORT) {
+			console.log(`[ForkSupport] Node ${nodeKey}: IN=${inCount}, OUT=${outCount}`, outCount > inCount ? '← VIOLATION!' : '✓');
+		}
+
+		// THE INVARIANT: OUT(N) ≤ IN(N)
+		if (outCount > inCount) {
+			if (DEBUG_FORK_SUPPORT) {
+				console.log(`[ForkSupport] BLOCKED: Node ${nodeKey} has OUT(${outCount}) > IN(${inCount})`);
+			}
+			return false;
+		}
 	}
 
 	return true;

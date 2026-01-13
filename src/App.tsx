@@ -7,23 +7,72 @@ import { Client, type BoardProps as BGIOBoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
 import { Board as HexBoard } from './ui/Board';
-//
 import type { Color, Co, GState } from './game/types';
 import { Hand } from './ui/Hand';
 import { Treasure } from './ui/Treasure';
-//
 import { computeScores } from './game/scoring';
 import { buildAllCoords, canPlace, asVisibleColor, key } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
-import { Controls } from './ui/Controls';
-import { Players } from './ui/Players';
-import { playOneRandom, playOneDumb, playOneSmart, type BotKind } from './game/bots';
+import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, type BotKind } from './game/bots';
 
 // Types
-
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
-
 type AppBoardProps = BGIOBoardProps<GState> & ExtraBoardProps;
+
+// PlayersStrip component for header
+const PlayersStrip: React.FC<{
+	players: PlayerID[];
+	currentPlayer: PlayerID;
+	scores: Record<PlayerID, number>;
+	goalsByPlayer: Record<PlayerID, { primary: Color; secondary: Color; tertiary: Color }>;
+	botByPlayer: Record<PlayerID, BotKind>;
+}> = ({ players, currentPlayer, scores, goalsByPlayer, botByPlayer }) => {
+	return (
+		<div className="players-strip">
+			{players.map((pid) => {
+				const isTurn = pid === currentPlayer;
+				const goals = goalsByPlayer[pid]!;
+				return (
+					<div key={pid} className={`player-badge ${isTurn ? 'player-badge--active' : ''}`}>
+						<span className="player-badge__id">P{pid}</span>
+						<span className="player-badge__score">{scores[pid] ?? 0}</span>
+						<div className="player-badge__goals">
+							{[goals.primary, goals.secondary, goals.tertiary].map((col, i) => (
+								<span key={`${col}-${i}`} className={`player-badge__goal player-badge__goal--${col}`} />
+							))}
+						</div>
+						{botByPlayer[pid] !== 'None' && (
+							<span className="player-badge__bot">BOT</span>
+						)}
+					</div>
+				);
+			})}
+		</div>
+	);
+};
+
+// DeckPile component for visual deck/discard
+const DeckPile: React.FC<{ count: number; label: string }> = ({ count, label }) => {
+	const visibleCards = Math.min(count, 5);
+	return (
+		<div className="deck-pile">
+			<div className="deck-pile__stack">
+				{Array.from({ length: visibleCards }).map((_, i) => (
+					<div
+						key={i}
+						className="deck-pile__card"
+						style={{
+							transform: `translateY(${-i * 2}px) rotate(${(i - 2) * 1.5}deg)`,
+						}}
+					/>
+				))}
+				{count === 0 && <div className="deck-pile__empty" />}
+			</div>
+			<div className="deck-pile__count">{count}</div>
+			<div className="deck-pile__label">{label}</div>
+		</div>
+	);
+};
 
 const GameBoard: React.FC<AppBoardProps> = ({
 	G,
@@ -40,11 +89,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
 	const [rotationMode, setRotationMode] = React.useState(false);
 	const [pendingRotationTile, setPendingRotationTile] = React.useState<Co | null>(null);
-	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null); // Path mode: source dot for click-click UX
+	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null);
 	const showRing = useUIStore((s) => s.showRing);
 	const setShowRing = useUIStore((s) => s.setShowRing);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
-	const setBotFor = useUIStore((s) => s.setBotFor);
 	const [placeable, setPlaceable] = React.useState<Co[]>([]);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 
@@ -64,7 +112,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		const dq = dest.q - source.q;
 		const dr = dest.r - source.r;
 		for (const [color, dir] of Object.entries(rules.COLOR_TO_DIR)) {
-			// Find the color whose direction matches source→dest
 			if (dir.q === dq && dir.r === dr) {
 				return color as Color;
 			}
@@ -77,19 +124,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		return G.origins.some((o) => o.q === coord.q && o.r === coord.r);
 	};
 
-	// Helper: get valid destination dots from a source (neighbors where card colors can connect)
-	// This includes origins as destinations (path will be placed on source instead)
+	// Helper: get valid destination dots from a source
 	const getValidDestinations = (source: Co, cardColors: Color[]): Co[] => {
 		const dests: Co[] = [];
 		const sourceIsOrigin = isOriginCoord(source);
-		
-		// Check ALL 6 directions for origins (not just card colors)
-		// because we need to find origins even if the "pointing toward" color isn't in the card
+
 		for (const [, dir] of Object.entries(rules.COLOR_TO_DIR)) {
 			const neighbor: Co = { q: source.q + dir.q, r: source.r + dir.r };
 			if (isOriginCoord(neighbor)) {
-				// This neighbor is an origin - path would be placed on source
-				// Need the color that points from source TOWARD origin (for rendering)
 				const colorToPlace = getColorForDirection(neighbor, source);
 				if (colorToPlace && cardColors.includes(colorToPlace) && !sourceIsOrigin && canPlace(G, source, colorToPlace, rules)) {
 					if (!dests.some((d) => d.q === neighbor.q && d.r === neighbor.r)) {
@@ -98,8 +140,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				}
 			}
 		}
-		
-		// Check card colors for non-origin destinations
+
 		for (const color of cardColors) {
 			const dir = rules.COLOR_TO_DIR[color];
 			const dest: Co = { q: source.q + dir.q, r: source.r + dir.r };
@@ -114,16 +155,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 	const onHexClick = (coord: Co) => {
 		if (!isMyTurn || locked) return;
-		
-		// If clicking elsewhere while rotation is pending, cancel it
+
 		if (pendingRotationTile !== null) {
 			if (key(pendingRotationTile) !== key(coord)) {
 				setPendingRotationTile(null);
 			}
 			return;
 		}
-		
-		// Rotation mode: click tile to show rotation options (requires card selected) - NOT in path mode
+
 		if (rotationMode && !isPathMode) {
 			const tile = G.board[key(coord)];
 			if (tile && tile.colors.length > 0 && selectedCard !== null && rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
@@ -132,20 +171,18 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			}
 			return;
 		}
-		
-		// PATH MODE: click source → click destination UX
+
+		// PATH MODE
 		if (isPathMode) {
 			if (selectedCard === null) return;
 			const card = myHand[selectedCard];
 			if (!card) return;
 
-			// If no source selected yet, select this as source (if it's a valid source)
 			if (selectedSourceDot === null) {
 				const validDests = getValidDestinations(coord, card.colors);
 				if (validDests.length > 0) {
 					setSelectedSourceDot(coord);
 					setPlaceable(validDests);
-					// Infer color for preview: use the first valid color from this source
 					const firstDest = validDests[0]!;
 					const color = getColorForDirection(coord, firstDest);
 					setSelectedColor(color);
@@ -153,8 +190,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				return;
 			}
 
-			// Source is already selected
-			// Click on source again → deselect
 			if (key(coord) === key(selectedSourceDot)) {
 				setSelectedSourceDot(null);
 				setPlaceable([]);
@@ -162,12 +197,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				return;
 			}
 
-			// Click on a valid destination → place the path
 			const destIsOrigin = isOriginCoord(coord);
 			if (destIsOrigin) {
-				// Destination is an origin - place on source instead with opposite color
 				const oppositeColor = getColorForDirection(coord, selectedSourceDot);
-					if (oppositeColor && card.colors.includes(oppositeColor) && canPlace(G, selectedSourceDot, oppositeColor, rules)) {
+				if (oppositeColor && card.colors.includes(oppositeColor) && canPlace(G, selectedSourceDot, oppositeColor, rules)) {
 					moves.playCard({ handIndex: selectedCard, pick: oppositeColor, coord: selectedSourceDot });
 					setSelectedCard(null);
 					setSelectedColor(null);
@@ -177,7 +210,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				}
 			} else {
 				const color = getColorForDirection(selectedSourceDot, coord);
-					if (color && card.colors.includes(color) && canPlace(G, coord, color, rules)) {
+				if (color && card.colors.includes(color) && canPlace(G, coord, color, rules)) {
 					moves.playCard({ handIndex: selectedCard, pick: color, coord });
 					setSelectedCard(null);
 					setSelectedColor(null);
@@ -187,7 +220,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				}
 			}
 
-			// Click on invalid destination → try to switch source to this coord
 			const validDests = getValidDestinations(coord, card.colors);
 			if (validDests.length > 0) {
 				setSelectedSourceDot(coord);
@@ -196,27 +228,24 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				const inferredColor = getColorForDirection(coord, firstDest);
 				setSelectedColor(inferredColor);
 			} else {
-				// Invalid click, deselect
 				setSelectedSourceDot(null);
 				setPlaceable([]);
 				setSelectedColor(null);
 			}
 			return;
 		}
-		
-		// HEX MODE: original placement logic
+
+		// HEX MODE
 		if (selectedCard === null) return;
 		const card = myHand[selectedCard];
 		if (!card) return;
-		
-		// Check if hex has an existing tile - if so, show rotation options
+
 		const tile = G.board[key(coord)];
 		if (tile && tile.colors.length > 0 && rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
 			setPendingRotationTile(coord);
 			return;
 		}
-		
-		// Otherwise, try to place the card
+
 		if (selectedColor) {
 			if (canPlace(G, coord, selectedColor, rules)) {
 				moves.playCard({ handIndex: selectedCard, pick: selectedColor, coord });
@@ -243,12 +272,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		setPlaceable(coords.filter((c) => canPlace(G, c, color, rules)));
 	};
 
-	// For path mode: compute all valid source dots (dots that have at least one valid destination for card colors)
 	const computeValidSources = (cardColors: Color[]): Co[] => {
 		const coords = buildAllCoords(G.radius);
 		const sources: Co[] = [];
 		for (const coord of coords) {
-			// A coord is a valid source if it has any valid destinations
 			const validDests = getValidDestinations(coord, cardColors);
 			if (validDests.length > 0) {
 				sources.push(coord);
@@ -261,15 +288,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (locked) return;
 		setSelectedCard(index);
 		setSelectedColor(color);
-		setSelectedSourceDot(null); // Reset source selection when color changes
+		setSelectedSourceDot(null);
 		if (isPathMode) {
-			// In path mode, show valid sources (not destinations yet)
 			const card = myHand[index];
 			if (card) {
 				setPlaceable(computeValidSources(card.colors));
 			}
 		} else {
-		recomputePlaceable(color);
+			recomputePlaceable(color);
 		}
 	};
 
@@ -295,7 +321,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		}
 	}, [locked]);
 
-	// Update rotatable tiles when rotation mode or board changes
 	React.useEffect(() => {
 		if (rotationMode && isMyTurn && !locked) {
 			const coords = buildAllCoords(G.radius);
@@ -312,7 +337,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		console.log('[bot] start', pid, botKind);
 		const isOwnersTurn = (owner: PlayerID) => ctxRef.current.currentPlayer === owner;
 		if (!isOwnersTurn(pid)) return;
-		
+
 		const client = {
 			getState: () => {
 				const g = gRef.current;
@@ -323,41 +348,44 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				playCard: (args: { handIndex: number; pick: Color; coord: Co }) => {
 					if (isOwnersTurn(pid)) moves.playCard(args);
 				},
-				endTurnAndRefill: () => {
-					if (isOwnersTurn(pid)) moves.endTurnAndRefill();
+				rotateTile: (args: { coord: Co; handIndex: number; rotation: number }) => {
+					if (isOwnersTurn(pid)) moves.rotateTile(args);
 				},
 				stashToTreasure: (args: { handIndex: number }) => {
 					if (isOwnersTurn(pid)) moves.stashToTreasure(args);
+				},
+				takeFromTreasure: (args: { index: number }) => {
+					if (isOwnersTurn(pid)) moves.takeFromTreasure(args);
+				},
+				endTurnAndRefill: () => {
+					if (isOwnersTurn(pid)) moves.endTurnAndRefill();
 				},
 			},
 		};
 
 		if (botKind === 'Random') {
 			await playOneRandom(client, pid);
-		} else if (botKind === 'Dumb') {
-			await playOneDumb(client, pid);
-		} else if (botKind === 'Smart') {
-			await playOneSmart(client, pid);
+		} else if (botKind === 'Evaluator') {
+			await playOneEvaluator(client, pid);
+		} else if (botKind === 'EvaluatorPlus') {
+			await playOneEvaluatorPlus(client, pid);
 		}
 	};
 
-	// Core autoplayer: if it's a bot's turn, ensure viewer matches owner first; once it does, run exactly one bot turn.
 	const autoPlayingRef = React.useRef(false);
 	React.useEffect(() => {
 		const owner = ctx.currentPlayer as PlayerID;
 		const botKind = botByPlayer[owner] ?? 'None';
 		const isBot = botKind !== 'None';
 		if (!isBot) return;
-		// Ensure this board is controlling the owner seat before attempting any moves
 		if (playerID !== owner) {
 			console.log('[autoplay] switching viewer to owner', owner);
 			onSetViewer(owner);
-			return; // new GameBoard will mount for owner
+			return;
 		}
 		if (autoPlayingRef.current) return;
 		autoPlayingRef.current = true;
 		(void (async () => {
-			// In case turn has advanced between render and async start
 			if (ctxRef.current.currentPlayer !== owner) { autoPlayingRef.current = false; return; }
 			await botPlayOnce(owner, botKind);
 			autoPlayingRef.current = false;
@@ -365,7 +393,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ctx.currentPlayer, playerID, viewer, botByPlayer]);
 
-	// Ensure that when it's a human's turn, this board controls that seat
 	React.useEffect(() => {
 		const owner = ctx.currentPlayer as PlayerID;
 		const botKind = botByPlayer[owner] ?? 'None';
@@ -379,53 +406,92 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const onEndTurn = async () => {
 		moves.endTurnAndRefill && moves.endTurnAndRefill();
 	};
-	const onStash = () => { if (selectedCard !== null) { moves.stashToTreasure?.({ handIndex: selectedCard }); setSelectedCard(null); setSelectedColor(null); setPlaceable([]); } };
+	const onStash = () => {
+		if (selectedCard !== null) {
+			moves.stashToTreasure?.({ handIndex: selectedCard });
+			setSelectedCard(null);
+			setSelectedColor(null);
+			setPlaceable([]);
+		}
+	};
 	const onTakeTreasure = (i: number) => moves.takeFromTreasure && moves.takeFromTreasure({ index: i });
 
 	const scores = computeScores(G);
+	const stashBonus = isMyTurn ? (G.meta.stashBonus[currentPlayer as PlayerID] ?? 0) : 0;
 
 	return (
-		<div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16, padding: 16 }}>
-			<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-				<Controls
-					currentPlayer={currentPlayer}
-					deckCount={G.deck.length}
-					discardCount={G.discard.length}
-					onUndo={() => {
-						undo();
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setPlaceable([]);
-						setPendingRotationTile(null);
-						setRotatable([]);
-						setRotationMode(false);
-					}}
-					onEndTurn={onEndTurn}
-					onStash={onStash}
-					canStash={isMyTurn && selectedCard !== null && stage === 'active' && G.treasure.length < rules.TREASURE_MAX}
-					canEndTurn={isMyTurn}
-					canUndo={isMyTurn && Array.isArray(log) && log.length > 0}
-					stashBonus={isMyTurn ? (G.meta.stashBonus[currentPlayer as PlayerID] ?? 0) : 0}
-					rotationMode={rotationMode}
-					onToggleRotationMode={() => {
-						setRotationMode(!rotationMode);
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setPlaceable([]);
-					}}
-					canRotate={isMyTurn && !locked && !isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false}
-				/>
-				<Players
-					players={ctx.playOrder as PlayerID[]}
-					currentPlayer={ctx.currentPlayer as PlayerID}
-					scores={scores as Record<PlayerID, number>}
-					goalsByPlayer={G.prefs}
-					botByPlayer={botByPlayer}
-					onToggleBot={(pid, v) => setBotFor(pid, v)}
-				/>
-				<button type="button" onClick={() => { const owner = ctx.currentPlayer as PlayerID; if (viewer !== owner) onSetViewer(owner); }}>Run Bots</button>
-			</div>
-			<div style={{ overflow: 'auto', maxHeight: '80vh' }}>
+		<div className="game-container">
+			{/* HEADER */}
+			<header className="game-header">
+				<div className="game-header__left">
+					<span className="game-header__title">Nightmare Fuel</span>
+					<PlayersStrip
+						players={ctx.playOrder as PlayerID[]}
+						currentPlayer={ctx.currentPlayer as PlayerID}
+						scores={scores as Record<PlayerID, number>}
+						goalsByPlayer={G.prefs}
+						botByPlayer={botByPlayer}
+					/>
+				</div>
+				<div className="game-header__right">
+					<div className="deck-info">
+						<span className="deck-info__item">Deck: <span className="deck-info__count">{G.deck.length}</span></span>
+						<span className="deck-info__item">Discard: <span className="deck-info__count">{G.discard.length}</span></span>
+					</div>
+					<div className="action-bar">
+						{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
+							<button
+								className={`action-btn ${rotationMode ? 'action-btn--primary' : 'action-btn--ghost'}`}
+								onClick={() => {
+									setRotationMode(!rotationMode);
+									setSelectedCard(null);
+									setSelectedColor(null);
+									setPlaceable([]);
+								}}
+								disabled={!isMyTurn || locked}
+							>
+								Rotate
+							</button>
+						)}
+						<button
+							className="action-btn action-btn--ghost"
+							onClick={() => {
+								undo();
+								setSelectedCard(null);
+								setSelectedColor(null);
+								setPlaceable([]);
+								setPendingRotationTile(null);
+								setRotatable([]);
+								setRotationMode(false);
+							}}
+							disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
+						>
+							Undo
+						</button>
+						<button
+							className="action-btn action-btn--secondary"
+							onClick={onStash}
+							disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
+						>
+							Stash{stashBonus > 0 && <span className="bonus">+{stashBonus}</span>}
+						</button>
+						<button
+							className="action-btn action-btn--primary"
+							onClick={onEndTurn}
+							disabled={!isMyTurn}
+						>
+							End Turn
+						</button>
+					</div>
+					<label className="options-toggle">
+						<input type="checkbox" checked={showRing} onChange={(e) => setShowRing(e.target.checked)} />
+						Ring
+					</label>
+				</div>
+			</header>
+
+			{/* BOARD AREA */}
+			<main className="game-board-area">
 				<HexBoard
 					rules={rules}
 					board={G.board}
@@ -433,51 +499,40 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					onHexClick={onHexClick}
 					showRing={showRing}
 					highlightCoords={rotationMode ? rotatable : placeable}
-					highlightColor={rotationMode ? '#3b82f6' : (selectedColor ? asVisibleColor(selectedColor) : '#000')}
+					highlightColor={rotationMode ? '#8b5cf6' : (selectedColor ? asVisibleColor(selectedColor) : '#8b5cf6')}
 					origins={G.origins}
 					pendingRotationTile={pendingRotationTile}
 					onRotationSelect={handleRotation}
 					selectedColor={rotationMode ? null : selectedColor}
 					selectedSourceDot={selectedSourceDot}
 				/>
-			</div>
-			<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+				{/* Mode hints */}
 				{isPathMode && selectedCard !== null && !selectedSourceDot && (
-					<div style={{ padding: 8, background: '#ecfdf5', border: '1px solid #10b981', borderRadius: 4, fontSize: 12 }}>
-						<strong>Path Mode:</strong> Click a dot to select it as the <em>source</em>, then click a neighboring dot to place a path.
+					<div className="mode-hint mode-hint--path">
+						<strong>Path Mode:</strong> Click a dot to select source, then click a neighbor to place.
 					</div>
 				)}
 				{isPathMode && selectedSourceDot && (
-					<div style={{ padding: 8, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, fontSize: 12 }}>
-						Source selected! Click a highlighted neighboring dot to place the path, or click the source again to deselect.
+					<div className="mode-hint mode-hint--source">
+						Source selected! Click a highlighted dot to place, or click source again to deselect.
 					</div>
 				)}
-				{!isPathMode && rotationMode && (
-					<div style={{ padding: 8, background: '#dbeafe', border: '1px solid #3b82f6', borderRadius: 4, fontSize: 12 }}>
-						<strong>Rotation Mode:</strong> Select a card from your hand, then click a highlighted tile and use the arrows next to it to rotate (costs 1 card).
-					</div>
-				)}
-				{!isPathMode && pendingRotationTile !== null && (
-					<div style={{ padding: 8, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, fontSize: 12 }}>
-						Click a rotation arrow next to the tile to rotate, or click another hex to cancel.
-					</div>
-				)}
-				<div style={{ display: 'flex', gap: 8 }}>
-					<label><input type="checkbox" checked={showRing} onChange={(e) => setShowRing(e.target.checked)} /> Ring</label>
-				</div>
-				<div>
-					<h4>Hand</h4>
+			</main>
+
+			{/* BOTTOM DOCK */}
+			<footer className="game-dock">
+				<div className="game-dock__section game-dock__hand">
+					<h4 className="game-dock__section-title">Your Hand</h4>
 					<Hand
 						rules={rules}
 						cards={myHand}
 						selectedIndex={selectedCard}
 						onSelect={(index) => {
 							setSelectedCard(index);
-							setSelectedSourceDot(null); // Reset source when card changes
+							setSelectedSourceDot(null);
 							const c = myHand[index];
 							if (!c) return;
 							if (isPathMode) {
-								// In path mode, show valid sources
 								setPlaceable(computeValidSources(c.colors));
 								setSelectedColor(null);
 							} else if (selectedColor) {
@@ -491,35 +546,49 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						onPickColor={onPickColor}
 					/>
 				</div>
-				<div>
-					<h4>Treasure</h4>
+				<div className="game-dock__section game-dock__decks">
+					<DeckPile count={G.deck.length} label="Deck" />
+					<DeckPile count={G.discard.length} label="Discard" />
+				</div>
+				<div className="game-dock__section game-dock__treasure">
+					<h4 className="game-dock__section-title">Treasure</h4>
 					<Treasure rules={rules} cards={G.treasure} onTake={onTakeTreasure} />
 				</div>
-				<div>
-					<h4>Scores</h4>
-					<ul>
-						{Object.entries(scores).map(([pid2, s]) => (
-							<li key={pid2}>P{pid2}: {s}</li>
-						))}
-					</ul>
-					{ctx.gameover && (ctx.gameover as { scores: Record<PlayerID, number> }).scores && (
-						<div style={{ marginTop: 8 }}>
-							<strong>Game Over</strong>
-							<ul>
-								{Object.entries((ctx.gameover as { scores: Record<PlayerID, number> }).scores).map(([pid2, s]) => (
-									<li key={`go-${pid2}`}>P{pid2}: {s}</li>
-								))}
-							</ul>
-						</div>
-					)}
+			</footer>
+
+			{/* Game Over overlay */}
+			{ctx.gameover && (
+				<div style={{
+					position: 'fixed',
+					inset: 0,
+					background: 'rgba(0,0,0,0.8)',
+					display: 'flex',
+					alignItems: 'center',
+					justifyContent: 'center',
+					zIndex: 100,
+				}}>
+					<div style={{
+						background: 'var(--bg-surface)',
+						padding: 32,
+						borderRadius: 12,
+						textAlign: 'center',
+					}}>
+						<h2 style={{ marginBottom: 16 }}>Game Over</h2>
+						<ul style={{ textAlign: 'left' }}>
+							{Object.entries((ctx.gameover as { scores: Record<PlayerID, number> }).scores).map(([pid2, s]) => (
+								<li key={`go-${pid2}`} style={{ padding: '4px 0' }}>
+									Player {pid2}: <strong>{s}</strong>
+								</li>
+							))}
+						</ul>
+					</div>
 				</div>
-			</div>
+			)}
 		</div>
 	);
 };
 
 // App
-
 const App: React.FC = () => {
 	const numPlayers = useUIStore((s) => s.numPlayers);
 	const setNumPlayers = useUIStore((s) => s.setNumPlayers);
@@ -528,8 +597,10 @@ const App: React.FC = () => {
 	const setViewer = useUIStore((s) => s.setViewer);
 	const matchID = useUIStore((s) => s.matchID);
 	const setMatchID = useUIStore((s) => s.setMatchID);
+	const botByPlayer = useUIStore((s) => s.botByPlayer);
+	const setBotFor = useUIStore((s) => s.setBotFor);
 	const serverURL = import.meta.env.VITE_SERVER_URL || 'http://localhost:8000';
-	
+
 	const ClientComp = React.useMemo(
 		() => Client<GState, AppBoardProps>({
 			game: HexStringsGame,
@@ -544,60 +615,76 @@ const App: React.FC = () => {
 	}, [numPlayers, viewer, setViewer]);
 
 	return (
-		<div style={{ display: 'grid', gridTemplateColumns: '260px 1fr' }}>
-			<div style={{ padding: 12, borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 12 }}>
-				<div><strong>Players</strong></div>
-				<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-					<label>Viewer:</label>
-					<select value={viewer} onChange={(e) => setViewer(e.target.value as PlayerID)}>
-						{Array.from({ length: numPlayers }).map((_, i) => (
-							<option key={i} value={String(i)}>{`P${i}`}</option>
-						))}
-					</select>
+		<div className="app-layout">
+			<aside className="setup-sidebar">
+				<div className="setup-sidebar__section">
+					<div className="setup-sidebar__title">Players</div>
+					<div className="setup-sidebar__row">
+						<label>Viewer:</label>
+						<select value={viewer} onChange={(e) => setViewer(e.target.value as PlayerID)}>
+							{Array.from({ length: numPlayers }).map((_, i) => (
+								<option key={i} value={String(i)}>{`P${i}`}</option>
+							))}
+						</select>
+					</div>
+					<div className="setup-sidebar__row">
+						<button onClick={() => {
+							const next = Math.min(8, numPlayers + 1);
+							setNumPlayers(next);
+							resetBotsForCount(next);
+							if (matchID) setMatchID(`match-${Date.now()}`);
+						}}>Add</button>
+						<button onClick={() => {
+							const next = Math.max(2, numPlayers - 1);
+							setNumPlayers(next);
+							resetBotsForCount(next);
+							if (matchID) setMatchID(`match-${Date.now()}`);
+						}} disabled={numPlayers <= 2}>Remove</button>
+					</div>
+					<div className="setup-sidebar__hint">Changing count restarts game.</div>
 				</div>
-				<div style={{ display: 'flex', gap: 8 }}>
-					<button type="button" onClick={() => { 
-						const next = Math.min(8, numPlayers + 1); 
-						setNumPlayers(next); 
-						resetBotsForCount(next);
-						if (matchID) {
-							setMatchID(`match-${Date.now()}`);
-						}
-					}}>Add Player</button>
-					<button type="button" onClick={() => { 
-						const next = Math.max(2, numPlayers - 1); 
-						setNumPlayers(next); 
-						resetBotsForCount(next);
-						if (matchID) {
-							setMatchID(`match-${Date.now()}`);
-						}
-					}} disabled={numPlayers <= 2}>Remove Player</button>
+
+				<div className="setup-sidebar__section">
+					<div className="setup-sidebar__title">Bot Controls</div>
+					{Array.from({ length: numPlayers }).map((_, i) => {
+						const pid = String(i) as PlayerID;
+						return (
+							<div key={pid} className="setup-sidebar__row">
+								<span style={{ minWidth: 30 }}>P{pid}</span>
+								<select value={botByPlayer[pid] ?? 'None'} onChange={(e) => setBotFor(pid, e.target.value as BotKind)}>
+									<option value="None">Human</option>
+									<option value="Random">Random</option>
+									<option value="Evaluator">Evaluator</option>
+									<option value="EvaluatorPlus">Evaluator+</option>
+								</select>
+							</div>
+						);
+					})}
 				</div>
-				<div style={{ color: '#64748b', fontSize: 12 }}>Changing player count restarts the game.</div>
-				<div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-					<div><strong>Match</strong></div>
-					<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-						<label>Match ID:</label>
+
+				<div className="setup-sidebar__section">
+					<div className="setup-sidebar__title">Match</div>
+					<div className="setup-sidebar__row">
 						<input
 							type="text"
 							value={matchID || ''}
 							onChange={(e) => setMatchID(e.target.value || null)}
 							placeholder="local"
-							style={{ flex: 1, padding: 4 }}
+							style={{ flex: 1 }}
 						/>
 					</div>
-					<div style={{ display: 'flex', gap: 8 }}>
-						<button type="button" onClick={() => setMatchID(`match-${Date.now()}`)}>New Match</button>
-						<button type="button" onClick={() => setMatchID(null)} disabled={!matchID}>Local</button>
+					<div className="setup-sidebar__row">
+						<button onClick={() => setMatchID(`match-${Date.now()}`)}>New Match</button>
+						<button onClick={() => setMatchID(null)} disabled={!matchID}>Local</button>
 					</div>
-					<div style={{ color: '#64748b', fontSize: 12 }}>
-						{matchID ? `Connected to ${serverURL}` : 'Local mode (no persistence)'}
+					<div className="setup-sidebar__hint">
+						{matchID ? `Connected to ${serverURL}` : 'Local mode'}
 					</div>
 				</div>
-			</div>
-			<div>
+			</aside>
+			<main className="app-layout__main">
 				<ClientComp playerID={viewer} matchID={matchID || undefined} viewer={viewer} onSetViewer={setViewer} />
-			</div>
+			</main>
 		</div>
 	);
 };

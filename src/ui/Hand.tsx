@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Card, Color, Rules } from '../game/types';
-import { asVisibleColor, serializeCard } from '../game/helpers';
+import { serializeCard } from '../game/helpers';
 
 type Props = {
 	rules: Rules;
@@ -10,29 +10,83 @@ type Props = {
 	onPickColor: (index: number, color: Color) => void;
 };
 
-export const Hand: React.FC<Props> = ({ rules, cards, selectedIndex, onSelect, onPickColor }) => {
+// Neural pathway card component
+const NeuralCard: React.FC<{
+	card: Card;
+	isSelected: boolean;
+	rules: Rules;
+	onSelect: () => void;
+	onPickColor: (color: Color) => void;
+}> = ({ card, isSelected, rules, onSelect, onPickColor }) => {
+	const sortedColors = [...card.colors].sort(
+		(a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b)
+	);
+
+	// Calculate pathway positions - radiate from center
+	const pathways = sortedColors.map((color, i) => {
+		const angleOffset = -90; // Start from top
+		const spreadAngle = sortedColors.length === 1 ? 0 : 120; // Total spread
+		const startAngle = angleOffset - spreadAngle / 2;
+		const angle = sortedColors.length === 1
+			? angleOffset
+			: startAngle + (i / (sortedColors.length - 1)) * spreadAngle;
+		const rad = (angle * Math.PI) / 180;
+		const endX = 40 + Math.cos(rad) * 24;
+		const endY = 35 + Math.sin(rad) * 24;
+		return { color, endX, endY };
+	});
+
 	return (
-		<div style={{ display: 'flex', gap: 8 }}>
-			{cards.map((c, i) => (
-				<div key={`${serializeCard(c)}-${i}`} style={{ border: i === selectedIndex ? '2px solid #2563eb' : '1px solid #e5e7eb', padding: 8, borderRadius: 6 }} onClick={() => onSelect(i)}>
-					<div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-						{[...c.colors]
-							.sort((a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b))
-							.map((color) => (
-								<span key={color} style={{ background: asVisibleColor(color), width: 12, height: 12, borderRadius: 2, display: 'inline-block' }} />
-							))}
-					</div>
-					<div style={{ display: 'flex', gap: 6 }}>
-						{c.colors.map((color) => (
-							<button key={`b-${color}`} onClick={(e) => { e.stopPropagation(); onPickColor(i, color); }} style={{ padding: '2px 6px', background: asVisibleColor(color), color: 'white', border: 'none', borderRadius: 4 }}>
-								{color}
-							</button>
-						))}
-					</div>
-				</div>
-			))}
+		<div
+			className={`neural-card ${isSelected ? 'neural-card--selected' : ''}`}
+			onClick={onSelect}
+		>
+			<div className="neural-card__art">
+				<svg viewBox="0 0 80 70" className="neural-card__pathways">
+					{/* Central hub */}
+					<circle cx="40" cy="35" r="6" className="neural-card__hub" />
+
+					{/* Pathway lines and nodes */}
+					{pathways.map(({ color, endX, endY }) => (
+						<g key={color} className={`neural-card__path neural-card__path--${color}`}>
+							<line x1="40" y1="35" x2={endX} y2={endY} />
+							<circle cx={endX} cy={endY} r="5" />
+						</g>
+					))}
+				</svg>
+			</div>
+
+			<div className="neural-card__actions">
+				{card.colors.map((color) => (
+					<button
+						key={color}
+						className={`neural-card__btn neural-card__btn--${color}`}
+						onClick={(e) => {
+							e.stopPropagation();
+							onPickColor(color);
+						}}
+					>
+						{color}
+					</button>
+				))}
+			</div>
 		</div>
 	);
 };
 
-
+export const Hand: React.FC<Props> = ({ rules, cards, selectedIndex, onSelect, onPickColor }) => {
+	return (
+		<div className="hand-cards">
+			{cards.map((card, i) => (
+				<NeuralCard
+					key={`${serializeCard(card)}-${i}`}
+					card={card}
+					isSelected={i === selectedIndex}
+					rules={rules}
+					onSelect={() => onSelect(i)}
+					onPickColor={(color) => onPickColor(i, color)}
+				/>
+			))}
+		</div>
+	);
+};

@@ -127,9 +127,10 @@ export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showR
 				const split = !isPathMode && sortedOccupants.length >= 2 ? [asVisibleColor(sortedOccupants[0] as Color), asVisibleColor(sortedOccupants[1] as Color)] as [string, string] : null;
 				
 				// In path mode, hex fill is neutral - lanes show the colors
+				// Dark theme: use dark fills instead of light grays
 				const hexFill = isPathMode
-					? (isHighlight ? highlightColor : isOrigin ? '#d1d5db' : '#f3f4f6')
-					: (sortedOccupants[0] ? asVisibleColor(sortedOccupants[0]) : isHighlight ? highlightColor : isOrigin ? '#d1d5db' : '#f3f4f6');
+					? (isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24')
+					: (sortedOccupants[0] ? asVisibleColor(sortedOccupants[0]) : isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24');
 				
 				return (
 					<g key={key(c)}>
@@ -139,15 +140,15 @@ export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showR
 							fill={hexFill}
 							splitFills={split ?? undefined}
 							fillOpacity={isHighlight ? 0.35 : (isRotatable && !isPathMode ? 0.7 : 1)}
-							stroke={isRotatable && !isPathMode ? highlightColor : (isOrigin ? '#ef4444' : '#9ca3af')}
+							stroke={isRotatable && !isPathMode ? highlightColor : (isOrigin ? '#aa66ff' : '#2a2a3d')}
 							strokeWidth={isRotatable && !isPathMode ? 3 : (isOrigin ? 2 : 1)}
 							onClick={() => !isPathMode && onHexClick(c)}
 						>
 							{effectiveShowRing && (
-								<text x={0} y={4} fontSize={8} textAnchor="middle" fill="#111827">{ringIndex(c)}</text>
+								<text x={0} y={4} fontSize={8} textAnchor="middle" fill="#606070">{ringIndex(c)}</text>
 							)}
 							{isOrigin && occupants.length === 0 && !isPathMode && (
-								<circle cx={0} cy={0} r={size * 0.3} fill="none" stroke="#ef4444" strokeWidth={2} strokeDasharray="4,2" />
+								<circle cx={0} cy={0} r={size * 0.3} fill="none" stroke="#aa66ff" strokeWidth={2} strokeDasharray="4,2" />
 							)}
 							{/* Rotation indicator - hide in path mode */}
 							{!isPathMode && isRotatable && !isPendingRotation && (
@@ -302,8 +303,8 @@ export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showR
 							cx={center.x}
 							cy={center.y}
 							r={size * 0.15}
-							fill={isSelectedSource ? highlightColor : (isOrigin ? '#ef4444' : '#e5e7eb')}
-							stroke="#111827"
+							fill={isSelectedSource ? highlightColor : (isOrigin ? '#aa66ff' : '#3a3a4d')}
+							stroke="#1a1a24"
 							strokeWidth={0.5}
 						/>
 					</g>

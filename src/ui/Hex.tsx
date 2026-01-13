@@ -23,7 +23,7 @@ const polygonPoints = (size: number): string => {
 	return pts.join(' ');
 };
 
-export const Hex: React.FC<Props> = ({ center, size, fill, splitFills, fillOpacity = 1, stroke = '#111827', strokeWidth = 1, onClick, children }) => {
+export const Hex: React.FC<Props> = ({ center, size, fill, splitFills, fillOpacity = 1, stroke = '#2a2a3d', strokeWidth = 1, onClick, children }) => {
 	const idBase = `hex-${Math.round(center.x)}-${Math.round(center.y)}`;
 	const pts = polygonPoints(size);
 	return (

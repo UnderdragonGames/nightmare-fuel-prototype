@@ -65,6 +65,10 @@ export type PlacementRules = {
 	// require at least N same-color "lanes" connecting that junction back to center.
 	// (i.e., forks must be "supported" by parallel trunk paths.)
 	FORK_SUPPORT: boolean;
+	// Path-mode option: paths cannot intersect (all edges at a tile must come from same source)
+	NO_INTERSECT: boolean;
+	// Path-mode option: tiles at the rim (edge of board) cannot have outgoing edges
+	NO_BUILD_FROM_RIM: boolean;
 	// Special placement: discard 2 of same color to place ignoring direction rules
 	TWO_TO_ROTATE: boolean;
 	// Overwrite rule: 'none' (disabled), 'match-4' (discard 4 of same color to overwrite a lane)

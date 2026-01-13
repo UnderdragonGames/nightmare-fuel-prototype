@@ -320,7 +320,7 @@ export const HexStringsGame: Game<GState> = {
 			const playerID = ctx.currentPlayer as PlayerID;
 			const coords = buildAllCoords(G.radius);
 			const hand = G.hands[playerID] ?? [];
-			
+
 			// Enumerate playCard moves
 			for (let i = 0; i < hand.length; i += 1) {
 				const card = hand[i]!;
@@ -332,17 +332,44 @@ export const HexStringsGame: Game<GState> = {
 					}
 				}
 			}
-			
+
+			// Enumerate rotateTile moves
+			if (rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
+				for (let i = 0; i < hand.length; i += 1) {
+					const card = hand[i]!;
+					for (const co of coords) {
+						const tile = G.board[key(co)];
+						if (!tile || tile.colors.length === 0) continue;
+
+						// Check match-color constraint
+						if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
+							const hasMatchingColor = card.colors.some((c) => tile.colors.includes(c));
+							if (!hasMatchingColor) continue;
+						}
+
+						// Valid rotation amounts: 1, 2, 4, 5 (exclude 3 = 180°)
+						for (const rotation of [1, 2, 4, 5]) {
+							moves.push({ move: 'rotateTile', args: [{ coord: co, handIndex: i, rotation }] });
+						}
+					}
+				}
+			}
+
 			// Enumerate stashToTreasure moves
 			if (G.treasure.length < rules.TREASURE_MAX && hand.length > 0) {
 				for (let i = 0; i < hand.length; i += 1) {
 					moves.push({ move: 'stashToTreasure', args: [{ handIndex: i }] });
 				}
 			}
-			
+
+			// Enumerate takeFromTreasure moves
+			for (let i = 0; i < G.treasure.length; i += 1) {
+				moves.push({ move: 'takeFromTreasure', args: [{ index: i }] });
+			}
+
 			// Always allow ending turn
 			moves.push({ move: 'endTurnAndRefill', args: [] });
-			
+
 			return moves;
 		},
 	},

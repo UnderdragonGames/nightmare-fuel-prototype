@@ -41,6 +41,8 @@ const HEX_PLACEMENT: PlacementRules = {
 	MAX_LANES_PER_PATH: 2,
 	// Path-mode only (ignored in hex mode)
 	FORK_SUPPORT: false,
+	NO_INTERSECT: false,
+	NO_BUILD_FROM_RIM: false,
 	// Special placement rules (disabled for base hex mode)
 	TWO_TO_ROTATE: false,
 	OVERWRITE: 'none',
@@ -103,15 +105,20 @@ export const HEX_RULES: Rules = {
 // Path mode rules - dot-to-dot placement
 export const PATH_RULES: Rules = {
 	...HEX_RULES,
-  RADIUS: 4,
+	RADIUS: 4,
 	MODE: 'path',
 	PLACEMENT: {
 		...HEX_PLACEMENT,
-		// In path mode, allow up to 3 lanes per path; keep other defaults identical for now.
+		// Path mode: no edge-color matching, just connectivity + fork support
+		OUTWARD_RULE: 'none',
+		// In path mode, allow up to 3 instances per path segment
 		MAX_LANES_PER_PATH: 3,
-		// New path-mode rule option:
-		// require forks to be supported by parallel same-color lanes back to center.
+		// Fork support: OUT(N) ≤ IN(N) at each node
 		FORK_SUPPORT: true,
+		// Paths cannot intersect: all incoming edges at a tile must come from same source
+		NO_INTERSECT: true,
+		// Tiles at rim cannot have outgoing edges (paths terminate at rim)
+		NO_BUILD_FROM_RIM: true,
 	},
 	SCORING: {
 		...HEX_SCORING,

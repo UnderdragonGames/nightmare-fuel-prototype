@@ -35,8 +35,8 @@ export const Players: React.FC<Props> = ({ players, currentPlayer, scores, goals
 							<select value={botByPlayer[pid] ?? 'None'} onChange={(e) => onToggleBot(pid, e.target.value as BotKind)}>
 								<option value="None">Human</option>
 								<option value="Random">Random</option>
-								<option value="Dumb">Dumb</option>
-								<option value="Smart">Smart</option>
+								<option value="Evaluator">Evaluator</option>
+								<option value="EvaluatorPlus">Evaluator+</option>
 							</select>
 						</li>
 					);
