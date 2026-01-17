@@ -25,7 +25,7 @@ export type GState = {
 	stats: { placements: number };
 	meta: {
 		deckExhaustionCycle: number | null; // cycle index when deck was first exhausted
-		stashBonus: Record<PlayerID, number>; // number of bonus cards to draw at end of turn from stashing
+		stashBonus: Record<PlayerID, number>; // bonus draws earned this turn (paid out at endTurnAndRefill, then reset)
 	};
 	origins: Co[]; // starting places for scoring (center or random)
 };
@@ -61,9 +61,8 @@ export type PlacementRules = {
 	MULTI_CAP_FIRST_RINGS: number;
 	// Hard cap on lanes per coord / path
 	MAX_LANES_PER_PATH: number;
-	// Path-mode option: for any same-color junction that splits into N outward branches,
-	// require at least N same-color "lanes" connecting that junction back to center.
-	// (i.e., forks must be "supported" by parallel trunk paths.)
+	// Path-mode option: support indicates number of branches that can spawn at a node.
+	// Single (1 lane) = no branching, Double (2 lanes) = 1 branch per node, Triple (3 lanes) = 2 branches per node (max).
 	FORK_SUPPORT: boolean;
 	// Path-mode option: paths cannot intersect (all edges at a tile must come from same source)
 	NO_INTERSECT: boolean;

@@ -1,5 +1,3 @@
-/* eslint-disable no-console */
-/* eslint-disable no-debugger */
 import React from 'react';
 import './App.css';
 import type { PlayerID } from 'boardgame.io';
@@ -14,65 +12,11 @@ import { computeScores } from './game/scoring';
 import { buildAllCoords, canPlace, asVisibleColor, key } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
 import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, type BotKind } from './game/bots';
+import { PlayerCard } from './ui/PlayerCard';
 
 // Types
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
 type AppBoardProps = BGIOBoardProps<GState> & ExtraBoardProps;
-
-// PlayersStrip component for header
-const PlayersStrip: React.FC<{
-	players: PlayerID[];
-	currentPlayer: PlayerID;
-	scores: Record<PlayerID, number>;
-	goalsByPlayer: Record<PlayerID, { primary: Color; secondary: Color; tertiary: Color }>;
-	botByPlayer: Record<PlayerID, BotKind>;
-}> = ({ players, currentPlayer, scores, goalsByPlayer, botByPlayer }) => {
-	return (
-		<div className="players-strip">
-			{players.map((pid) => {
-				const isTurn = pid === currentPlayer;
-				const goals = goalsByPlayer[pid]!;
-				return (
-					<div key={pid} className={`player-badge ${isTurn ? 'player-badge--active' : ''}`}>
-						<span className="player-badge__id">P{pid}</span>
-						<span className="player-badge__score">{scores[pid] ?? 0}</span>
-						<div className="player-badge__goals">
-							{[goals.primary, goals.secondary, goals.tertiary].map((col, i) => (
-								<span key={`${col}-${i}`} className={`player-badge__goal player-badge__goal--${col}`} />
-							))}
-						</div>
-						{botByPlayer[pid] !== 'None' && (
-							<span className="player-badge__bot">BOT</span>
-						)}
-					</div>
-				);
-			})}
-		</div>
-	);
-};
-
-// DeckPile component for visual deck/discard
-const DeckPile: React.FC<{ count: number; label: string }> = ({ count, label }) => {
-	const visibleCards = Math.min(count, 5);
-	return (
-		<div className="deck-pile">
-			<div className="deck-pile__stack">
-				{Array.from({ length: visibleCards }).map((_, i) => (
-					<div
-						key={i}
-						className="deck-pile__card"
-						style={{
-							transform: `translateY(${-i * 2}px) rotate(${(i - 2) * 1.5}deg)`,
-						}}
-					/>
-				))}
-				{count === 0 && <div className="deck-pile__empty" />}
-			</div>
-			<div className="deck-pile__count">{count}</div>
-			<div className="deck-pile__label">{label}</div>
-		</div>
-	);
-};
 
 const GameBoard: React.FC<AppBoardProps> = ({
 	G,
@@ -93,6 +37,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const showRing = useUIStore((s) => s.showRing);
 	const setShowRing = useUIStore((s) => s.setShowRing);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
+	const setBotFor = useUIStore((s) => s.setBotFor);
 	const [placeable, setPlaceable] = React.useState<Co[]>([]);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 
@@ -106,6 +51,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const stage = (ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[currentPlayer as PlayerID] : undefined) ?? 'active';
 	const locked = stage !== 'active';
 	const isPathMode = rules.MODE === 'path';
+
+	// Card is selected = board is interactable
+	const boardInteractable = selectedCard !== null;
 
 	// Helper: get color that connects source to destination (if they're neighbors)
 	const getColorForDirection = (source: Co, dest: Co): Color | null => {
@@ -403,8 +351,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		}
 	}, [ctx.currentPlayer, playerID, botByPlayer, onSetViewer]);
 
-	const onEndTurn = async () => {
-		moves.endTurnAndRefill && moves.endTurnAndRefill();
+	const onEndTurn = () => {
+		if (moves.endTurnAndRefill) moves.endTurnAndRefill();
 	};
 	const onStash = () => {
 		if (selectedCard !== null) {
@@ -420,78 +368,47 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const stashBonus = isMyTurn ? (G.meta.stashBonus[currentPlayer as PlayerID] ?? 0) : 0;
 
 	return (
-		<div className="game-container">
-			{/* HEADER */}
-			<header className="game-header">
-				<div className="game-header__left">
-					<span className="game-header__title">Nightmare Fuel</span>
-					<PlayersStrip
-						players={ctx.playOrder as PlayerID[]}
-						currentPlayer={ctx.currentPlayer as PlayerID}
-						scores={scores as Record<PlayerID, number>}
-						goalsByPlayer={G.prefs}
-						botByPlayer={botByPlayer}
-					/>
+		<div className="game-layout">
+			{/* LEFT PANEL - Players */}
+			<aside className="game-players">
+				<div className="game-players__header">
+					<h2 className="game-players__title">Players</h2>
+					<div className="game-players__info">
+						<span className="deck-count">
+							<span className="deck-count__icon">◆</span>
+							{G.deck.length}
+						</span>
+						<span className="deck-count deck-count--discard">
+							<span className="deck-count__icon">◇</span>
+							{G.discard.length}
+						</span>
+					</div>
 				</div>
-				<div className="game-header__right">
-					<div className="deck-info">
-						<span className="deck-info__item">Deck: <span className="deck-info__count">{G.deck.length}</span></span>
-						<span className="deck-info__item">Discard: <span className="deck-info__count">{G.discard.length}</span></span>
-					</div>
-					<div className="action-bar">
-						{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
-							<button
-								className={`action-btn ${rotationMode ? 'action-btn--primary' : 'action-btn--ghost'}`}
-								onClick={() => {
-									setRotationMode(!rotationMode);
-									setSelectedCard(null);
-									setSelectedColor(null);
-									setPlaceable([]);
-								}}
-								disabled={!isMyTurn || locked}
-							>
-								Rotate
-							</button>
-						)}
-						<button
-							className="action-btn action-btn--ghost"
-							onClick={() => {
-								undo();
-								setSelectedCard(null);
-								setSelectedColor(null);
-								setPlaceable([]);
-								setPendingRotationTile(null);
-								setRotatable([]);
-								setRotationMode(false);
-							}}
-							disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
-						>
-							Undo
-						</button>
-						<button
-							className="action-btn action-btn--secondary"
-							onClick={onStash}
-							disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
-						>
-							Stash{stashBonus > 0 && <span className="bonus">+{stashBonus}</span>}
-						</button>
-						<button
-							className="action-btn action-btn--primary"
-							onClick={onEndTurn}
-							disabled={!isMyTurn}
-						>
-							End Turn
-						</button>
-					</div>
+				<div className="game-players__list">
+					{(ctx.playOrder as PlayerID[]).map((pid) => (
+						<PlayerCard
+							key={pid}
+							pid={pid}
+							isTurn={pid === currentPlayer}
+							score={scores[pid] ?? 0}
+							goals={G.prefs[pid]!}
+							botKind={botByPlayer[pid] ?? 'None'}
+							onBotChange={(bot) => setBotFor(pid, bot)}
+							isViewer={pid === viewer}
+							onSetViewer={() => onSetViewer(pid)}
+						/>
+					))}
+				</div>
+				<div className="game-players__controls">
 					<label className="options-toggle">
 						<input type="checkbox" checked={showRing} onChange={(e) => setShowRing(e.target.checked)} />
-						Ring
+						Show Ring
 					</label>
 				</div>
-			</header>
+			</aside>
 
-			{/* BOARD AREA */}
-			<main className="game-board-area">
+			{/* RIGHT PANEL - Board */}
+			<main className={`game-board ${boardInteractable ? 'game-board--active' : 'game-board--inactive'}`}>
 				<HexBoard
 					rules={rules}
 					board={G.board}
@@ -509,25 +426,32 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				{/* Mode hints */}
 				{isPathMode && selectedCard !== null && !selectedSourceDot && (
 					<div className="mode-hint mode-hint--path">
-						<strong>Path Mode:</strong> Click a dot to select source, then click a neighbor to place.
+						Click a dot to select source, then click a neighbor to place.
 					</div>
 				)}
 				{isPathMode && selectedSourceDot && (
 					<div className="mode-hint mode-hint--source">
-						Source selected! Click a highlighted dot to place, or click source again to deselect.
+						Click a highlighted dot to place, or source again to deselect.
 					</div>
 				)}
 			</main>
 
-			{/* BOTTOM DOCK */}
-			<footer className="game-dock">
-				<div className="game-dock__section game-dock__hand">
-					<h4 className="game-dock__section-title">Your Hand</h4>
+			{/* FLOATING CARDS */}
+			<div className={`floating-hand ${selectedCard !== null ? 'floating-hand--has-selection' : ''}`}>
+				<div className="floating-hand__cards">
 					<Hand
 						rules={rules}
 						cards={myHand}
 						selectedIndex={selectedCard}
 						onSelect={(index) => {
+							if (selectedCard === index) {
+								// Deselect on second click
+								setSelectedCard(null);
+								setSelectedColor(null);
+								setPlaceable([]);
+								setSelectedSourceDot(null);
+								return;
+							}
 							setSelectedCard(index);
 							setSelectedSourceDot(null);
 							const c = myHand[index];
@@ -546,38 +470,75 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						onPickColor={onPickColor}
 					/>
 				</div>
-				<div className="game-dock__section game-dock__decks">
-					<DeckPile count={G.deck.length} label="Deck" />
-					<DeckPile count={G.discard.length} label="Discard" />
+				<div className="floating-hand__actions">
+					{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
+						<button
+							className={`floating-action ${rotationMode ? 'floating-action--active' : ''}`}
+							onClick={() => {
+								setRotationMode(!rotationMode);
+								setSelectedCard(null);
+								setSelectedColor(null);
+								setPlaceable([]);
+							}}
+							disabled={!isMyTurn || locked}
+							title="Rotate Mode"
+						>
+							↻
+						</button>
+					)}
+					<button
+						className="floating-action"
+						onClick={() => {
+							undo();
+							setSelectedCard(null);
+							setSelectedColor(null);
+							setPlaceable([]);
+							setPendingRotationTile(null);
+							setRotatable([]);
+							setRotationMode(false);
+						}}
+						disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
+						title="Undo"
+					>
+						⟲
+					</button>
+					<button
+						className="floating-action"
+						onClick={onStash}
+						disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
+						title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
+					>
+						⬇
+					</button>
+					<button
+						className="floating-action floating-action--primary"
+						onClick={onEndTurn}
+						disabled={!isMyTurn}
+						title="End Turn"
+					>
+						✓
+					</button>
 				</div>
-				<div className="game-dock__section game-dock__treasure">
-					<h4 className="game-dock__section-title">Treasure</h4>
+			</div>
+
+			{/* FLOATING TREASURE */}
+			{G.treasure.length > 0 && (
+				<div className="floating-treasure">
+					<div className="floating-treasure__label">Treasure</div>
 					<Treasure rules={rules} cards={G.treasure} onTake={onTakeTreasure} />
 				</div>
-			</footer>
+			)}
 
 			{/* Game Over overlay */}
 			{ctx.gameover && (
-				<div style={{
-					position: 'fixed',
-					inset: 0,
-					background: 'rgba(0,0,0,0.8)',
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'center',
-					zIndex: 100,
-				}}>
-					<div style={{
-						background: 'var(--bg-surface)',
-						padding: 32,
-						borderRadius: 12,
-						textAlign: 'center',
-					}}>
-						<h2 style={{ marginBottom: 16 }}>Game Over</h2>
-						<ul style={{ textAlign: 'left' }}>
+				<div className="game-over-overlay">
+					<div className="game-over-modal">
+						<h2>Game Over</h2>
+						<ul className="game-over-scores">
 							{Object.entries((ctx.gameover as { scores: Record<PlayerID, number> }).scores).map(([pid2, s]) => (
-								<li key={`go-${pid2}`} style={{ padding: '4px 0' }}>
-									Player {pid2}: <strong>{s}</strong>
+								<li key={`go-${pid2}`}>
+									<span className="game-over-scores__player">P{pid2}</span>
+									<span className="game-over-scores__value">{s}</span>
 								</li>
 							))}
 						</ul>
@@ -597,8 +558,6 @@ const App: React.FC = () => {
 	const setViewer = useUIStore((s) => s.setViewer);
 	const matchID = useUIStore((s) => s.matchID);
 	const setMatchID = useUIStore((s) => s.setMatchID);
-	const botByPlayer = useUIStore((s) => s.botByPlayer);
-	const setBotFor = useUIStore((s) => s.setBotFor);
 	const serverURL = import.meta.env.VITE_SERVER_URL || 'http://localhost:8000';
 
 	const ClientComp = React.useMemo(
@@ -615,76 +574,24 @@ const App: React.FC = () => {
 	}, [numPlayers, viewer, setViewer]);
 
 	return (
-		<div className="app-layout">
-			<aside className="setup-sidebar">
-				<div className="setup-sidebar__section">
-					<div className="setup-sidebar__title">Players</div>
-					<div className="setup-sidebar__row">
-						<label>Viewer:</label>
-						<select value={viewer} onChange={(e) => setViewer(e.target.value as PlayerID)}>
-							{Array.from({ length: numPlayers }).map((_, i) => (
-								<option key={i} value={String(i)}>{`P${i}`}</option>
-							))}
-						</select>
-					</div>
-					<div className="setup-sidebar__row">
-						<button onClick={() => {
-							const next = Math.min(8, numPlayers + 1);
-							setNumPlayers(next);
-							resetBotsForCount(next);
-							if (matchID) setMatchID(`match-${Date.now()}`);
-						}}>Add</button>
-						<button onClick={() => {
-							const next = Math.max(2, numPlayers - 1);
-							setNumPlayers(next);
-							resetBotsForCount(next);
-							if (matchID) setMatchID(`match-${Date.now()}`);
-						}} disabled={numPlayers <= 2}>Remove</button>
-					</div>
-					<div className="setup-sidebar__hint">Changing count restarts game.</div>
-				</div>
-
-				<div className="setup-sidebar__section">
-					<div className="setup-sidebar__title">Bot Controls</div>
-					{Array.from({ length: numPlayers }).map((_, i) => {
-						const pid = String(i) as PlayerID;
-						return (
-							<div key={pid} className="setup-sidebar__row">
-								<span style={{ minWidth: 30 }}>P{pid}</span>
-								<select value={botByPlayer[pid] ?? 'None'} onChange={(e) => setBotFor(pid, e.target.value as BotKind)}>
-									<option value="None">Human</option>
-									<option value="Random">Random</option>
-									<option value="Evaluator">Evaluator</option>
-									<option value="EvaluatorPlus">Evaluator+</option>
-								</select>
-							</div>
-						);
-					})}
-				</div>
-
-				<div className="setup-sidebar__section">
-					<div className="setup-sidebar__title">Match</div>
-					<div className="setup-sidebar__row">
-						<input
-							type="text"
-							value={matchID || ''}
-							onChange={(e) => setMatchID(e.target.value || null)}
-							placeholder="local"
-							style={{ flex: 1 }}
-						/>
-					</div>
-					<div className="setup-sidebar__row">
-						<button onClick={() => setMatchID(`match-${Date.now()}`)}>New Match</button>
-						<button onClick={() => setMatchID(null)} disabled={!matchID}>Local</button>
-					</div>
-					<div className="setup-sidebar__hint">
-						{matchID ? `Connected to ${serverURL}` : 'Local mode'}
-					</div>
-				</div>
-			</aside>
-			<main className="app-layout__main">
-				<ClientComp playerID={viewer} matchID={matchID || undefined} viewer={viewer} onSetViewer={setViewer} />
-			</main>
+		<div className="app-root">
+			{/* Setup controls in top-left corner */}
+			<div className="setup-controls">
+				<button onClick={() => {
+					const next = Math.min(8, numPlayers + 1);
+					setNumPlayers(next);
+					resetBotsForCount(next);
+					if (matchID) setMatchID(`match-${Date.now()}`);
+				}}>+</button>
+				<span className="setup-controls__count">{numPlayers}P</span>
+				<button onClick={() => {
+					const next = Math.max(2, numPlayers - 1);
+					setNumPlayers(next);
+					resetBotsForCount(next);
+					if (matchID) setMatchID(`match-${Date.now()}`);
+				}} disabled={numPlayers <= 2}>−</button>
+			</div>
+			<ClientComp playerID={viewer} matchID={matchID || undefined} viewer={viewer} onSetViewer={setViewer} />
 		</div>
 	);
 };

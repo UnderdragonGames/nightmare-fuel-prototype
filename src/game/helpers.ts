@@ -155,10 +155,11 @@ export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): bool
 	const edgeSource: Co = { q: coord.q - dir.q, r: coord.r - dir.r };
 
 	// NO_BUILD_FROM_RIM: Can't build from tiles at the rim (paths terminate at rim)
+	// Also blocks sources outside the board (ring > radius)
 	if (rules.PLACEMENT.NO_BUILD_FROM_RIM) {
 		const sourceRing = ringIndex(edgeSource);
-		if (sourceRing === G.radius) {
-			return false; // Source is at rim, can't build from it
+		if (sourceRing >= G.radius) {
+			return false; // Source is at or beyond rim, can't build from it
 		}
 	}
 
@@ -335,21 +336,28 @@ const countOutgoing = (nodeKey: string, caps: EdgeCaps, allNodes: Set<string>): 
 const DEBUG_FORK_SUPPORT = false; // Set to true to enable debug logging
 
 /**
- * FORK SUPPORT INVARIANT (Kirchhoff's Law)
- * =========================================
+ * FORK SUPPORT INVARIANT (Support-Based Branching)
+ * =================================================
  *
  * Mathematical Model:
  * - Graph G = (V, E) where each tile at position P with color C creates edge: (P - dir(C)) → P
  * - Origins are source nodes (infinite supply)
  *
  * The Invariant:
- *   For every non-origin node N: OUT(N) ≤ IN(N)
+ *   For every non-origin node N: OUT(N) ≤ IN(N) + allowedExtra(IN(N))
  *
  *   Where:
  *     IN(N)  = count of edges (X → N)
  *     OUT(N) = count of edges (N → Y)
+ *     allowedExtra(n) = min(n - 1, 2)
  *
- * In plain English: You cannot fork into more branches than paths feeding into you.
+ * Branching by support level:
+ *   - Single (IN=1): 0 extra branches → OUT ≤ 1 (no branching)
+ *   - Double (IN=2): 1 extra branch  → OUT ≤ 3 (can branch once per node)
+ *   - Triple (IN=3): 2 extra branches → OUT ≤ 5 (max branching: 2 per node)
+ *
+ * In plain English: Support indicates how many branches can spawn at a node.
+ * Single lanes can't branch. Each additional lane adds branching capacity (up to 2 max).
  */
 const forkSupportOkAfterPlacement = (G: GState, placeCoord: Co, placeColor: Color, rules: Rules): boolean => {
 	const caps = buildEdgeCapsAfterPlacement(G, placeCoord, placeColor, rules);
@@ -364,22 +372,25 @@ const forkSupportOkAfterPlacement = (G: GState, placeCoord: Co, placeColor: Colo
 		console.log('[ForkSupport] All edges:', Array.from(caps.entries()).map(([k, v]) => `${k}(${v})`).join(', '));
 	}
 
-	// Check the invariant: OUT(N) ≤ IN(N) for every non-origin node
+	// Check the invariant: OUT(N) ≤ IN(N) + allowedExtra for every non-origin node
 	for (const nodeKey of allNodes) {
 		// Origins have infinite supply, skip them
 		if (originKeys.has(nodeKey)) continue;
 
 		const inCount = countIncoming(nodeKey, caps, allNodes);
 		const outCount = countOutgoing(nodeKey, caps, allNodes);
+		// Support-based branching: extra branches allowed = min(IN - 1, 2)
+		const allowedExtra = Math.min(Math.max(inCount - 1, 0), 2);
+		const maxOut = inCount + allowedExtra;
 
 		if (DEBUG_FORK_SUPPORT) {
-			console.log(`[ForkSupport] Node ${nodeKey}: IN=${inCount}, OUT=${outCount}`, outCount > inCount ? '← VIOLATION!' : '✓');
+			console.log(`[ForkSupport] Node ${nodeKey}: IN=${inCount}, OUT=${outCount}, maxOUT=${maxOut}`, outCount > maxOut ? '← VIOLATION!' : '✓');
 		}
 
-		// THE INVARIANT: OUT(N) ≤ IN(N)
-		if (outCount > inCount) {
+		// THE INVARIANT: OUT(N) ≤ IN(N) + allowedExtra
+		if (outCount > maxOut) {
 			if (DEBUG_FORK_SUPPORT) {
-				console.log(`[ForkSupport] BLOCKED: Node ${nodeKey} has OUT(${outCount}) > IN(${inCount})`);
+				console.log(`[ForkSupport] BLOCKED: Node ${nodeKey} has OUT(${outCount}) > maxOUT(${maxOut})`);
 			}
 			return false;
 		}

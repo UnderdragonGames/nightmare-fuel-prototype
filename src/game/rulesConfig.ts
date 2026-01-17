@@ -105,7 +105,7 @@ export const HEX_RULES: Rules = {
 // Path mode rules - dot-to-dot placement
 export const PATH_RULES: Rules = {
 	...HEX_RULES,
-	RADIUS: 4,
+	RADIUS: 5,
 	MODE: 'path',
 	PLACEMENT: {
 		...HEX_PLACEMENT,
@@ -113,7 +113,7 @@ export const PATH_RULES: Rules = {
 		OUTWARD_RULE: 'none',
 		// In path mode, allow up to 3 instances per path segment
 		MAX_LANES_PER_PATH: 3,
-		// Fork support: OUT(N) ≤ IN(N) at each node
+		// Fork support: lanes determine branching capacity (single=0, double=1, triple=2 branches per node)
 		FORK_SUPPORT: true,
 		// Paths cannot intersect: all incoming edges at a tile must come from same source
 		NO_INTERSECT: true,

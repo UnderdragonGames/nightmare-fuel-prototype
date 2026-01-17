@@ -93,7 +93,12 @@ export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showR
 	}
 
 	return (
-		<svg width={marginX * 2} height={marginY * 2} viewBox={`${-marginX} ${-marginY} ${marginX * 2} ${marginY * 2}`}>
+		<svg 
+			width="100%" 
+			height="100%" 
+			viewBox={`${-marginX} ${-marginY} ${marginX * 2} ${marginY * 2}`}
+			preserveAspectRatio="xMidYMid meet"
+		>
 			{/* Corner circles indicating color directions, aligned to COLOR_TO_DIR */}
 			<g>
 				{(rules.COLORS as Color[]).map((col) => {

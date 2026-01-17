@@ -2,6 +2,7 @@ import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
 import { buildAllCoords, canPlace, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation } from './helpers';
 import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
+import { enumerateActions } from './ai';
 import { buildDeck } from './deck';
 import { computeScores } from './scoring';
 
@@ -270,8 +271,7 @@ export const HexStringsGame: Game<GState> = {
 						if (!card) return;
 						G.treasure.push(card);
 						hand.splice(args.handIndex, 1);
-						const drawn = drawOne(G);
-						if (drawn) hand.push(drawn);
+						// No immediate draw — bonus draws happen at end of turn
 						G.meta.stashBonus[pid] = (G.meta.stashBonus[pid] ?? 0) + 1;
 					},
 					takeFromTreasure: (context, args: MoveTakeTreasureArgs) => {
@@ -286,7 +286,13 @@ export const HexStringsGame: Game<GState> = {
 						const { G, ctx, events } = context;
 						const rules = G.rules;
 						const pid = ctx.currentPlayer;
-						// Reset stash bonus counter for next turn
+						// Pay out stash bonus draws before refill
+						const bonus = G.meta.stashBonus[pid] ?? 0;
+						for (let i = 0; i < bonus; i += 1) {
+							const c = drawOne(G);
+							if (!c) break;
+							G.hands[pid]!.push(c);
+						}
 						G.meta.stashBonus[pid] = 0;
 						dealToHand(G, ctx.currentPlayer, rules);
 						afterRefillMaybeMarkExhaust(G, ctx, rules);
@@ -315,62 +321,14 @@ export const HexStringsGame: Game<GState> = {
 	},
 	ai: {
 		enumerate: (G: GState, ctx: Ctx) => {
-			const rules = G.rules;
-			const moves: Array<{ move: string; args: unknown[] }> = [];
 			const playerID = ctx.currentPlayer as PlayerID;
-			const coords = buildAllCoords(G.radius);
-			const hand = G.hands[playerID] ?? [];
-
-			// Enumerate playCard moves
-			for (let i = 0; i < hand.length; i += 1) {
-				const card = hand[i]!;
-				for (const color of card.colors) {
-					for (const co of coords) {
-						if (canPlace(G, co, color as Color, rules)) {
-							moves.push({ move: 'playCard', args: [{ handIndex: i, pick: color, coord: co }] });
-						}
-					}
+			// Delegate to canonical enumerator in ai.ts
+			return enumerateActions(G, playerID).map((action) => {
+				if (action.type === 'endTurnAndRefill') {
+					return { move: 'endTurnAndRefill', args: [] };
 				}
-			}
-
-			// Enumerate rotateTile moves
-			if (rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
-				for (let i = 0; i < hand.length; i += 1) {
-					const card = hand[i]!;
-					for (const co of coords) {
-						const tile = G.board[key(co)];
-						if (!tile || tile.colors.length === 0) continue;
-
-						// Check match-color constraint
-						if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
-							const hasMatchingColor = card.colors.some((c) => tile.colors.includes(c));
-							if (!hasMatchingColor) continue;
-						}
-
-						// Valid rotation amounts: 1, 2, 4, 5 (exclude 3 = 180°)
-						for (const rotation of [1, 2, 4, 5]) {
-							moves.push({ move: 'rotateTile', args: [{ coord: co, handIndex: i, rotation }] });
-						}
-					}
-				}
-			}
-
-			// Enumerate stashToTreasure moves
-			if (G.treasure.length < rules.TREASURE_MAX && hand.length > 0) {
-				for (let i = 0; i < hand.length; i += 1) {
-					moves.push({ move: 'stashToTreasure', args: [{ handIndex: i }] });
-				}
-			}
-
-			// Enumerate takeFromTreasure moves
-			for (let i = 0; i < G.treasure.length; i += 1) {
-				moves.push({ move: 'takeFromTreasure', args: [{ index: i }] });
-			}
-
-			// Always allow ending turn
-			moves.push({ move: 'endTurnAndRefill', args: [] });
-
-			return moves;
+				return { move: action.type, args: [action.args] };
+			});
 		},
 	},
 };
