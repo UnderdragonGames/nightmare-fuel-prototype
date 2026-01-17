@@ -18,6 +18,61 @@ import { PlayerCard } from './ui/PlayerCard';
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
 type AppBoardProps = BGIOBoardProps<GState> & ExtraBoardProps;
 
+// Mobile Status Bar Component
+const MobileStatusBar: React.FC<{
+	currentPlayer: PlayerID;
+	currentPlayerScore: number;
+	currentPlayerGoals: { primary: Color; secondary: Color; tertiary: Color };
+	viewer: PlayerID;
+	viewerScore: number;
+	viewerGoals: { primary: Color; secondary: Color; tertiary: Color };
+	isViewerTurn: boolean;
+	deckCount: number;
+}> = ({ currentPlayer, currentPlayerScore, currentPlayerGoals, viewer, viewerScore, viewerGoals, isViewerTurn, deckCount }) => {
+	const currentGoals = [currentPlayerGoals.primary, currentPlayerGoals.secondary, currentPlayerGoals.tertiary];
+	const viewerGoalColors = [viewerGoals.primary, viewerGoals.secondary, viewerGoals.tertiary];
+	const showViewer = viewer !== currentPlayer;
+
+	return (
+		<div className="mobile-status">
+			<div className="mobile-status__current">
+				<div className="mobile-status__turn-badge">
+					<span className="mobile-status__player">P{currentPlayer}</span>
+					<span className="mobile-status__score">{currentPlayerScore}</span>
+				</div>
+				<div className="mobile-status__priorities">
+					{currentGoals.map((col, i) => (
+						<span
+							key={`${col}-${i}`}
+							className="mobile-status__dot"
+							style={{ background: asVisibleColor(col), boxShadow: `0 0 4px ${asVisibleColor(col)}` }}
+						/>
+					))}
+				</div>
+				<span className="mobile-status__deck">◆{deckCount}</span>
+			</div>
+			{showViewer && (
+				<div className="mobile-status__viewer">
+					<span className="mobile-status__viewer-label">You (P{viewer})</span>
+					<span className="mobile-status__viewer-score">{viewerScore}</span>
+					<div className="mobile-status__priorities mobile-status__priorities--muted">
+						{viewerGoalColors.map((col, i) => (
+							<span
+								key={`v-${col}-${i}`}
+								className="mobile-status__dot mobile-status__dot--muted"
+								style={{ background: asVisibleColor(col) }}
+							/>
+						))}
+					</div>
+				</div>
+			)}
+			{isViewerTurn && (
+				<div className="mobile-status__your-turn">Your Turn!</div>
+			)}
+		</div>
+	);
+};
+
 const GameBoard: React.FC<AppBoardProps> = ({
 	G,
 	ctx,
@@ -34,6 +89,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [rotationMode, setRotationMode] = React.useState(false);
 	const [pendingRotationTile, setPendingRotationTile] = React.useState<Co | null>(null);
 	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null);
+	const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 	const showRing = useUIStore((s) => s.showRing);
 	const setShowRing = useUIStore((s) => s.setShowRing);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
@@ -282,7 +338,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	}, [rotationMode, G.board, G.radius, isMyTurn, locked]);
 
 	const botPlayOnce = async (pid: PlayerID, botKind: BotKind) => {
-		console.log('[bot] start', pid, botKind);
 		const isOwnersTurn = (owner: PlayerID) => ctxRef.current.currentPlayer === owner;
 		if (!isOwnersTurn(pid)) return;
 
@@ -327,7 +382,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		const isBot = botKind !== 'None';
 		if (!isBot) return;
 		if (playerID !== owner) {
-			console.log('[autoplay] switching viewer to owner', owner);
 			onSetViewer(owner);
 			return;
 		}
@@ -369,8 +423,32 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 	return (
 		<div className="game-layout">
-			{/* LEFT PANEL - Players */}
-			<aside className="game-players">
+			{/* MOBILE STATUS BAR */}
+			<MobileStatusBar
+				currentPlayer={currentPlayer as PlayerID}
+				currentPlayerScore={scores[currentPlayer as PlayerID] ?? 0}
+				currentPlayerGoals={G.prefs[currentPlayer as PlayerID]!}
+				viewer={viewer}
+				viewerScore={scores[viewer] ?? 0}
+				viewerGoals={G.prefs[viewer]!}
+				isViewerTurn={isMyTurn}
+				deckCount={G.deck.length}
+			/>
+
+			{/* MOBILE MENU TOGGLE */}
+			<button
+				className="mobile-menu-toggle"
+				onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+				aria-label="Toggle players menu"
+			>
+				<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+					<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+				</svg>
+				<span className="mobile-menu-toggle__count">{ctx.playOrder.length}</span>
+			</button>
+
+			{/* LEFT PANEL - Players (desktop + mobile menu) */}
+			<aside className={`game-players ${mobileMenuOpen ? 'game-players--open' : ''}`}>
 				<div className="game-players__header">
 					<h2 className="game-players__title">Players</h2>
 					<div className="game-players__info">
@@ -383,6 +461,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							{G.discard.length}
 						</span>
 					</div>
+					<button
+						className="game-players__close"
+						onClick={() => setMobileMenuOpen(false)}
+						aria-label="Close menu"
+					>
+						×
+					</button>
 				</div>
 				<div className="game-players__list">
 					{(ctx.playOrder as PlayerID[]).map((pid) => (
@@ -395,7 +480,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							botKind={botByPlayer[pid] ?? 'None'}
 							onBotChange={(bot) => setBotFor(pid, bot)}
 							isViewer={pid === viewer}
-							onSetViewer={() => onSetViewer(pid)}
+							onSetViewer={() => {
+								onSetViewer(pid);
+								setMobileMenuOpen(false);
+							}}
 						/>
 					))}
 				</div>
@@ -406,6 +494,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					</label>
 				</div>
 			</aside>
+
+			{/* MOBILE OVERLAY */}
+			{mobileMenuOpen && (
+				<div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />
+			)}
 
 			{/* RIGHT PANEL - Board */}
 			<main className={`game-board ${boardInteractable ? 'game-board--active' : 'game-board--inactive'}`}>
@@ -445,7 +538,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						selectedIndex={selectedCard}
 						onSelect={(index) => {
 							if (selectedCard === index) {
-								// Deselect on second click
 								setSelectedCard(null);
 								setSelectedColor(null);
 								setPlaceable([]);

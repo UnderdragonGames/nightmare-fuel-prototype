@@ -39,7 +39,7 @@ type BGIOClient = {
 };
 
 // Dev-only instrumentation counters
-const DEBUG = import.meta.env?.DEV ?? false;
+const DEBUG = typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production';
 const debugCounters = {
 	noOpMoves: 0,
 	enumeratorRejects: 0,
@@ -799,11 +799,17 @@ const selectWithLookahead = (G: GState, ctx: Ctx, playerID: PlayerID): Action | 
 
 const waitForStateUpdate = (): Promise<void> => {
 	return new Promise((resolve) => {
-		requestAnimationFrame(() => {
-			requestAnimationFrame(() => {
-				resolve();
+		const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number }).requestAnimationFrame;
+		if (raf) {
+			raf(() => {
+				raf(() => {
+					resolve();
+				});
 			});
-		});
+		} else {
+			// Node.js environment - resolve immediately
+			resolve();
+		}
 	});
 };
 

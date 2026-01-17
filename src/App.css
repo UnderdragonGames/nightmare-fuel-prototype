@@ -643,3 +643,339 @@
 	animation: ambientShift 30s ease-in-out infinite;
 	background-size: 200% 200%;
 }
+
+/* === MOBILE STATUS BAR === */
+.mobile-status {
+	display: none;
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 80;
+	padding: 8px 12px;
+	background: rgba(22, 22, 31, 0.95);
+	backdrop-filter: blur(12px);
+	border-bottom: 1px solid var(--border-subtle);
+	flex-direction: column;
+	gap: 4px;
+}
+
+.mobile-status__current {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.mobile-status__turn-badge {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	background: var(--accent-primary);
+	border-radius: 6px;
+}
+
+.mobile-status__player {
+	font-weight: 700;
+	font-size: 0.9rem;
+	color: white;
+}
+
+.mobile-status__score {
+	font-weight: 700;
+	font-size: 1rem;
+	color: white;
+}
+
+.mobile-status__priorities {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+}
+
+.mobile-status__dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+}
+
+.mobile-status__dot--muted {
+	opacity: 0.5;
+	width: 8px;
+	height: 8px;
+}
+
+.mobile-status__deck {
+	margin-left: auto;
+	font-size: 0.8rem;
+	color: var(--text-muted);
+}
+
+.mobile-status__viewer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-left: 4px;
+	opacity: 0.6;
+}
+
+.mobile-status__viewer-label {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+}
+
+.mobile-status__viewer-score {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.mobile-status__your-turn {
+	position: absolute;
+	right: 12px;
+	top: 50%;
+	transform: translateY(-50%);
+	padding: 4px 10px;
+	background: var(--accent-success);
+	color: white;
+	font-size: 0.75rem;
+	font-weight: 700;
+	border-radius: 4px;
+	text-transform: uppercase;
+	animation: turnPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes turnPulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.7; }
+}
+
+/* === MOBILE MENU TOGGLE === */
+.mobile-menu-toggle {
+	display: none;
+	position: fixed;
+	top: 56px;
+	left: 12px;
+	z-index: 90;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	background: rgba(22, 22, 31, 0.9);
+	backdrop-filter: blur(8px);
+	border: 1px solid var(--border-subtle);
+	border-radius: 10px;
+	color: var(--text-primary);
+	cursor: pointer;
+	align-items: center;
+	justify-content: center;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.mobile-menu-toggle:hover {
+	background: var(--bg-elevated);
+	border-color: var(--accent-primary);
+}
+
+.mobile-menu-toggle__count {
+	font-size: 0.6rem;
+	font-weight: 700;
+	color: var(--text-muted);
+}
+
+/* === MOBILE OVERLAY === */
+.mobile-overlay {
+	display: none;
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.6);
+	z-index: 95;
+}
+
+/* === MOBILE PLAYERS CLOSE BUTTON === */
+.game-players__close {
+	display: none;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	font-size: 1.5rem;
+	cursor: pointer;
+	line-height: 1;
+}
+
+.game-players__close:hover {
+	color: var(--text-primary);
+}
+
+/* === MOBILE RESPONSIVE === */
+@media (max-width: 768px) {
+	/* Show mobile elements */
+	.mobile-status {
+		display: flex;
+	}
+
+	.mobile-menu-toggle {
+		display: flex;
+	}
+
+	.mobile-overlay {
+		display: block;
+	}
+
+	.game-players__close {
+		display: block;
+	}
+
+	/* Hide setup controls on mobile */
+	.setup-controls {
+		display: none;
+	}
+
+	/* Hide players panel by default on mobile */
+	.game-players {
+		position: fixed;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		width: 260px;
+		z-index: 100;
+		transform: translateX(-100%);
+		transition: transform 0.3s ease;
+		padding-top: 16px;
+	}
+
+	.game-players--open {
+		transform: translateX(0);
+	}
+
+	.game-players__header {
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	/* Adjust board area for mobile status bar */
+	.game-board {
+		padding-top: 60px;
+		padding-bottom: 160px;
+	}
+
+	/* Smaller floating hand on mobile */
+	.floating-hand {
+		bottom: 12px;
+		left: 8px;
+		right: 8px;
+		transform: none;
+		padding: 10px 12px;
+		gap: 10px;
+		border-radius: 12px;
+	}
+
+	.floating-hand__cards {
+		flex: 1;
+		justify-content: center;
+		gap: 8px;
+		overflow-x: auto;
+	}
+
+	.floating-hand__actions {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 6px;
+		justify-content: center;
+	}
+
+	.floating-action {
+		width: 32px;
+		height: 32px;
+		font-size: 1rem;
+	}
+
+	/* Smaller cards on mobile */
+	.neural-card {
+		width: 70px;
+		height: 95px;
+		padding: 6px;
+	}
+
+	.neural-card__btn {
+		width: 18px;
+		height: 18px;
+		font-size: 7px;
+	}
+
+	/* Mode hint positioning */
+	.mode-hint {
+		bottom: auto;
+		top: 60px;
+		font-size: 0.75rem;
+		padding: 8px 12px;
+	}
+
+	/* Floating treasure positioning */
+	.floating-treasure {
+		bottom: auto;
+		top: 110px;
+		right: 12px;
+		padding: 8px 10px;
+	}
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+	.mobile-status {
+		padding: 6px 10px;
+	}
+
+	.mobile-status__turn-badge {
+		padding: 3px 8px;
+	}
+
+	.mobile-status__player {
+		font-size: 0.8rem;
+	}
+
+	.mobile-status__score {
+		font-size: 0.9rem;
+	}
+
+	.mobile-status__dot {
+		width: 8px;
+		height: 8px;
+	}
+
+	.mobile-menu-toggle {
+		top: 50px;
+		width: 40px;
+		height: 40px;
+	}
+
+	.neural-card {
+		width: 60px;
+		height: 82px;
+		padding: 4px;
+	}
+
+	.neural-card__btn {
+		width: 16px;
+		height: 16px;
+		font-size: 6px;
+	}
+
+	.floating-hand {
+		padding: 8px;
+		gap: 8px;
+	}
+
+	.floating-hand__cards {
+		gap: 6px;
+	}
+
+	.floating-action {
+		width: 28px;
+		height: 28px;
+		font-size: 0.9rem;
+	}
+}
