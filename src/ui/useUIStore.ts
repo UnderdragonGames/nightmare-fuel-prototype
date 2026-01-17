@@ -11,12 +11,14 @@ export type UIState = {
 	botByPlayer: Record<PlayerID, BotMode>;
 	showRing: boolean;
 	matchID: string | null;
+	aiPaused: boolean;
 	setViewer: (v: PlayerID) => void;
 	setNumPlayers: (n: number) => void;
 	setBotFor: (pid: PlayerID, bot: BotMode) => void;
 	setShowRing: (v: boolean) => void;
 	resetBotsForCount: (count: number) => void;
 	setMatchID: (id: string | null) => void;
+	setAiPaused: (v: boolean) => void;
 };
 
 export const useUIStore = create<UIState>()(
@@ -27,6 +29,7 @@ export const useUIStore = create<UIState>()(
 			botByPlayer: { '0': 'None', '1': 'None' },
 			showRing: false,
 			matchID: null,
+			aiPaused: false,
 			setViewer: (v) => set({ viewer: v }),
 			setNumPlayers: (n) => set({ numPlayers: n }),
 			setBotFor: (pid, bot) => set({ botByPlayer: { ...get().botByPlayer, [pid]: bot } }),
@@ -37,6 +40,7 @@ export const useUIStore = create<UIState>()(
 				set({ botByPlayer: bots });
 			},
 			setMatchID: (id) => set({ matchID: id }),
+			setAiPaused: (v) => set({ aiPaused: v }),
 		}),
 		{ name: 'ui-store' }
 	)

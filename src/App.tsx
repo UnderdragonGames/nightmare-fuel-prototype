@@ -94,6 +94,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const setShowRing = useUIStore((s) => s.setShowRing);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const setBotFor = useUIStore((s) => s.setBotFor);
+	const aiPaused = useUIStore((s) => s.aiPaused);
+	const setAiPaused = useUIStore((s) => s.setAiPaused);
 	const [placeable, setPlaceable] = React.useState<Co[]>([]);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 
@@ -381,6 +383,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		const botKind = botByPlayer[owner] ?? 'None';
 		const isBot = botKind !== 'None';
 		if (!isBot) return;
+		if (aiPaused) return;
 		if (playerID !== owner) {
 			onSetViewer(owner);
 			return;
@@ -393,7 +396,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			autoPlayingRef.current = false;
 		})());
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [ctx.currentPlayer, playerID, viewer, botByPlayer]);
+	}, [ctx.currentPlayer, playerID, viewer, botByPlayer, aiPaused]);
 
 	React.useEffect(() => {
 		const owner = ctx.currentPlayer as PlayerID;
@@ -488,6 +491,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					))}
 				</div>
 				<div className="game-players__controls">
+					<button
+						className={`ai-pause-btn ${aiPaused ? 'ai-pause-btn--paused' : ''}`}
+						onClick={() => setAiPaused(!aiPaused)}
+						title={aiPaused ? 'Resume AI' : 'Pause AI'}
+					>
+						{aiPaused ? '▶ Resume AI' : '⏸ Pause AI'}
+					</button>
 					<label className="options-toggle">
 						<input type="checkbox" checked={showRing} onChange={(e) => setShowRing(e.target.checked)} />
 						Show Ring
