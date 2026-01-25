@@ -123,7 +123,7 @@ export const PATH_RULES: Rules = {
 	SCORING: {
 		...HEX_SCORING,
 		// Default path-mode scoring is lane-symmetric; tweak after playtests.
-		COLOR_POINTS: [1, 1, 1],
+		COLOR_POINTS: [3, 2, 1],
 	},
 };
 
