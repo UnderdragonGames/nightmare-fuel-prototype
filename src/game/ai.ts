@@ -212,7 +212,14 @@ export const applyEndTurn = (G: GState, ctx: Ctx, playerID: PlayerID): { G: GSta
 	const newCtx = { ...ctx };
 	const rules = newG.rules;
 
-	// Pay out stash bonus draws before refill
+	// First refill to hand size
+	while (newG.hands[playerID]!.length < rules.HAND_SIZE) {
+		const c = newG.deck.pop() ?? null;
+		if (!c) break;
+		newG.hands[playerID]!.push(c);
+	}
+
+	// Then pay out stash bonus draws ON TOP of normal hand
 	const bonus = newG.meta.stashBonus[playerID] ?? 0;
 	for (let i = 0; i < bonus; i += 1) {
 		const c = newG.deck.pop() ?? null;
@@ -220,13 +227,6 @@ export const applyEndTurn = (G: GState, ctx: Ctx, playerID: PlayerID): { G: GSta
 		newG.hands[playerID]!.push(c);
 	}
 	newG.meta.stashBonus[playerID] = 0;
-
-	// Refill to hand size
-	while (newG.hands[playerID]!.length < rules.HAND_SIZE) {
-		const c = newG.deck.pop() ?? null;
-		if (!c) break;
-		newG.hands[playerID]!.push(c);
-	}
 
 	// Mark deck exhaustion if needed
 	if (rules.END_ON_DECK_EXHAUST && newG.deck.length === 0 && newG.meta.deckExhaustionCycle === null) {

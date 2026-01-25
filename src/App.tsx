@@ -540,86 +540,88 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			</main>
 
 			{/* FLOATING CARDS */}
-			<div className={`floating-hand ${selectedCard !== null ? 'floating-hand--has-selection' : ''}`}>
-				<div className="floating-hand__cards">
-					<Hand
-						rules={rules}
-						cards={myHand}
-						selectedIndex={selectedCard}
-						onSelect={(index) => {
-							if (selectedCard === index) {
-								setSelectedCard(null);
-								setSelectedColor(null);
-								setPlaceable([]);
+			<div className="floating-hand-wrapper">
+				<div className={`floating-hand ${selectedCard !== null ? 'floating-hand--has-selection' : ''}`}>
+					<div className="floating-hand__cards">
+						<Hand
+							rules={rules}
+							cards={myHand}
+							selectedIndex={selectedCard}
+							onSelect={(index) => {
+								if (selectedCard === index) {
+									setSelectedCard(null);
+									setSelectedColor(null);
+									setPlaceable([]);
+									setSelectedSourceDot(null);
+									return;
+								}
+								setSelectedCard(index);
 								setSelectedSourceDot(null);
-								return;
-							}
-							setSelectedCard(index);
-							setSelectedSourceDot(null);
-							const c = myHand[index];
-							if (!c) return;
-							if (isPathMode) {
-								setPlaceable(computeValidSources(c.colors));
-								setSelectedColor(null);
-							} else if (selectedColor) {
-								recomputePlaceable(selectedColor);
-							} else {
-								const coords = buildAllCoords(G.radius);
-								const union = coords.filter((co) => c.colors.some((col) => canPlace(G, co, col, rules)));
-								setPlaceable(union);
-							}
-						}}
-						onPickColor={onPickColor}
-					/>
-				</div>
-				<div className="floating-hand__actions">
-					{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
+								const c = myHand[index];
+								if (!c) return;
+								if (isPathMode) {
+									setPlaceable(computeValidSources(c.colors));
+									setSelectedColor(null);
+								} else if (selectedColor) {
+									recomputePlaceable(selectedColor);
+								} else {
+									const coords = buildAllCoords(G.radius);
+									const union = coords.filter((co) => c.colors.some((col) => canPlace(G, co, col, rules)));
+									setPlaceable(union);
+								}
+							}}
+							onPickColor={onPickColor}
+						/>
+					</div>
+					<div className="floating-hand__actions">
+						{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
+							<button
+								className={`floating-action ${rotationMode ? 'floating-action--active' : ''}`}
+								onClick={() => {
+									setRotationMode(!rotationMode);
+									setSelectedCard(null);
+									setSelectedColor(null);
+									setPlaceable([]);
+								}}
+								disabled={!isMyTurn || locked}
+								title="Rotate Mode"
+							>
+								↻
+							</button>
+						)}
 						<button
-							className={`floating-action ${rotationMode ? 'floating-action--active' : ''}`}
+							className="floating-action"
 							onClick={() => {
-								setRotationMode(!rotationMode);
+								undo();
 								setSelectedCard(null);
 								setSelectedColor(null);
 								setPlaceable([]);
+								setPendingRotationTile(null);
+								setRotatable([]);
+								setRotationMode(false);
 							}}
-							disabled={!isMyTurn || locked}
-							title="Rotate Mode"
+							disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
+							title="Undo"
 						>
-							↻
+							⟲
 						</button>
-					)}
-					<button
-						className="floating-action"
-						onClick={() => {
-							undo();
-							setSelectedCard(null);
-							setSelectedColor(null);
-							setPlaceable([]);
-							setPendingRotationTile(null);
-							setRotatable([]);
-							setRotationMode(false);
-						}}
-						disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
-						title="Undo"
-					>
-						⟲
-					</button>
-					<button
-						className="floating-action"
-						onClick={onStash}
-						disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
-						title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
-					>
-						⬇
-					</button>
-					<button
-						className="floating-action floating-action--primary"
-						onClick={onEndTurn}
-						disabled={!isMyTurn}
-						title="End Turn"
-					>
-						✓
-					</button>
+						<button
+							className="floating-action"
+							onClick={onStash}
+							disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
+							title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
+						>
+							⬇
+						</button>
+						<button
+							className="floating-action floating-action--primary"
+							onClick={onEndTurn}
+							disabled={!isMyTurn}
+							title="End Turn"
+						>
+							✓
+						</button>
+					</div>
 				</div>
 			</div>
 
@@ -651,6 +653,134 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	);
 };
 
+// Network Lobby Modal
+const NetworkModal: React.FC<{
+	isOpen: boolean;
+	onClose: () => void;
+	matchID: string | null;
+	onSetMatchID: (id: string | null) => void;
+	numPlayers: number;
+	serverURL: string;
+}> = ({ isOpen, onClose, matchID, onSetMatchID, numPlayers, serverURL }) => {
+	const [inputMatchID, setInputMatchID] = React.useState('');
+	const [isCreating, setIsCreating] = React.useState(false);
+	const [error, setError] = React.useState<string | null>(null);
+
+	if (!isOpen) return null;
+
+	const handleCreate = async () => {
+		setIsCreating(true);
+		setError(null);
+		try {
+			const res = await fetch(`${serverURL}/games/hex-strings/create`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ numPlayers }),
+			});
+			if (!res.ok) throw new Error('Failed to create match');
+			const data = await res.json();
+			onSetMatchID(data.matchID);
+			onClose();
+		} catch (e) {
+			setError(e instanceof Error ? e.message : 'Failed to create match');
+		} finally {
+			setIsCreating(false);
+		}
+	};
+
+	const handleJoin = () => {
+		if (!inputMatchID.trim()) {
+			setError('Enter a match ID');
+			return;
+		}
+		setError(null);
+		onSetMatchID(inputMatchID.trim());
+		onClose();
+	};
+
+	const handleDisconnect = () => {
+		onSetMatchID(null);
+		setInputMatchID('');
+		setError(null);
+	};
+
+	return (
+		<div className="modal-overlay" onClick={onClose}>
+			<div className="modal-content network-modal" onClick={(e) => e.stopPropagation()}>
+				<div className="modal-header">
+					<h2>Network Game</h2>
+					<button className="modal-close" onClick={onClose}>×</button>
+				</div>
+				
+				<div className="modal-body">
+					{matchID ? (
+						<div className="network-status">
+							<div className="network-status__connected">
+								<span className="network-status__dot" />
+								Connected
+							</div>
+							<div className="network-status__match-id">
+								<label>Match ID:</label>
+								<code>{matchID}</code>
+								<button 
+									className="network-status__copy"
+									onClick={() => navigator.clipboard.writeText(matchID)}
+									title="Copy"
+								>
+									📋
+								</button>
+							</div>
+							<div className="network-status__server">
+								<label>Server:</label>
+								<span>{serverURL}</span>
+							</div>
+							<button className="btn btn--danger" onClick={handleDisconnect}>
+								Disconnect
+							</button>
+						</div>
+					) : (
+						<>
+							<div className="network-section">
+								<h3>Create New Match</h3>
+								<p className="network-hint">Start a new {numPlayers}-player game and share the match ID</p>
+								<button 
+									className="btn btn--primary" 
+									onClick={handleCreate}
+									disabled={isCreating}
+								>
+									{isCreating ? 'Creating...' : 'Create Match'}
+								</button>
+							</div>
+							
+							<div className="network-divider">
+								<span>or</span>
+							</div>
+							
+							<div className="network-section">
+								<h3>Join Existing Match</h3>
+								<div className="network-join">
+									<input
+										type="text"
+										placeholder="Enter match ID"
+										value={inputMatchID}
+										onChange={(e) => setInputMatchID(e.target.value)}
+										onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+									/>
+									<button className="btn" onClick={handleJoin}>
+										Join
+									</button>
+								</div>
+							</div>
+						</>
+					)}
+					
+					{error && <div className="network-error">{error}</div>}
+				</div>
+			</div>
+		</div>
+	);
+};
+
 // App
 const App: React.FC = () => {
 	const numPlayers = useUIStore((s) => s.numPlayers);
@@ -661,6 +791,7 @@ const App: React.FC = () => {
 	const matchID = useUIStore((s) => s.matchID);
 	const setMatchID = useUIStore((s) => s.setMatchID);
 	const serverURL = import.meta.env.VITE_SERVER_URL || 'http://localhost:8000';
+	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 
 	const ClientComp = React.useMemo(
 		() => Client<GState, AppBoardProps>({
@@ -692,8 +823,25 @@ const App: React.FC = () => {
 					resetBotsForCount(next);
 					if (matchID) setMatchID(`match-${Date.now()}`);
 				}} disabled={numPlayers <= 2}>−</button>
+				<button 
+					className={`setup-controls__network ${matchID ? 'setup-controls__network--connected' : ''}`}
+					onClick={() => setNetworkModalOpen(true)}
+					title={matchID ? 'Connected to network game' : 'Network game'}
+				>
+					<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+						<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+					</svg>
+				</button>
 			</div>
 			<ClientComp playerID={viewer} matchID={matchID || undefined} viewer={viewer} onSetViewer={setViewer} />
+			<NetworkModal
+				isOpen={networkModalOpen}
+				onClose={() => setNetworkModalOpen(false)}
+				matchID={matchID}
+				onSetMatchID={setMatchID}
+				numPlayers={numPlayers}
+				serverURL={serverURL}
+			/>
 		</div>
 	);
 };

@@ -17,6 +17,12 @@ const dbConfig = dbUrl
 const server = Server({
 	games: [HexStringsGame],
 	db: dbConfig,
+	origins: [
+		'http://localhost:5173',
+		'http://localhost:3000',
+		'http://127.0.0.1:5173',
+		'https://nightmare-fuel.vercel.app',
+	],
 });
 
 const port = Number(process.env.PORT) || 8000;

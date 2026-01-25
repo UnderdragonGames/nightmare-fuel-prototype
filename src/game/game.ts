@@ -170,7 +170,8 @@ const initRulesForNewGame = (baseRules: Rules): Rules => {
 };
 
 export const HexStringsGame: Game<GState> = {
-		setup: (context) => {
+	name: 'hex-strings',
+	setup: (context) => {
 		const rules = initRulesForNewGame(RULES);
 		const radius = rules.RADIUS;
 		const deck = buildDeck(rules);
@@ -286,7 +287,9 @@ export const HexStringsGame: Game<GState> = {
 						const { G, ctx, events } = context;
 						const rules = G.rules;
 						const pid = ctx.currentPlayer;
-						// Pay out stash bonus draws before refill
+						// First refill hand to normal HAND_SIZE
+						dealToHand(G, ctx.currentPlayer, rules);
+						// Then pay out stash bonus draws ON TOP of normal hand
 						const bonus = G.meta.stashBonus[pid] ?? 0;
 						for (let i = 0; i < bonus; i += 1) {
 							const c = drawOne(G);
@@ -294,7 +297,6 @@ export const HexStringsGame: Game<GState> = {
 							G.hands[pid]!.push(c);
 						}
 						G.meta.stashBonus[pid] = 0;
-						dealToHand(G, ctx.currentPlayer, rules);
 						afterRefillMaybeMarkExhaust(G, ctx, rules);
 						events?.endTurn?.();
 					},
