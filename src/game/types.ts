@@ -8,6 +8,9 @@ export type Co = { q: number; r: number };
 
 export type PlayerPrefs = { primary: Color; secondary: Color; tertiary: Color };
 
+// Path-mode lane segment between adjacent nodes.
+export type PathLane = { from: Co; to: Co; color: Color };
+
 export type HexTile = {
 	colors: Color[];
 	rotation: number; // 0-5, number of 60-degree clockwise rotations from default orientation
@@ -17,6 +20,8 @@ export type GState = {
 	rules: Rules;
 	radius: number;
 	board: Record<string, HexTile>;
+	// Path-mode only: explicit lane segments (independent of COLOR_TO_DIR)
+	lanes: PathLane[];
 	deck: Card[];
 	discard: Card[];
 	hands: Record<PlayerID, Card[]>;
@@ -72,6 +77,10 @@ export type PlacementRules = {
 	TWO_TO_ROTATE: boolean;
 	// Overwrite rule: 'none' (disabled), 'match-4' (discard 4 of same color to overwrite a lane)
 	OVERWRITE: PlacementOverwriteRule;
+	// Consolidation: once a pathway reaches the rim, can place backwards along existing paths (reinforcement limits apply)
+	CONSOLIDATION: boolean;
+	// Consolidation win: game ends when a single continuous path reaches from rim back to center
+	CONSOLIDATION_END: boolean;
 };
 
 export type Rules = {
@@ -126,7 +135,11 @@ export type ScoringRules = BaseScoringRules;
 
 export type Scores = Record<PlayerID, number>;
 
-export type MovePlayCardArgs = { handIndex: number; pick: Color; coord: Co };
+export type MovePlayCardArgs =
+	// Hex mode: place a color at a coord
+	| { handIndex: number; pick: Color; coord: Co }
+	// Path mode: place a lane from -> coord (must be adjacent)
+	| { handIndex: number; pick: Color; coord: Co; source: Co };
 export type MoveStashArgs = { handIndex: number };
 export type MoveTakeTreasureArgs = { index: number };
 export type MoveRotateTileArgs = { coord: Co; handIndex: number; rotation: number }; // rotation: 1-5 (60°-300°), excluding 3 (180°)

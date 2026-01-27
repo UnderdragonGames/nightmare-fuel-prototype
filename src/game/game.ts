@@ -1,6 +1,6 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
-import { buildAllCoords, canPlace, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, hasRimToCenterPath } from './helpers';
 import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
 import { enumerateActions } from './ai';
 import { buildDeck } from './deck';
@@ -181,6 +181,7 @@ export const HexStringsGame: Game<GState> = {
 			rules,
 			radius,
 			board: initBoard(radius, origins, rules),
+			lanes: [],
 			deck,
 			discard: [],
 			hands: {},
@@ -219,14 +220,20 @@ export const HexStringsGame: Game<GState> = {
 							if (rules.ONE_COLOR_PER_CARD_PLAY) {
 								if (!card.colors.includes(args.pick)) return;
 							}
-							if (!canPlace(G, args.coord, args.pick, rules)) return;
-							const k = key(args.coord);
-							const tile = G.board[k];
-							if (tile) {
-								tile.colors.push(args.pick);
+							if (rules.MODE === 'path') {
+								if (!('source' in args)) return;
+								if (!canPlacePath(G, args.source, args.coord, args.pick, rules)) return;
+								G.lanes.push({ from: args.source, to: args.coord, color: args.pick });
 							} else {
-								const rotation = inferPlacementRotation(G, args.coord, args.pick);
-								G.board[k] = { colors: [args.pick], rotation };
+								if (!canPlace(G, args.coord, args.pick, rules)) return;
+								const k = key(args.coord);
+								const tile = G.board[k];
+								if (tile) {
+									tile.colors.push(args.pick);
+								} else {
+									const rotation = inferPlacementRotation(G, args.coord, args.pick);
+									G.board[k] = { colors: [args.pick], rotation };
+								}
 							}
 							G.stats.placements += 1;
 							const [used] = hand.splice(args.handIndex, 1);
@@ -308,6 +315,15 @@ export const HexStringsGame: Game<GState> = {
 	endIf: (context) => {
 		const { G, ctx } = context;
 		const rules = G.rules;
+
+		// CONSOLIDATION_END: Game ends when a continuous same-color path reaches from rim to center
+		if (rules.PLACEMENT.CONSOLIDATION_END) {
+			const completedColor = hasRimToCenterPath(G);
+			if (completedColor) {
+				return { scores: computeScores(G) };
+			}
+		}
+
 		if (!rules.END_ON_DECK_EXHAUST) return undefined;
 		if (G.meta.deckExhaustionCycle === null) return undefined;
 		if (!rules.EQUAL_TURNS) {

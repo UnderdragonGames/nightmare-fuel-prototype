@@ -46,6 +46,8 @@ const HEX_PLACEMENT: PlacementRules = {
 	// Special placement rules (disabled for base hex mode)
 	TWO_TO_ROTATE: false,
 	OVERWRITE: 'none',
+	CONSOLIDATION: false,
+	CONSOLIDATION_END: false,
 };
 
 const HEX_SCORING: ObjectiveScoringRules = {
@@ -119,6 +121,10 @@ export const PATH_RULES: Rules = {
 		NO_INTERSECT: true,
 		// Tiles at rim cannot have outgoing edges (paths terminate at rim)
 		NO_BUILD_FROM_RIM: true,
+		// Consolidation: once a pathway reaches rim, can reinforce existing paths backward toward center
+		CONSOLIDATION: true,
+		// Game ends when a continuous path reaches from rim back to center
+		CONSOLIDATION_END: true,
 	},
 	SCORING: {
 		...HEX_SCORING,

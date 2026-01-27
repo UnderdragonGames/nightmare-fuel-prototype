@@ -1,11 +1,12 @@
 import React from 'react';
 import { axialToPixel, asVisibleColor, buildAllCoords, key, ringIndex, edgeIndexToColor, neighbors } from '../game/helpers';
 import { Hex } from './Hex';
-import type { Color, Co, HexTile, Rules } from '../game/types';
+import type { Color, Co, HexTile, Rules, PathLane } from '../game/types';
 
 type Props = {
 	rules: Rules;
 	board: Record<string, HexTile>;
+	lanes?: PathLane[];
 	radius: number;
 	onHexClick: (coord: Co) => void;
 	showRing?: boolean;
@@ -16,9 +17,10 @@ type Props = {
 	onRotationSelect?: (rotation: number) => void;
 	selectedColor?: Color | null; // for path mode preview
 	selectedSourceDot?: Co | null; // for path mode: currently selected source dot
+	showCoords?: boolean;
 };
 
-export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showRing, highlightCoords = [], highlightColor = '#000000', origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null }) => {
+export const Board: React.FC<Props> = ({ rules, board, lanes = [], radius, onHexClick, showRing, highlightCoords = [], highlightColor = '#000000', origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null, showCoords = false }) => {
 	const size = rules.UI.HEX_SIZE;
 	const effectiveShowRing = showRing ?? rules.UI.SHOW_RING;
 	const coords = buildAllCoords(radius);
@@ -39,54 +41,65 @@ export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showR
 	const allLaneSegments: Array<{ x1: number; y1: number; x2: number; y2: number; color: Color; key: string }> = [];
 	
 	if (isPathMode) {
-		for (const c of coords) {
-			const tile = board[key(c)];
-			if (!tile || tile.colors.length === 0) continue;
-			const center = axialToPixel(c, size);
-			
-			for (let laneIdx = 0; laneIdx < tile.colors.length; laneIdx += 1) {
-				const laneColor = tile.colors[laneIdx];
-				if (!laneColor) continue;
-				const dirVec = rules.COLOR_TO_DIR[laneColor];
-				// Draw from this tile toward the neighbor in the OPPOSITE direction (source)
-				const source = axialToPixel({ q: c.q - dirVec.q, r: c.r - dirVec.r }, size);
-				
-				// Calculate offset for parallel lanes
-				const dx = center.x - source.x;
-				const dy = center.y - source.y;
-				const len = Math.hypot(dx, dy) || 1;
-				// Perpendicular vector
-				const perpX = -dy / len;
-				const perpY = dx / len;
-				
-				// Count same-color lanes at this tile for this direction
-				const sameColorCount = tile.colors.filter((tc) => tc === laneColor).length;
-				// If multiple lanes same color, we need unique offset per occurrence
-				const occurrenceIndex = tile.colors.slice(0, laneIdx + 1).filter((tc) => tc === laneColor).length - 1;
-				
-				// Offset from center based on total lanes and this lane's index
-				const totalLanes = tile.colors.length;
-				const offsetIndex = laneIdx - (totalLanes - 1) / 2;
-				// But if same color occurs multiple times, spread those specifically
-				const baseOffset = sameColorCount === 1 ? offsetIndex : occurrenceIndex - (sameColorCount - 1) / 2 + offsetIndex * 0.3;
-				const offset = baseOffset * laneGap;
-				
-				// Apply perpendicular offset
+		// Group lanes by *undirected* edge so backtracking/recolor lanes render side-by-side, not on top.
+		const groups = new Map<string, PathLane[]>();
+		for (const ln of lanes) {
+			const a = key(ln.from);
+			const b = key(ln.to);
+			const gk = a < b ? `${a}<->${b}` : `${b}<->${a}`;
+			const arr = groups.get(gk) ?? [];
+			arr.push(ln);
+			groups.set(gk, arr);
+		}
+
+		for (const [gk, group] of groups) {
+			const [aK, bK] = gk.split('<->');
+			if (!aK || !bK) continue;
+			const [aq, ar] = aK.split(',').map(Number);
+			const [bq, br] = bK.split(',').map(Number);
+			const a: Co = { q: aq!, r: ar! };
+			const b: Co = { q: bq!, r: br! };
+			const pA = axialToPixel(a, size);
+			const pB = axialToPixel(b, size);
+
+			// Canonical vector for consistent perpendicular offset (doesn't flip when a lane is reversed).
+			const baseDx = pB.x - pA.x;
+			const baseDy = pB.y - pA.y;
+			const baseLen = Math.hypot(baseDx, baseDy) || 1;
+			const perpX = -baseDy / baseLen;
+			const perpY = baseDx / baseLen;
+
+			// Stable ordering within the bundle (color first, then direction)
+			const ordered = [...group].sort((x, y) => {
+				if (x.color !== y.color) return x.color < y.color ? -1 : 1;
+				const xDir = `${key(x.from)}->${key(x.to)}`;
+				const yDir = `${key(y.from)}->${key(y.to)}`;
+				return xDir < yDir ? -1 : xDir > yDir ? 1 : 0;
+			});
+
+			for (let i = 0; i < ordered.length; i += 1) {
+				const ln = ordered[i]!;
+				const offsetIndex = i - (ordered.length - 1) / 2;
+				const offset = offsetIndex * laneGap;
 				const offX = perpX * offset;
 				const offY = perpY * offset;
-				
-				// Draw from 15% to 85% of the way (lane crosses hex border, stops short of dots)
+
+				const pFrom = axialToPixel(ln.from, size);
+				const pTo = axialToPixel(ln.to, size);
+				const dx = pTo.x - pFrom.x;
+				const dy = pTo.y - pFrom.y;
+
 				const tStart = 0.15;
 				const tEnd = 0.85;
-				const x1 = source.x + dx * tStart + offX;
-				const y1 = source.y + dy * tStart + offY;
-				const x2 = source.x + dx * tEnd + offX;
-				const y2 = source.y + dy * tEnd + offY;
-				
+				const x1 = pFrom.x + dx * tStart + offX;
+				const y1 = pFrom.y + dy * tStart + offY;
+				const x2 = pFrom.x + dx * tEnd + offX;
+				const y2 = pFrom.y + dy * tEnd + offY;
+
 				allLaneSegments.push({
 					x1, y1, x2, y2,
-					color: laneColor,
-					key: `${key(c)}-${laneIdx}-${laneColor}`,
+					color: ln.color,
+					key: `${gk}-${i}-${ln.color}-${key(ln.from)}->${key(ln.to)}`,
 				});
 			}
 		}
@@ -99,7 +112,7 @@ export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showR
 			viewBox={`${-marginX} ${-marginY} ${marginX * 2} ${marginY * 2}`}
 			preserveAspectRatio="xMidYMid meet"
 		>
-			{/* Corner circles indicating color directions, aligned to COLOR_TO_DIR */}
+			{/* Corner circles indicating color directions (core mechanic; applies in path mode too) */}
 			<g>
 				{(rules.COLORS as Color[]).map((col) => {
 					const dir = rules.COLOR_TO_DIR[col];
@@ -151,6 +164,17 @@ export const Board: React.FC<Props> = ({ rules, board, radius, onHexClick, showR
 						>
 							{effectiveShowRing && (
 								<text x={0} y={4} fontSize={8} textAnchor="middle" fill="#606070">{ringIndex(c)}</text>
+							)}
+							{showCoords && (
+								<text
+									x={0}
+									y={size * 0.35}
+									fontSize={8}
+									textAnchor="middle"
+									fill="#9aa0b8"
+								>
+									{c.q},{c.r}
+								</text>
 							)}
 							{isOrigin && occupants.length === 0 && !isPathMode && (
 								<circle cx={0} cy={0} r={size * 0.3} fill="none" stroke="#aa66ff" strokeWidth={2} strokeDasharray="4,2" />

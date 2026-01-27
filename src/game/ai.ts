@@ -9,7 +9,7 @@
 
 import type { Ctx, PlayerID } from 'boardgame.io';
 import type { GState, Color, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, Card, PlayerPrefs } from './types';
-import { buildAllCoords, canPlace, key, ringIndex } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, key, neighbors, ringIndex } from './helpers';
 import { computeScores } from './scoring';
 
 // =============================================================================
@@ -61,12 +61,27 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 	const hand = G.hands[playerID] ?? [];
 
 	// Enumerate playCard moves
-	for (let i = 0; i < hand.length; i += 1) {
-		const card = hand[i]!;
-		for (const color of card.colors) {
-			for (const co of coords) {
-				if (canPlace(G, co, color as Color, rules)) {
-					actions.push({ type: 'playCard', args: { handIndex: i, pick: color, coord: co } });
+	if (rules.MODE === 'path') {
+		for (let i = 0; i < hand.length; i += 1) {
+			const card = hand[i]!;
+			for (const color of card.colors) {
+				for (const source of coords) {
+					for (const dest of neighbors(source)) {
+						if (canPlacePath(G, source, dest, color as Color, rules)) {
+							actions.push({ type: 'playCard', args: { handIndex: i, pick: color, source, coord: dest } });
+						}
+					}
+				}
+			}
+		}
+	} else {
+		for (let i = 0; i < hand.length; i += 1) {
+			const card = hand[i]!;
+			for (const color of card.colors) {
+				for (const co of coords) {
+					if (canPlace(G, co, color as Color, rules)) {
+						actions.push({ type: 'playCard', args: { handIndex: i, pick: color, coord: co } });
+					}
 				}
 			}
 		}
@@ -133,14 +148,19 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			const card = hand[args.handIndex];
 			if (!card) return null;
 			if (rules.ONE_COLOR_PER_CARD_PLAY && !card.colors.includes(args.pick)) return null;
-			if (!canPlace(newG, args.coord, args.pick, rules)) return null;
-
-			const k = key(args.coord);
-			const tile = newG.board[k];
-			if (tile) {
-				tile.colors.push(args.pick);
+			if (rules.MODE === 'path') {
+				if (!('source' in args)) return null;
+				if (!canPlacePath(newG, args.source, args.coord, args.pick, rules)) return null;
+				newG.lanes.push({ from: args.source, to: args.coord, color: args.pick });
 			} else {
-				newG.board[k] = { colors: [args.pick], rotation: 0 };
+				if (!canPlace(newG, args.coord, args.pick, rules)) return null;
+				const k = key(args.coord);
+				const tile = newG.board[k];
+				if (tile) {
+					tile.colors.push(args.pick);
+				} else {
+					newG.board[k] = { colors: [args.pick], rotation: 0 };
+				}
 			}
 			newG.stats.placements += 1;
 			const [used] = hand.splice(args.handIndex, 1);
@@ -332,10 +352,20 @@ const countObjectivePlacements = (G: GState, playerID: PlayerID): number => {
 	const objectiveColors = [prefs.primary, prefs.secondary, prefs.tertiary];
 	let count = 0;
 	
-	for (const color of objectiveColors) {
-		for (const co of coords) {
-			if (canPlace(G, co, color, G.rules)) {
-				count += 1;
+	if (G.rules.MODE === 'path') {
+		for (const color of objectiveColors) {
+			for (const source of coords) {
+				for (const dest of neighbors(source)) {
+					if (canPlacePath(G, source, dest, color, G.rules)) count += 1;
+				}
+			}
+		}
+	} else {
+		for (const color of objectiveColors) {
+			for (const co of coords) {
+				if (canPlace(G, co, color, G.rules)) {
+					count += 1;
+				}
 			}
 		}
 	}
@@ -357,9 +387,17 @@ const countMobility = (G: GState, playerID: PlayerID): number => {
 	for (const card of hand) {
 		for (const color of card.colors) {
 			if (getColorValue(color as Color, prefs) === 0) continue;
-			for (const co of coords) {
-				if (canPlace(G, co, color as Color, G.rules)) {
-					count += 1;
+			if (G.rules.MODE === 'path') {
+				for (const source of coords) {
+					for (const dest of neighbors(source)) {
+						if (canPlacePath(G, source, dest, color as Color, G.rules)) count += 1;
+					}
+				}
+			} else {
+				for (const co of coords) {
+					if (canPlace(G, co, color as Color, G.rules)) {
+						count += 1;
+					}
 				}
 			}
 		}
@@ -379,21 +417,32 @@ const estimateRimProgress = (G: GState, playerID: PlayerID): number => {
 	const radius = G.radius;
 	let progress = 0;
 
-	for (const [k, tile] of Object.entries(G.board)) {
-		if (!tile || tile.colors.length === 0) continue;
-		const co = { q: 0, r: 0 };
-		const [qStr, rStr] = k.split(',');
-		co.q = parseInt(qStr!, 10);
-		co.r = parseInt(rStr!, 10);
-
-		const ring = ringIndex(co);
-		const distToRim = radius - ring;
-
-		for (const color of tile.colors) {
-			const value = getColorValue(color as Color, prefs);
+	if (G.rules.MODE === 'path') {
+		for (const ln of G.lanes) {
+			const ring = ringIndex(ln.to);
+			const distToRim = radius - ring;
+			const value = getColorValue(ln.color, prefs);
 			if (value > 0) {
-				// Higher value for tiles closer to rim
 				progress += value * (1 - distToRim / radius);
+			}
+		}
+	} else {
+		for (const [k, tile] of Object.entries(G.board)) {
+			if (!tile || tile.colors.length === 0) continue;
+			const co = { q: 0, r: 0 };
+			const [qStr, rStr] = k.split(',');
+			co.q = parseInt(qStr!, 10);
+			co.r = parseInt(rStr!, 10);
+
+			const ring = ringIndex(co);
+			const distToRim = radius - ring;
+
+			for (const color of tile.colors) {
+				const value = getColorValue(color as Color, prefs);
+				if (value > 0) {
+					// Higher value for tiles closer to rim
+					progress += value * (1 - distToRim / radius);
+				}
 			}
 		}
 	}
@@ -738,10 +787,19 @@ const isVolatileState = (G: GState, playerID: PlayerID, _ctx: Ctx): boolean => {
 			const colorValue = getColorValue(color as Color, prefs);
 			if (colorValue === 0) continue;
 
-			for (const co of coords) {
-				if (ringIndex(co) !== G.radius) continue;
-				if (canPlace(G, co, color as Color, G.rules)) {
-					return true; // Rim placement available
+			if (G.rules.MODE === 'path') {
+				for (const source of coords) {
+					for (const dest of neighbors(source)) {
+						if (ringIndex(dest) !== G.radius) continue;
+						if (canPlacePath(G, source, dest, color as Color, G.rules)) return true;
+					}
+				}
+			} else {
+				for (const co of coords) {
+					if (ringIndex(co) !== G.radius) continue;
+					if (canPlace(G, co, color as Color, G.rules)) {
+						return true; // Rim placement available
+					}
 				}
 			}
 		}

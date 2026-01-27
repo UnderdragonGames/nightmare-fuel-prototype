@@ -1,7 +1,7 @@
 import type { GState, Color } from './types';
 import { buildAllCoords, key, neighbors, ringIndex, parse, inBounds } from './helpers';
 
-export const computeScores = (G: GState): Record<string, number> => {
+const computeIntersectionCountByColor = (G: GState): Record<Color, number> => {
 	const rules = G.rules;
 	const radius = G.radius;
 	const coords = buildAllCoords(radius);
@@ -368,6 +368,12 @@ export const computeScores = (G: GState): Record<string, number> => {
 		intersectionCountByColor[color] = count;
 	}
 
+	return intersectionCountByColor;
+};
+
+export const computeScores = (G: GState): Record<string, number> => {
+	const rules = G.rules;
+	const intersectionCountByColor = computeIntersectionCountByColor(G);
 	const scores: Record<string, number> = {};
 	const [primaryWeight, secondaryWeight, tertiaryWeight] = rules.SCORING.COLOR_POINTS;
 	for (const pid of Object.keys(G.prefs)) {
@@ -380,4 +386,15 @@ export const computeScores = (G: GState): Record<string, number> => {
 	return scores;
 };
 
-
+export const computeScoresRaw = (G: GState): Record<string, number> => {
+	const intersectionCountByColor = computeIntersectionCountByColor(G);
+	const scores: Record<string, number> = {};
+	for (const pid of Object.keys(G.prefs)) {
+		scores[pid] = 0;
+		const { primary, secondary, tertiary } = G.prefs[pid]!;
+		scores[pid] += intersectionCountByColor[primary];
+		scores[pid] += intersectionCountByColor[secondary];
+		scores[pid] += intersectionCountByColor[tertiary];
+	}
+	return scores;
+};

@@ -9,10 +9,11 @@ import type { Color, Co, GState } from './game/types';
 import { Hand } from './ui/Hand';
 import { Treasure } from './ui/Treasure';
 import { computeScores } from './game/scoring';
-import { buildAllCoords, canPlace, asVisibleColor, key } from './game/helpers';
+import { buildAllCoords, canPlace, canPlacePath, neighbors, asVisibleColor, key } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
 import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, type BotKind } from './game/bots';
 import { PlayerCard } from './ui/PlayerCard';
+import { StateLab } from './ui/StateLab';
 
 // Types
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
@@ -98,6 +99,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const setAiPaused = useUIStore((s) => s.setAiPaused);
 	const [placeable, setPlaceable] = React.useState<Co[]>([]);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
+	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
 
 	const gRef = React.useRef(G);
 	const ctxRef = React.useRef(ctx);
@@ -113,14 +115,12 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// Card is selected = board is interactable
 	const boardInteractable = selectedCard !== null;
 
-	// Helper: get color that connects source to destination (if they're neighbors)
+	// Helper: get direction-color between two adjacent coords (path-mode core mechanic)
 	const getColorForDirection = (source: Co, dest: Co): Color | null => {
 		const dq = dest.q - source.q;
 		const dr = dest.r - source.r;
 		for (const [color, dir] of Object.entries(rules.COLOR_TO_DIR)) {
-			if (dir.q === dq && dir.r === dr) {
-				return color as Color;
-			}
+			if (dir.q === dq && dir.r === dr) return color as Color;
 		}
 		return null;
 	};
@@ -133,28 +133,27 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// Helper: get valid destination dots from a source
 	const getValidDestinations = (source: Co, cardColors: Color[]): Co[] => {
 		const dests: Co[] = [];
-		const sourceIsOrigin = isOriginCoord(source);
-
-		for (const [, dir] of Object.entries(rules.COLOR_TO_DIR)) {
-			const neighbor: Co = { q: source.q + dir.q, r: source.r + dir.r };
-			if (isOriginCoord(neighbor)) {
-				const colorToPlace = getColorForDirection(neighbor, source);
-				if (colorToPlace && cardColors.includes(colorToPlace) && !sourceIsOrigin && canPlace(G, source, colorToPlace, rules)) {
-					if (!dests.some((d) => d.q === neighbor.q && d.r === neighbor.r)) {
-						dests.push(neighbor);
-					}
+		if (rules.MODE === 'path') {
+			// Core rule: a color implies a direction from the selected source.
+			for (const col of cardColors) {
+				const dir = rules.COLOR_TO_DIR[col];
+				const dest: Co = { q: source.q + dir.q, r: source.r + dir.r };
+				if (isOriginCoord(dest)) continue;
+				if (canPlacePath(G, source, dest, col, rules)) {
+					if (!dests.some((d) => d.q === dest.q && d.r === dest.r)) dests.push(dest);
 				}
 			}
-		}
 
-		for (const color of cardColors) {
-			const dir = rules.COLOR_TO_DIR[color];
-			const dest: Co = { q: source.q + dir.q, r: source.r + dir.r };
-			if (!isOriginCoord(dest) && canPlace(G, dest, color, rules)) {
-				if (!dests.some((d) => d.q === dest.q && d.r === dest.r)) {
-					dests.push(dest);
+			// Consolidation exception: if the player explicitly picked a color, allow non-directional moves
+			// (but canPlacePath will strictly gate them).
+			if (selectedColor && cardColors.includes(selectedColor)) {
+				for (const dest of neighbors(source)) {
+					if (isOriginCoord(dest)) continue;
+					if (dests.some((d) => d.q === dest.q && d.r === dest.r)) continue;
+					if (canPlacePath(G, source, dest, selectedColor, rules)) dests.push(dest);
 				}
 			}
+			return dests;
 		}
 		return dests;
 	};
@@ -189,9 +188,12 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				if (validDests.length > 0) {
 					setSelectedSourceDot(coord);
 					setPlaceable(validDests);
-					const firstDest = validDests[0]!;
-					const color = getColorForDirection(coord, firstDest);
-					setSelectedColor(color);
+					// Default pick to first card color; user can override via onPickColor.
+					setSelectedColor(
+						(selectedColor && card.colors.includes(selectedColor))
+							? selectedColor
+							: (card.colors[0] ?? null)
+					);
 				}
 				return;
 			}
@@ -203,36 +205,37 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				return;
 			}
 
-			const destIsOrigin = isOriginCoord(coord);
-			if (destIsOrigin) {
-				const oppositeColor = getColorForDirection(coord, selectedSourceDot);
-				if (oppositeColor && card.colors.includes(oppositeColor) && canPlace(G, selectedSourceDot, oppositeColor, rules)) {
-					moves.playCard({ handIndex: selectedCard, pick: oppositeColor, coord: selectedSourceDot });
-					setSelectedCard(null);
-					setSelectedColor(null);
-					setSelectedSourceDot(null);
-					setPlaceable([]);
-					return;
-				}
-			} else {
-				const color = getColorForDirection(selectedSourceDot, coord);
-				if (color && card.colors.includes(color) && canPlace(G, coord, color, rules)) {
-					moves.playCard({ handIndex: selectedCard, pick: color, coord });
-					setSelectedCard(null);
-					setSelectedColor(null);
-					setSelectedSourceDot(null);
-					setPlaceable([]);
-					return;
-				}
+			// Normal path placement: direction determines required color.
+			const dirColor = getColorForDirection(selectedSourceDot, coord);
+			if (dirColor && card.colors.includes(dirColor) && canPlacePath(G, selectedSourceDot, coord, dirColor, rules)) {
+				moves.playCard({ handIndex: selectedCard, pick: dirColor, source: selectedSourceDot, coord });
+				setSelectedCard(null);
+				setSelectedColor(null);
+				setSelectedSourceDot(null);
+				setPlaceable([]);
+				return;
+			}
+
+			// Consolidation exception: allow using explicitly selected color (e.g. purple) off-direction
+			// when canPlacePath gates it as a consolidation move.
+			if (selectedColor && card.colors.includes(selectedColor) && canPlacePath(G, selectedSourceDot, coord, selectedColor, rules)) {
+				moves.playCard({ handIndex: selectedCard, pick: selectedColor, source: selectedSourceDot, coord });
+				setSelectedCard(null);
+				setSelectedColor(null);
+				setSelectedSourceDot(null);
+				setPlaceable([]);
+				return;
 			}
 
 			const validDests = getValidDestinations(coord, card.colors);
 			if (validDests.length > 0) {
 				setSelectedSourceDot(coord);
 				setPlaceable(validDests);
-				const firstDest = validDests[0]!;
-				const inferredColor = getColorForDirection(coord, firstDest);
-				setSelectedColor(inferredColor);
+				setSelectedColor(
+					(selectedColor && card.colors.includes(selectedColor))
+						? selectedColor
+						: (card.colors[0] ?? null)
+				);
 			} else {
 				setSelectedSourceDot(null);
 				setPlaceable([]);
@@ -515,6 +518,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<HexBoard
 					rules={rules}
 					board={G.board}
+					lanes={G.lanes}
 					radius={G.radius}
 					onHexClick={onHexClick}
 					showRing={showRing}
@@ -634,9 +638,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			)}
 
 			{/* Game Over overlay */}
-			{ctx.gameover && (
-				<div className="game-over-overlay">
-					<div className="game-over-modal">
+			{ctx.gameover && !gameOverDismissed && (
+				<div className="game-over-overlay" onClick={() => setGameOverDismissed(true)}>
+					<div className="game-over-modal" onClick={(e) => e.stopPropagation()}>
 						<h2>Game Over</h2>
 						<ul className="game-over-scores">
 							{Object.entries((ctx.gameover as { scores: Record<PlayerID, number> }).scores).map(([pid2, s]) => (
@@ -646,6 +650,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								</li>
 							))}
 						</ul>
+						<button className="game-over-dismiss" onClick={() => setGameOverDismissed(true)}>
+							Continue
+						</button>
 					</div>
 				</div>
 			)}
@@ -792,6 +799,7 @@ const App: React.FC = () => {
 	const setMatchID = useUIStore((s) => s.setMatchID);
 	const serverURL = import.meta.env.VITE_SERVER_URL || 'http://localhost:8000';
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
+	const [isLabRoute, setIsLabRoute] = React.useState(false);
 
 	const ClientComp = React.useMemo(
 		() => Client<GState, AppBoardProps>({
@@ -803,45 +811,66 @@ const App: React.FC = () => {
 		[numPlayers, matchID, serverURL]
 	);
 	React.useEffect(() => {
+		const update = () => {
+			const path = window.location.pathname;
+			const hash = window.location.hash;
+			setIsLabRoute(path === '/lab' || hash === '#lab');
+		};
+		update();
+		window.addEventListener('popstate', update);
+		window.addEventListener('hashchange', update);
+		return () => {
+			window.removeEventListener('popstate', update);
+			window.removeEventListener('hashchange', update);
+		};
+	}, []);
+	React.useEffect(() => {
 		if (Number(viewer) >= numPlayers) setViewer(String(numPlayers - 1) as PlayerID);
 	}, [numPlayers, viewer, setViewer]);
 
 	return (
 		<div className="app-root">
 			{/* Setup controls in top-left corner */}
-			<div className="setup-controls">
-				<button onClick={() => {
-					const next = Math.min(8, numPlayers + 1);
-					setNumPlayers(next);
-					resetBotsForCount(next);
-					if (matchID) setMatchID(`match-${Date.now()}`);
-				}}>+</button>
-				<span className="setup-controls__count">{numPlayers}P</span>
-				<button onClick={() => {
-					const next = Math.max(2, numPlayers - 1);
-					setNumPlayers(next);
-					resetBotsForCount(next);
-					if (matchID) setMatchID(`match-${Date.now()}`);
-				}} disabled={numPlayers <= 2}>−</button>
-				<button 
-					className={`setup-controls__network ${matchID ? 'setup-controls__network--connected' : ''}`}
-					onClick={() => setNetworkModalOpen(true)}
-					title={matchID ? 'Connected to network game' : 'Network game'}
-				>
-					<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-						<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-					</svg>
-				</button>
-			</div>
-			<ClientComp playerID={viewer} matchID={matchID || undefined} viewer={viewer} onSetViewer={setViewer} />
-			<NetworkModal
-				isOpen={networkModalOpen}
-				onClose={() => setNetworkModalOpen(false)}
-				matchID={matchID}
-				onSetMatchID={setMatchID}
-				numPlayers={numPlayers}
-				serverURL={serverURL}
-			/>
+			{!isLabRoute && (
+				<div className="setup-controls">
+					<button onClick={() => {
+						const next = Math.min(8, numPlayers + 1);
+						setNumPlayers(next);
+						resetBotsForCount(next);
+						if (matchID) setMatchID(`match-${Date.now()}`);
+					}}>+</button>
+					<span className="setup-controls__count">{numPlayers}P</span>
+					<button onClick={() => {
+						const next = Math.max(2, numPlayers - 1);
+						setNumPlayers(next);
+						resetBotsForCount(next);
+						if (matchID) setMatchID(`match-${Date.now()}`);
+					}} disabled={numPlayers <= 2}>−</button>
+					<button 
+						className={`setup-controls__network ${matchID ? 'setup-controls__network--connected' : ''}`}
+						onClick={() => setNetworkModalOpen(true)}
+						title={matchID ? 'Connected to network game' : 'Network game'}
+					>
+						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+							<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+						</svg>
+					</button>
+				</div>
+			)}
+			{isLabRoute
+				? <StateLab onExit={() => window.location.assign('/')} />
+				: <ClientComp playerID={viewer} matchID={matchID || undefined} viewer={viewer} onSetViewer={setViewer} />
+			}
+			{!isLabRoute && (
+				<NetworkModal
+					isOpen={networkModalOpen}
+					onClose={() => setNetworkModalOpen(false)}
+					matchID={matchID}
+					onSetMatchID={setMatchID}
+					numPlayers={numPlayers}
+					serverURL={serverURL}
+				/>
+			)}
 		</div>
 	);
 };
