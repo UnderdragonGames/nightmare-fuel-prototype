@@ -1,4 +1,4 @@
-import type { GState, Color } from './types';
+import type { GState, Color, Co } from './types';
 import { buildAllCoords, key, neighbors, ringIndex, parse, inBounds } from './helpers';
 
 const computeIntersectionCountByColorPath = (G: GState): Record<Color, number> => {

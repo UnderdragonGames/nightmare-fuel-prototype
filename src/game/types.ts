@@ -1,4 +1,6 @@
-import type { PlayerID } from 'boardgame.io';
+import type { PlayerID as BgioPlayerID } from 'boardgame.io';
+
+export type PlayerID = BgioPlayerID;
 
 export type Color = 'R' | 'O' | 'Y' | 'G' | 'B' | 'V';
 

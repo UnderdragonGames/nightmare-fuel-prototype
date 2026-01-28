@@ -59,7 +59,7 @@ describe('opening-move', () => {
       "end"
     ];
     expect(actual).toEqual([...expected].sort());
-    const forbidden = [];
+    const forbidden: string[] = [];
     for (const key of forbidden) expect(actual).not.toContain(key);
   });
 });

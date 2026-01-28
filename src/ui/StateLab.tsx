@@ -391,12 +391,19 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 				}
 			}
 			if (pathTool === 'remove') {
-				const lastIndex = nextLanes.findLastIndex(
-					(l) => l.from.q === pendingSource.q && l.from.r === pendingSource.r
-						&& l.to.q === coord.q && l.to.r === coord.r
-						&& l.color === selectedColor
-				);
-				if (lastIndex !== -1) nextLanes.splice(lastIndex, 1);
+				for (let i = nextLanes.length - 1; i >= 0; i -= 1) {
+					const lane = nextLanes[i];
+					if (
+						lane.from.q === pendingSource.q
+						&& lane.from.r === pendingSource.r
+						&& lane.to.q === coord.q
+						&& lane.to.r === coord.r
+						&& lane.color === selectedColor
+					) {
+						nextLanes.splice(i, 1);
+						break;
+					}
+				}
 			}
 
 			return { ...prev, lanes: nextLanes };

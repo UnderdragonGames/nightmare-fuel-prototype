@@ -100,12 +100,12 @@ describe('enumerate-actions', () => {
   "end"
 ];
 		expect(actual).toEqual([...expected].sort());
-		const forbidden = [];
+		const forbidden: string[] = [];
 		for (const key of forbidden) expect(actual).not.toContain(key);
 	});
 	it('matches expected score deltas', () => {
 		const baseScores = computeScoresRaw(G);
-		const expectedScores = {
+		const expectedScores: Record<string, number> = {
   "play:4:R:-2,0->-3,1": 1,
   "play:4:R:-2,1->-3,2": 1,
   "play:4:R:-1,2->-2,3": 1,

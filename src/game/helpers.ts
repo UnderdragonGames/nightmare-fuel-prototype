@@ -31,13 +31,6 @@ export const axialToPixel = (c: Co, size: number): { x: number; y: number } => {
 	return { x, y };
 };
 
-const hasOccupiedNeighbor = (G: GState, coord: Co): boolean => {
-	return neighbors(coord).some((n) => {
-		const tile = G.board[key(n)];
-		return tile !== undefined && tile.colors.length > 0;
-	});
-};
-
 const buildOriginConnectedTiles = (G: GState): Set<string> => {
 	const connected = new Set<string>();
 	const queue: Co[] = [];
