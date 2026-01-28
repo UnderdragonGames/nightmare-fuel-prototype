@@ -38,6 +38,34 @@ const hasOccupiedNeighbor = (G: GState, coord: Co): boolean => {
 	});
 };
 
+const buildOriginConnectedTiles = (G: GState): Set<string> => {
+	const connected = new Set<string>();
+	const queue: Co[] = [];
+
+	for (const origin of G.origins) {
+		const ok = key(origin);
+		if (connected.has(ok)) continue;
+		connected.add(ok);
+		queue.push(origin);
+	}
+
+	while (queue.length > 0) {
+		const cur = queue.shift()!;
+		for (const n of neighbors(cur)) {
+			if (!inBounds(n, G.radius)) continue;
+			const nk = key(n);
+			if (connected.has(nk)) continue;
+			const isOrigin = G.origins.some((o) => o.q === n.q && o.r === n.r);
+			const tile = G.board[nk];
+			if (!isOrigin && (!tile || tile.colors.length === 0)) continue;
+			connected.add(nk);
+			queue.push(n);
+		}
+	}
+
+	return connected;
+};
+
 const laneKey = (u: Co, v: Co): string => `${key(u)}->${key(v)}`;
 
 const nodeHasAnyLane = (G: GState, coord: Co): boolean => {
@@ -215,12 +243,10 @@ export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): bool
 	if (tile && tile.colors.length >= capacity) return false;
 
 	// Global connectivity (always enforced)
-	// Must be adjacent to either an occupied tile OR an origin
-	const hasNeighbor = hasOccupiedNeighbor(G, coord);
-	const isAdjacentToOrigin = neighbors(coord).some((n) =>
-		G.origins.some((o) => o.q === n.q && o.r === n.r)
-	);
-	if (!hasNeighbor && !isAdjacentToOrigin) {
+	// Must be adjacent to an origin-connected occupied tile (or origin itself).
+	const originConnected = buildOriginConnectedTiles(G);
+	const hasNeighbor = neighbors(coord).some((n) => originConnected.has(key(n)));
+	if (!hasNeighbor) {
 		return false; // Disconnected placement - not allowed
 	}
 
@@ -300,6 +326,7 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	const directionMatch = expectedDest.q === dest.q && expectedDest.r === dest.r;
 
 	let isConsolidationRecolorMove = false;
+	let isConsolidationBacktrack = false;
 
 	// If this undirected edge already exists, adding a *new color* to it is CONSOLIDATION-gated.
 	// - stacking an existing color on the edge remains a normal move
@@ -311,14 +338,26 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 		// Consolidation exception (ONLY): allow placing a new color on an existing edge,
 		// and only if that same color has already reached the rim and is propagating.
 		if (isNewColorOnExistingEdge) {
-			if (!rules.PLACEMENT.CONSOLIDATION) return false;
-			if (!hasRimConnectedPath(G, color)) return false;
+			if (!isConsolidationMove(G, source, dest, color, rules)) return false;
 			// Prevent "global recolor": must extend from an existing segment of this color.
 			if (!nodeHasColorLane(G, source, color) && !nodeHasColorLane(G, dest, color)) return false;
 			isConsolidationRecolorMove = true;
+			isConsolidationBacktrack = ringIndex(source) > ringIndex(dest);
 		} else {
-			// Normal move: must follow direction rule
+			// Origins can stack, but cap parallel lanes at 2 per edge from an origin.
 			if (!directionMatch) return false;
+			// If already branching from this node, only add a new outward direction when this color is already present.
+			if (!sourceIsOrigin && ringIndex(dest) > ringIndex(source)) {
+				const outgoing = new Set<string>();
+				for (const ln of G.lanes) {
+					if (ln.from.q === source.q && ln.from.r === source.r) {
+						outgoing.add(key(ln.to));
+					}
+				}
+				if (outgoing.size >= 2 && !outgoing.has(key(dest)) && !nodeHasColorLane(G, source, color)) {
+					return false;
+				}
+			}
 		}
 
 		// Even for consolidation, disallow off-direction moves unless it is actually recoloring an existing edge.
@@ -331,14 +370,14 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	// NO_INTERSECT: all incoming lanes to dest must share the same source
 	// Consolidation recolor is constrained to an already-existing edge, so it cannot introduce a geometric intersection.
 	// Treat it as exempt from NO_INTERSECT's directed-incoming constraint (which would otherwise block "backtracking").
-	if (rules.PLACEMENT.NO_INTERSECT && !isConsolidationRecolorMove) {
+	if (rules.PLACEMENT.NO_INTERSECT && (!isConsolidationRecolorMove || !isConsolidationBacktrack)) {
 		const { sources } = countIncomingLanes(G, dest);
 		if (sources.size > 0 && !sources.has(key(source))) return false;
 	}
 
 	// Fork support invariant (computed on explicit directed lanes)
 	// Same reasoning as above: recoloring an existing edge shouldn't be blocked by directed fork-support accounting.
-	if (rules.PLACEMENT.FORK_SUPPORT && !isConsolidationRecolorMove) {
+	if (rules.PLACEMENT.FORK_SUPPORT && (!isConsolidationRecolorMove || !isConsolidationBacktrack)) {
 		const caps = buildDirectedCapsAfterLane(G, source, dest);
 		const allNodes = collectNodesFromEdges(caps);
 		const originKeys = new Set(G.origins.map((o) => key(o)));
@@ -354,6 +393,63 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	}
 
 	return true;
+};
+
+const buildRimConnectedNodesForColor = (G: GState, color: Color): Set<string> => {
+	const adj = new Map<string, Set<string>>();
+	const addAdj = (a: Co, b: Co): void => {
+		const ak = key(a);
+		const bk = key(b);
+		if (!adj.has(ak)) adj.set(ak, new Set());
+		if (!adj.has(bk)) adj.set(bk, new Set());
+		adj.get(ak)!.add(bk);
+		adj.get(bk)!.add(ak);
+	};
+
+	const rimSeeds: Co[] = [];
+	for (const ln of G.lanes) {
+		if (ln.color !== color) continue;
+		addAdj(ln.from, ln.to);
+		if (ringIndex(ln.from) === G.radius) rimSeeds.push(ln.from);
+		if (ringIndex(ln.to) === G.radius) rimSeeds.push(ln.to);
+	}
+
+	const connected = new Set<string>();
+	const queue: Co[] = [];
+	for (const seed of rimSeeds) {
+		const sk = key(seed);
+		if (connected.has(sk)) continue;
+		connected.add(sk);
+		queue.push(seed);
+	}
+
+	while (queue.length > 0) {
+		const cur = queue.shift()!;
+		const nbrs = adj.get(key(cur));
+		if (!nbrs) continue;
+		for (const nk of nbrs) {
+			if (connected.has(nk)) continue;
+			connected.add(nk);
+			queue.push(parse(nk));
+		}
+	}
+
+	return connected;
+};
+
+export const isConsolidationMove = (G: GState, source: Co, dest: Co, color: Color, rules: Rules): boolean => {
+	if (!rules.PLACEMENT.CONSOLIDATION) return false;
+	if (rules.MODE !== 'path') return false;
+	if (!hasRimConnectedPath(G, color)) return false;
+	if (countUndirectedLanes(G, source, dest) === 0) return false;
+
+	const sourceRing = ringIndex(source);
+	const destRing = ringIndex(dest);
+	if (sourceRing === destRing) return false;
+
+	const outward = sourceRing > destRing ? source : dest;
+	const rimConnected = buildRimConnectedNodesForColor(G, color);
+	return rimConnected.has(key(outward));
 };
 
 export const shuffleInPlace = <T,>(arr: T[], rng: () => number = Math.random): void => {
@@ -510,17 +606,17 @@ const countOutgoing = (nodeKey: string, caps: EdgeCaps, allNodes: Set<string>): 
 const DEBUG_FORK_SUPPORT = false; // Set to true to enable debug logging
 
 /**
- * Check if any color has a continuous same-color path from rim to center (origin at 0,0).
- * Used for CONSOLIDATION_END rule: game ends when this is achieved.
- * Returns the first color found with such a path, or null.
+ * Count colors that have a continuous same-color path from rim to center (origin at 0,0).
+ * Used for CONSOLIDATION_END rule: game ends when this count meets the threshold.
  */
-export const hasRimToCenterPath = (G: GState): Color | null => {
+export const countRimToCenterPaths = (G: GState): number => {
 	const radius = G.radius;
 	const colors: readonly Color[] = G.rules.COLORS;
+	let total = 0;
 
 	// Check if center (0,0) is an origin
 	const centerIsOrigin = G.origins.some((o) => o.q === 0 && o.r === 0);
-	if (!centerIsOrigin) return null;
+	if (!centerIsOrigin) return 0;
 
 	// Path mode: lanes are explicit; treat same-color connectivity as undirected on lane endpoints.
 	if (G.rules.MODE === 'path') {
@@ -556,7 +652,10 @@ export const hasRimToCenterPath = (G: GState): Color | null => {
 			}
 			while (queue.length) {
 				const cur = queue.shift()!;
-				if (cur === centerK) return color;
+				if (cur === centerK) {
+					total += 1;
+					break;
+				}
 				const nbrs = adj.get(cur);
 				if (!nbrs) continue;
 				for (const nk of nbrs) {
@@ -566,11 +665,12 @@ export const hasRimToCenterPath = (G: GState): Color | null => {
 				}
 			}
 		}
-		return null;
+		return total;
 	}
 
 	for (const color of colors) {
 		// BFS from rim tiles with this color, check if we reach center-adjacent
+		let found = false;
 		const visited = new Set<string>();
 		const queue: Co[] = [];
 
@@ -591,16 +691,19 @@ export const hasRimToCenterPath = (G: GState): Color | null => {
 		}
 
 		// BFS through same-color tiles
-		while (queue.length > 0) {
+		while (queue.length > 0 && !found) {
 			const cur = queue.shift()!;
 
 			// Check if adjacent to center origin
 			for (const n of neighbors(cur)) {
 				if (n.q === 0 && n.r === 0) {
-					return color; // Found a path from rim to center
+					total += 1;
+					found = true;
+					break;
 				}
 			}
 
+			if (found) break;
 			for (const n of neighbors(cur)) {
 				if (!inBounds(n, radius)) continue;
 				const nk = key(n);
@@ -613,7 +716,7 @@ export const hasRimToCenterPath = (G: GState): Color | null => {
 		}
 	}
 
-	return null;
+	return total;
 };
 
 /**
@@ -854,5 +957,3 @@ const forkSupportOkAfterPlacement = (G: GState, placeCoord: Co, placeColor: Colo
 
 	return true;
 };
-
-

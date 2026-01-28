@@ -9,7 +9,7 @@
 
 import type { Ctx, PlayerID } from 'boardgame.io';
 import type { GState, Color, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, Card, PlayerPrefs } from './types';
-import { buildAllCoords, canPlace, canPlacePath, key, neighbors, ringIndex } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, countRimToCenterPaths, key, neighbors, ringIndex } from './helpers';
 import { computeScores } from './scoring';
 
 // =============================================================================
@@ -271,6 +271,7 @@ type EvalFeatures = {
 	opponentScoreDelta: number;   // Change in best opponent's score
 	mobilityDelta: number;        // Change in number of legal placements
 	opponentMobilityDenial: number; // Reduction in opponent legal placements (weighted by rivalry)
+	opponentImmediateWinThreat: number; // 1 if opponent has an immediate win, else 0
 	rimProgress: number;          // Progress toward rim (for path mode)
 	handQuality: number;          // Quality of hand after action
 	treasureControl: number;      // Advantage from treasure manipulation
@@ -450,6 +451,23 @@ const estimateRimProgress = (G: GState, playerID: PlayerID): number => {
 	return progress;
 };
 
+const hasImmediateOpponentWin = (G: GState, ctx: Ctx, playerID: PlayerID): boolean => {
+	if (G.rules.MODE !== 'path') return false;
+	if (G.rules.PLACEMENT.CONSOLIDATION_END <= 0) return false;
+
+	for (const pid of ctx.playOrder) {
+		if (pid === playerID) continue;
+		const actions = enumerateActions(G, pid).filter((a) => a.type !== 'endTurnAndRefill');
+		for (const action of actions) {
+			const gAfter = applyMicroAction(G, action, pid);
+			if (!gAfter) continue;
+			if (countRimToCenterPaths(gAfter) >= G.rules.PLACEMENT.CONSOLIDATION_END) return true;
+		}
+	}
+
+	return false;
+};
+
 /**
  * Compute evaluation features comparing state before and after action.
  */
@@ -515,6 +533,9 @@ const computeFeatures = (
 	const rimProgressAfter = estimateRimProgress(gAfter, playerID);
 	const rimProgress = rimProgressAfter - rimProgressBefore;
 
+	// Immediate loss threat (e.g., consolidation end next move)
+	const opponentImmediateWinThreat = hasImmediateOpponentWin(gAfter, ctx, playerID) ? 1 : 0;
+
 	// Hand quality
 	const handAfter = gAfter.hands[playerID] ?? [];
 	const handQuality = evaluateHandQuality(handAfter, prefs);
@@ -530,6 +551,7 @@ const computeFeatures = (
 		opponentScoreDelta,
 		mobilityDelta,
 		opponentMobilityDenial,
+		opponentImmediateWinThreat,
 		rimProgress,
 		handQuality,
 		treasureControl,
@@ -569,6 +591,7 @@ export const evaluateAction = (
 		// Mobility: own options + denying rivals
 		mobilityDelta: 0.5,
 		opponentMobilityDenial: 0.5,  // Reward blocking rivals (already rivalry-weighted)
+		opponentImmediateWinThreat: -80.0, // Strongly avoid allowing immediate losses
 		
 		// Positional
 		rimProgress: isPathMode ? 2.0 : 0.5,
@@ -582,6 +605,7 @@ export const evaluateAction = (
 	value += weights.opponentScoreDelta * features.opponentScoreDelta;
 	value += weights.mobilityDelta * features.mobilityDelta;
 	value += weights.opponentMobilityDenial * features.opponentMobilityDenial;
+	value += weights.opponentImmediateWinThreat * features.opponentImmediateWinThreat;
 	value += weights.rimProgress * features.rimProgress;
 	value += weights.handQuality * features.handQuality;
 	value += weights.treasureControl * features.treasureControl;
@@ -621,10 +645,11 @@ export const evaluateAction = (
  * Generate a prioritized subset of actions to evaluate.
  * This keeps branching factor small for efficiency.
  */
-export const generateCandidates = (G: GState, playerID: PlayerID, _ctx: Ctx): Action[] => {
+export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Action[] => {
 	const allActions = enumerateActions(G, playerID);
 	const prefs = G.prefs[playerID]!;
 	const rules = G.rules;
+	const consolidationThreat = hasImmediateOpponentWin(G, ctx, playerID);
 
 	// Separate actions by type
 	const playActions: Action[] = [];
@@ -662,7 +687,7 @@ export const generateCandidates = (G: GState, playerID: PlayerID, _ctx: Ctx): Ac
 	scoredPlayActions.sort((a, b) => b.score - a.score);
 
 	// Take top N play actions
-	const maxPlayCandidates = Math.min(15, playActions.length);
+	const maxPlayCandidates = consolidationThreat ? playActions.length : Math.min(15, playActions.length);
 	for (let i = 0; i < maxPlayCandidates; i += 1) {
 		candidates.push(scoredPlayActions[i]!.action);
 	}
@@ -740,8 +765,9 @@ export const selectBestAction = (G: GState, ctx: Ctx, playerID: PlayerID): Actio
 		return null; // End turn
 	}
 
+	const threatBefore = hasImmediateOpponentWin(G, ctx, playerID);
 	let bestAction: Action | null = null;
-	let bestValue = DELTA_V_THRESHOLD; // Must beat threshold to be selected
+	let bestValue = threatBefore ? -Infinity : DELTA_V_THRESHOLD; // Must beat threshold unless immediate loss threat
 
 	for (const action of candidates) {
 		const gAfter = applyMicroAction(G, action, playerID);
@@ -767,7 +793,7 @@ export const selectBestAction = (G: GState, ctx: Ctx, playerID: PlayerID): Actio
 /**
  * Check if the current state is "volatile" and warrants deeper search.
  */
-const isVolatileState = (G: GState, playerID: PlayerID, _ctx: Ctx): boolean => {
+const isVolatileState = (G: GState, playerID: PlayerID, ctx: Ctx): boolean => {
 	const prefs = G.prefs[playerID];
 	if (!prefs) return false;
 
@@ -777,6 +803,9 @@ const isVolatileState = (G: GState, playerID: PlayerID, _ctx: Ctx): boolean => {
 
 	// Volatile if score is high (late game)
 	if (currentScore > 20) return true;
+
+	// Volatile if opponent has an immediate win
+	if (hasImmediateOpponentWin(G, ctx, playerID)) return true;
 
 	// Check for rim-adjacent objective placements
 	const hand = G.hands[playerID] ?? [];
@@ -818,8 +847,9 @@ const selectWithLookahead = (G: GState, ctx: Ctx, playerID: PlayerID): Action | 
 		return null;
 	}
 
+	const threatBefore = hasImmediateOpponentWin(G, ctx, playerID);
 	let bestAction: Action | null = null;
-	let bestValue = DELTA_V_THRESHOLD;
+	let bestValue = threatBefore ? -Infinity : DELTA_V_THRESHOLD;
 
 	for (const action of candidates) {
 		const gAfter = applyMicroAction(G, action, playerID);

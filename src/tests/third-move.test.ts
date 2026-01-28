@@ -18,12 +18,12 @@ const G: GState = {
   rules,
   radius: rules.RADIUS,
   board: {},
-  lanes: [{ from: { q: 0, r: 0 }, to: { q: -1, r: 1 }, color: 'R' }, { from: { q: -1, r: 2 }, to: { q: -2, r: 3 }, color: 'R' }, { from: { q: -1, r: 1 }, to: { q: -1, r: 2 }, color: 'V' }, { from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' }, { from: { q: 1, r: 0 }, to: { q: 1, r: -1 }, color: 'G' }, { from: { q: 1, r: -1 }, to: { q: 0, r: -1 }, color: 'O' }, { from: { q: 0, r: -1 }, to: { q: 0, r: -2 }, color: 'Y' }, { from: { q: 0, r: -2 }, to: { q: 1, r: -3 }, color: 'G' }, { from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' }, { from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'B' }, { from: { q: 2, r: 0 }, to: { q: 2, r: 1 }, color: 'V' }],
+  lanes: [{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' }, { from: { q: 0, r: 0 }, to: { q: 0, r: 1 }, color: 'V' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'G' }, { from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 0 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 1 }, color: 'R' }, { from: { q: -1, r: 1 }, to: { q: -2, r: 2 }, color: 'R' }, { from: { q: 0, r: 1 }, to: { q: 0, r: 2 }, color: 'V' }, { from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'B' }, { from: { q: 1, r: -1 }, to: { q: 2, r: -2 }, color: 'G' }, { from: { q: 0, r: -1 }, to: { q: 0, r: -2 }, color: 'Y' }, { from: { q: -1, r: 0 }, to: { q: -2, r: 0 }, color: 'O' }],
   deck: [],
   discard: [],
-  hands: { '0': [{ colors: ['G', 'R', 'V'] }] },
+  hands: { '0': [{ colors: ['B', 'O'] }] },
   treasure: [],
-  prefs: { '0': { primary: 'R', secondary: 'G', tertiary: 'V' } },
+  prefs: { '0': { primary: 'R', secondary: 'O', tertiary: 'Y' } },
   stats: { placements: 0 },
   meta: { deckExhaustionCycle: null, stashBonus: {} },
   origins: [{ q: 0, r: 0 }],
@@ -53,14 +53,18 @@ describe('enumerate-actions', () => {
   it('matches expected actions', () => {
     const actual = enumerateActions(G, '0').map(actionKey).sort();
     const expected = [
-      "play:0:G:1,0->2,-1",
-      "play:0:G:0,-2->0,-1",
-      "play:0:R:-1,2->-1,1",
-      "play:0:R:0,0->-1,1",
-      "play:0:R:1,0->0,1",
-      "play:0:V:0,0->0,1",
-      "play:0:V:1,0->2,0",
-      "play:0:V:2,0->1,0",
+      "play:0:B:-2,2->-1,2",
+      "play:0:B:0,-2->1,-2",
+      "play:0:B:0,0->1,0",
+      "play:0:B:0,2->1,2",
+      "play:0:B:2,-2->3,-2",
+      "play:0:B:2,0->3,0",
+      "play:0:O:-2,0->-3,0",
+      "play:0:O:-2,2->-3,2",
+      "play:0:O:0,-2->-1,-2",
+      "play:0:O:0,0->-1,0",
+      "play:0:O:0,2->-1,2",
+      "play:0:O:2,-2->1,-2",
       "stash:0",
       "end"
     ];
@@ -71,9 +75,9 @@ describe('enumerate-actions', () => {
   it('matches expected score deltas', () => {
     const baseScores = computeScoresRaw(G);
     const expectedScores = {
-      "play:0:R:-1,2->-1,1": 2,
-      "play:0:V:1,0->2,0": 1,
-      "play:0:V:2,0->1,0": 1
+      "play:0:O:-2,0->-3,0": 3,
+      "play:0:O:-2,2->-3,2": 1,
+      "play:0:O:0,-2->-1,-2": 1
     };
     for (const action of enumerateActions(G, '0')) {
       const k = actionKey(action);

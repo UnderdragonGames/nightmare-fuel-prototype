@@ -1,7 +1,105 @@
 import type { GState, Color } from './types';
 import { buildAllCoords, key, neighbors, ringIndex, parse, inBounds } from './helpers';
 
+const computeIntersectionCountByColorPath = (G: GState): Record<Color, number> => {
+	const radius = G.radius;
+	const originKeys = new Set(G.origins.map((o) => key(o)));
+
+	// Any-color adjacency across lanes (undirected)
+	const adjAny = new Map<string, Set<string>>();
+	const addAdjAny = (a: Co, b: Co): void => {
+		const ak = key(a);
+		const bk = key(b);
+		if (!adjAny.has(ak)) adjAny.set(ak, new Set());
+		if (!adjAny.has(bk)) adjAny.set(bk, new Set());
+		adjAny.get(ak)!.add(bk);
+		adjAny.get(bk)!.add(ak);
+	};
+
+	for (const ln of G.lanes) addAdjAny(ln.from, ln.to);
+
+	const originConnected = new Set<string>();
+	const queue: string[] = [];
+	for (const ok of originKeys) {
+		originConnected.add(ok);
+		queue.push(ok);
+	}
+	while (queue.length) {
+		const cur = queue.shift()!;
+		const nbrs = adjAny.get(cur);
+		if (!nbrs) continue;
+		for (const nk of nbrs) {
+			if (originConnected.has(nk)) continue;
+			originConnected.add(nk);
+			queue.push(nk);
+		}
+	}
+
+	const counts: Record<Color, number> = { R: 0, O: 0, Y: 0, G: 0, B: 0, V: 0 };
+	const colors: readonly Color[] = G.rules.COLORS;
+
+	for (const color of colors) {
+		const adjColor = new Map<string, Set<string>>();
+		const addAdjColor = (a: Co, b: Co): void => {
+			const ak = key(a);
+			const bk = key(b);
+			if (!adjColor.has(ak)) adjColor.set(ak, new Set());
+			if (!adjColor.has(bk)) adjColor.set(bk, new Set());
+			adjColor.get(ak)!.add(bk);
+			adjColor.get(bk)!.add(ak);
+		};
+
+		const rimSeeds: Co[] = [];
+		for (const ln of G.lanes) {
+			if (ln.color !== color) continue;
+			addAdjColor(ln.from, ln.to);
+			if (ringIndex(ln.from) === radius) rimSeeds.push(ln.from);
+			if (ringIndex(ln.to) === radius) rimSeeds.push(ln.to);
+		}
+
+		const rimConnected = new Set<string>();
+		const q: Co[] = [];
+		for (const seed of rimSeeds) {
+			const sk = key(seed);
+			if (rimConnected.has(sk)) continue;
+			rimConnected.add(sk);
+			q.push(seed);
+		}
+		while (q.length) {
+			const cur = q.shift()!;
+			const nbrs = adjColor.get(key(cur));
+			if (!nbrs) continue;
+			for (const nk of nbrs) {
+				if (rimConnected.has(nk)) continue;
+				rimConnected.add(nk);
+				q.push(parse(nk));
+			}
+		}
+
+		let count = 0;
+		const countedEdges = new Set<string>();
+		for (const ln of G.lanes) {
+			if (ln.color !== color) continue;
+			const fromKey = key(ln.from);
+			const toKey = key(ln.to);
+			if (!rimConnected.has(fromKey) || !rimConnected.has(toKey)) continue;
+			if (!originConnected.has(fromKey) || !originConnected.has(toKey)) continue;
+			const edgeKey = fromKey < toKey ? `${fromKey}|${toKey}` : `${toKey}|${fromKey}`;
+			if (countedEdges.has(edgeKey)) continue;
+			countedEdges.add(edgeKey);
+			count += 1;
+		}
+
+		counts[color] = count;
+	}
+
+	return counts;
+};
+
 const computeIntersectionCountByColor = (G: GState): Record<Color, number> => {
+	if (G.rules.MODE === 'path') {
+		return computeIntersectionCountByColorPath(G);
+	}
 	const rules = G.rules;
 	const radius = G.radius;
 	const coords = buildAllCoords(radius);

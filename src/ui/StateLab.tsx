@@ -2,8 +2,8 @@ import React from 'react';
 import type { PlayerID } from 'boardgame.io';
 import type { Action } from '../game/ai';
 import { applyMicroAction, enumerateActions } from '../game/ai';
-import type { Card, Co, Color, GState, Rules } from '../game/types';
-import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
+import type { Card, Co, Color, GState, PathLane, Rules } from '../game/types';
+import { MODE_RULESETS, BASE_DIRECTIONS, buildColorToDir } from '../game/rulesConfig';
 import { Board } from './Board';
 import { asVisibleColor, key, neighbors } from '../game/helpers';
 import { computeScoresRaw } from '../game/scoring';
@@ -73,6 +73,17 @@ const parseCoord = (value: string): Co | null => {
 	return { q: Number(match[1]), r: Number(match[2]) };
 };
 
+const parseLiteral = <T,>(value: string, scope: Record<string, unknown> = {}): T => {
+	const keys = Object.keys(scope);
+	const values = Object.values(scope);
+	return new Function(...keys, `return (${value});`)(...values) as T;
+};
+
+const extractMatch = (source: string, pattern: RegExp): string | null => {
+	const match = source.match(pattern);
+	return match?.[1] ?? null;
+};
+
 const actionKey = (a: Action): string => {
 	switch (a.type) {
 		case 'playCard': {
@@ -93,13 +104,46 @@ const actionKey = (a: Action): string => {
 	}
 };
 
-const actionToLabel = (a: Action): string => {
+const DIR_LABELS = ['N', 'NE', 'E', 'SE', 'SW', 'NW'] as const;
+const DIR_ARROWS = ['↑', '↗', '→', '↘', '↙', '↖'] as const;
+const DIR_META = BASE_DIRECTIONS.map((dir, i) => ({
+	...dir,
+	label: DIR_LABELS[i],
+	arrow: DIR_ARROWS[i],
+}));
+
+const directionFromTo = (from: Co, to: Co): { label: string; arrow: string } | null => {
+	const dq = to.q - from.q;
+	const dr = to.r - from.r;
+	const match = DIR_META.find((dir) => dir.q === dq && dir.r === dr);
+	return match ? { label: match.label, arrow: match.arrow } : null;
+};
+
+const InlineColorDot: React.FC<{ color: Color }> = ({ color }) => (
+	<span className="state-lab__inline-dot" style={{ background: asVisibleColor(color) }} title={color} aria-label={color} />
+);
+
+const actionToLabel = (a: Action): React.ReactNode => {
 	switch (a.type) {
 		case 'playCard':
 			if ('source' in a.args) {
-				return `play card ${a.args.handIndex} as ${a.args.pick} from (${a.args.source.q},${a.args.source.r}) to (${a.args.coord.q},${a.args.coord.r})`;
+				const dir = directionFromTo(a.args.source, a.args.coord);
+				return (
+					<span className="state-lab__action-label">
+						card {a.args.handIndex} as <InlineColorDot color={a.args.pick} /> from ({a.args.source.q},{a.args.source.r}) to ({a.args.coord.q},{a.args.coord.r})
+						{dir && (
+							<span className="state-lab__action-dir">
+								, {dir.label} <span className="state-lab__dir-arrow" aria-hidden="true">{dir.arrow}</span>
+							</span>
+						)}
+					</span>
+				);
 			}
-			return `play card ${a.args.handIndex} as ${a.args.pick} at (${a.args.coord.q},${a.args.coord.r})`;
+			return (
+				<span className="state-lab__action-label">
+					card {a.args.handIndex} as <InlineColorDot color={a.args.pick} /> at ({a.args.coord.q},{a.args.coord.r})
+				</span>
+			);
 		case 'rotateTile':
 			return `rotate (${a.args.coord.q},${a.args.coord.r}) by ${a.args.rotation}`;
 		case 'stashToTreasure':
@@ -109,6 +153,21 @@ const actionToLabel = (a: Action): string => {
 		case 'endTurnAndRefill':
 			return 'end turn & refill';
 	}
+};
+
+const parsePlayLaneKey = (keyValue: string): { handIndex: number; lane: PathLane } | null => {
+	const match = keyValue.match(/^play:(\d+):([A-Z]):(-?\d+),(-?\d+)->(-?\d+),(-?\d+)$/);
+	if (!match) return null;
+	const handIndex = Number(match[1]);
+	const color = match[2] as Color;
+	return {
+		handIndex,
+		lane: {
+			from: { q: Number(match[3]), r: Number(match[4]) },
+			to: { q: Number(match[5]), r: Number(match[6]) },
+			color,
+		},
+	};
 };
 
 const serializeBoard = (board: Record<string, { colors: Color[]; rotation: number }>): string => {
@@ -159,6 +218,7 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 	const [selectedColor, setSelectedColor] = React.useState<Color>('B');
 	const [rotationValue, setRotationValue] = React.useState(0);
 	const [pendingSource, setPendingSource] = React.useState<Co | null>(null);
+	const [showMovesHandIndex, setShowMovesHandIndex] = React.useState<number | null>(null);
 	const [extraAllowed, setExtraAllowed] = React.useState<string[]>([]);
 	const [excludedAllowed, setExcludedAllowed] = React.useState<Set<string>>(new Set());
 	const [expectedIllegal, setExpectedIllegal] = React.useState<string[]>([]);
@@ -177,8 +237,13 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		coord: '0,0',
 		source: '0,0',
 	});
+	const [loadText, setLoadText] = React.useState('');
+	const [loadStatus, setLoadStatus] = React.useState<string | null>(null);
+	const [pendingExpected, setPendingExpected] = React.useState<string[] | null>(null);
+	const [pendingForbidden, setPendingForbidden] = React.useState<string[] | null>(null);
 	const [createStatus, setCreateStatus] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	const [createMessage, setCreateMessage] = React.useState<string | null>(null);
+	const [projectRootHandle, setProjectRootHandle] = React.useState<FileSystemDirectoryHandle | null>(null);
 
 	const rules = React.useMemo(() => buildRules(mode, radius, edgeColors), [mode, radius, edgeColors]);
 
@@ -222,6 +287,13 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 	}, [mode]);
 
 	const hand = G.hands[playerID] ?? [];
+
+	React.useEffect(() => {
+		if (showMovesHandIndex !== null && showMovesHandIndex >= hand.length) {
+			setShowMovesHandIndex(null);
+		}
+	}, [hand.length, showMovesHandIndex]);
+
 	const highlightCoords = React.useMemo(() => {
 		if (mode !== 'path' || editMode !== 'path' || !pendingSource) return [];
 		return neighbors(pendingSource);
@@ -348,6 +420,14 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 
 	const actions = React.useMemo(() => enumerateActions(G, playerID), [G, playerID]);
 	const actionKeys = React.useMemo(() => actions.map(actionKey), [actions]);
+	const allowedKeys = React.useMemo(
+		() => new Set(actionKeys.filter((k) => !excludedAllowed.has(k)).concat(extraAllowed)),
+		[actionKeys, excludedAllowed, extraAllowed]
+	);
+	const allowedActions = React.useMemo(
+		() => actions.filter((a) => allowedKeys.has(actionKey(a))),
+		[actions, allowedKeys]
+	);
 	const scoresBefore = React.useMemo(() => computeScoresRaw(G), [G]);
 	const scoreDeltaByAction = React.useMemo(() => {
 		const deltas: Record<string, number> = {};
@@ -360,6 +440,87 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		}
 		return deltas;
 	}, [actions, G, playerID, scoresBefore]);
+
+	const phantomLanes = React.useMemo(() => {
+		if (mode !== 'path' || showMovesHandIndex === null) return [];
+		const lanes: PathLane[] = [];
+
+		for (const action of allowedActions) {
+			if (action.type !== 'playCard') continue;
+			const args = action.args;
+			if (!('source' in args)) continue;
+			if (args.handIndex !== showMovesHandIndex) continue;
+			lanes.push({ from: args.source, to: args.coord, color: args.pick });
+		}
+
+		for (const keyValue of extraAllowed) {
+			const parsed = parsePlayLaneKey(keyValue);
+			if (!parsed) continue;
+			if (parsed.handIndex !== showMovesHandIndex) continue;
+			lanes.push(parsed.lane);
+		}
+
+		return lanes;
+	}, [mode, showMovesHandIndex, allowedActions, extraAllowed]);
+
+	React.useEffect(() => {
+		if (!pendingExpected) return;
+		const expectedSet = new Set(pendingExpected);
+		setExcludedAllowed(new Set(actionKeys.filter((k) => !expectedSet.has(k))));
+		setExtraAllowed(pendingExpected.filter((k) => !actionKeys.includes(k)));
+		if (pendingForbidden) setExpectedIllegal(pendingForbidden);
+		setPendingExpected(null);
+		setPendingForbidden(null);
+	}, [actionKeys, pendingExpected, pendingForbidden]);
+
+	const loadTestFromText = (raw: string) => {
+		const modeMatch = extractMatch(raw, /MODE_RULESETS\.(path|hex)/);
+		const radiusMatch = extractMatch(raw, /RADIUS:\s*(\d+)/);
+		const edgeMatch = extractMatch(raw, /const EDGE_COLORS\s*=\s*(\[[\s\S]*?\])\s*(?:as const)?/);
+		const gMatch = extractMatch(raw, /const\s+G(?::\s*GState)?\s*=\s*({[\s\S]*?})\s*;/);
+		const expectedMatch = extractMatch(raw, /const expected\s*=\s*(\[[\s\S]*?\]);/);
+		const forbiddenMatch = extractMatch(raw, /const forbidden\s*=\s*(\[[\s\S]*?\]);/);
+		const expectedScoresMatch = extractMatch(raw, /const expectedScores\s*=\s*({[\s\S]*?});/);
+		const titleMatch = extractMatch(raw, /describe\('([^']+)'/);
+		const playerMatch = extractMatch(raw, /enumerateActions\(G,\s*'([^']+)'\)/) ?? extractMatch(raw, /enumerateActions\(G,\s*"([^"]+)"\)/);
+
+		if (!modeMatch || !radiusMatch || !edgeMatch || !gMatch) {
+			throw new Error('Unable to parse test file. Expected EDGE_COLORS, rules.MODE, rules.RADIUS, and const G.');
+		}
+
+		const parsedMode = modeMatch as 'path' | 'hex';
+		const parsedRadius = Number(radiusMatch);
+		const parsedEdge = parseLiteral<Color[]>(edgeMatch);
+		const nextRules = buildRules(parsedMode, parsedRadius, parsedEdge.join(''));
+		const normalizedG = gMatch
+			.replace(/\brules\.RADIUS\b/g, String(parsedRadius))
+			.replace(/\brules\b/g, '__RULES__');
+		const parsedG = parseLiteral<GState>(normalizedG, { __RULES__: nextRules });
+		const parsedExpected = expectedMatch ? parseLiteral<string[]>(expectedMatch) : [];
+		const parsedForbidden = forbiddenMatch ? parseLiteral<string[]>(forbiddenMatch) : [];
+		const parsedExpectedScores = expectedScoresMatch ? parseLiteral<Record<string, number>>(expectedScoresMatch) : {};
+		const nextPlayerID = (playerMatch ?? Object.keys(parsedG.hands ?? {})[0] ?? '0') as PlayerID;
+		const nextTitle = titleMatch ?? 'enumerate-actions';
+		const nextPrefs = parsedG.prefs?.[nextPlayerID] ?? { primary: 'R', secondary: 'O', tertiary: 'Y' };
+
+		setMode(parsedMode);
+		setRadius(parsedRadius);
+		setEdgeColors(parsedEdge.join(''));
+		setTitle(nextTitle);
+		setPlayerID(nextPlayerID);
+		setGoalPrefs(nextPrefs);
+		setG({
+			...parsedG,
+			rules: nextRules,
+			radius: nextRules.RADIUS,
+			prefs: { ...parsedG.prefs, [nextPlayerID]: nextPrefs },
+		});
+		setExpectedScores(parsedExpectedScores);
+		setPendingExpected(parsedExpected);
+		setPendingForbidden(parsedForbidden);
+		setShowMovesHandIndex(null);
+		setPendingSource(null);
+	};
 
 	const buildActionKey = (form: AllowedForm | IllegalForm): string | null => {
 		switch (form.type) {
@@ -415,11 +576,10 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 
 		const safeTitle = title.trim() || 'enumerate-actions';
 		return `import { describe, it, expect } from 'vitest';
-import { enumerateActions, type Action } from './ai';
-import { applyMicroAction } from './ai';
-import type { GState } from './types';
-import { MODE_RULESETS, buildColorToDir } from './rulesConfig';
-import { computeScoresRaw } from './scoring';
+import { enumerateActions, type Action, applyMicroAction } from '../game/ai';
+import type { GState } from '../game/types';
+import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
+import { computeScoresRaw } from '../game/scoring';
 
 const EDGE_COLORS = [${edgeLiteral.map((c) => `'${c}'`).join(', ')}] as const;
 
@@ -496,33 +656,65 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 			.replace(/[^a-z0-9]+/g, '-')
 			.replace(/^-+|-+$/g, '') || 'enumerate-actions';
 
+	const ensureProjectRoot = async (): Promise<FileSystemDirectoryHandle | null> => {
+		if (projectRootHandle) return projectRootHandle;
+		if (!('showDirectoryPicker' in window) || !window.isSecureContext) return null;
+		const handle = await (window as Window & { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
+		setProjectRootHandle(handle);
+		return handle;
+	};
+
+	const downloadTestFile = (filename: string, contents: string) => {
+		const blob = new Blob([contents], { type: 'text/plain;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		URL.revokeObjectURL(url);
+	};
+
+	const createTestViaDevServer = async (filename: string, contents: string): Promise<boolean> => {
+		try {
+			const response = await fetch('/__lab/create-test', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ filename, contents }),
+			});
+			return response.ok;
+		} catch {
+			return false;
+		}
+	};
+
 	const createTestFile = async () => {
 		setCreateStatus('saving');
 		setCreateMessage(null);
 		try {
-			const filename = `state-lab.${slugify(title)}.test.ts`;
-			if ('showDirectoryPicker' in window) {
-				const dirHandle = await (window as Window & { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
-				const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-				const writable = await fileHandle.createWritable();
-				await writable.write(exportTest);
-				await writable.close();
+			const filename = `${slugify(title)}.test.ts`;
+			const rootHandle = await ensureProjectRoot();
+			if (!rootHandle) {
+				const written = await createTestViaDevServer(filename, exportTest);
+				if (written) {
+					setCreateStatus('saved');
+					setCreateMessage(`Saved ${filename} in src/tests via dev server.`);
+					return;
+				}
+				downloadTestFile(filename, exportTest);
 				setCreateStatus('saved');
-				setCreateMessage(`Saved ${filename} in the selected folder.`);
+				setCreateMessage(`Downloaded ${filename}. Move it into src/tests.`);
 				return;
 			}
-
-			const blob = new Blob([exportTest], { type: 'text/plain' });
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = filename;
-			document.body.appendChild(a);
-			a.click();
-			a.remove();
-			URL.revokeObjectURL(url);
+			const srcHandle = await rootHandle.getDirectoryHandle('src', { create: false });
+			const testsHandle = await srcHandle.getDirectoryHandle('tests', { create: true });
+			const fileHandle = await testsHandle.getFileHandle(filename, { create: true });
+			const writable = await fileHandle.createWritable();
+			await writable.write(exportTest);
+			await writable.close();
 			setCreateStatus('saved');
-			setCreateMessage(`Downloaded ${filename}. Move it into src/game/.`);
+			setCreateMessage(`Saved ${filename} in src/tests.`);
 		} catch (err) {
 			setCreateStatus('error');
 			setCreateMessage(err instanceof Error ? err.message : 'Failed to create file.');
@@ -584,6 +776,48 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 							<label>Player ID</label>
 							<input value={playerID} onChange={(e) => setPlayerID(e.target.value as PlayerID)} />
 						</div>
+					</section>
+
+					<section className="state-lab__section">
+						<h3>Load Test</h3>
+						<div className="state-lab__note">Paste a generated test file or upload one. Loads trusted input only.</div>
+						<div className="state-lab__row">
+							<textarea
+								rows={6}
+								value={loadText}
+								onChange={(e) => setLoadText(e.target.value)}
+								placeholder="Paste test contents here..."
+							/>
+						</div>
+						<div className="state-lab__row state-lab__row--actions">
+							<input
+								type="file"
+								accept=".ts,.tsx,.js"
+								onChange={(e) => {
+									const file = e.target.files?.[0];
+									if (!file) return;
+									const reader = new FileReader();
+									reader.onload = () => {
+										setLoadText(String(reader.result ?? ''));
+									};
+									reader.readAsText(file);
+								}}
+							/>
+							<button
+								onClick={() => {
+									try {
+										loadTestFromText(loadText);
+										setLoadStatus('Loaded test into lab.');
+									} catch (err) {
+										setLoadStatus(err instanceof Error ? err.message : 'Failed to load test.');
+									}
+								}}
+								disabled={!loadText.trim()}
+							>
+								Load
+							</button>
+						</div>
+						{loadStatus && <div className="state-lab__note">{loadStatus}</div>}
 					</section>
 
 					<section className="state-lab__section">
@@ -673,7 +907,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 						<h3>Hand</h3>
 						<div className="state-lab__stack">
 							{hand.map((card, i) => (
-								<div key={`hand-${i}`} className="state-lab__row">
+								<div key={`hand-${i}`} className="state-lab__row state-lab__row--hand">
 									<input
 										value={card.colors.join('')}
 										onChange={(e) => {
@@ -690,6 +924,14 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 										}}
 									>
 										Remove
+									</button>
+									<button
+										disabled={mode !== 'path'}
+										onClick={() => {
+											setShowMovesHandIndex((prev) => (prev === i ? null : i));
+										}}
+									>
+										{showMovesHandIndex === i ? 'Hide Moves' : 'Show Moves'}
 									</button>
 								</div>
 							))}
@@ -1067,7 +1309,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 
 					<section className="state-lab__section">
 						<h3>Test Output</h3>
-						<div className="state-lab__note">Create will ask for a folder. Choose src/game/.</div>
+						<div className="state-lab__note">Create writes to src/tests after you pick the project root once (or via the dev server, otherwise it downloads a file).</div>
 						<div className="state-lab__row state-lab__row--actions">
 							<button onClick={() => navigator.clipboard.writeText(exportTest)}>Copy</button>
 							<button onClick={createTestFile} disabled={createStatus === 'saving'}>
@@ -1086,9 +1328,11 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 						rules={rules}
 						board={G.board}
 						lanes={G.lanes}
+						phantomLanes={phantomLanes}
+						phantomOpacity={0.35}
+						phantomDash="6,4"
 						radius={G.radius}
 						onHexClick={onHexClick}
-						showRing
 						showCoords
 						highlightCoords={highlightCoords}
 						highlightColor="#8b5cf6"

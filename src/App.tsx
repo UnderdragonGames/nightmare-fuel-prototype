@@ -91,13 +91,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [pendingRotationTile, setPendingRotationTile] = React.useState<Co | null>(null);
 	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null);
 	const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
-	const showRing = useUIStore((s) => s.showRing);
-	const setShowRing = useUIStore((s) => s.setShowRing);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const setBotFor = useUIStore((s) => s.setBotFor);
 	const aiPaused = useUIStore((s) => s.aiPaused);
 	const setAiPaused = useUIStore((s) => s.setAiPaused);
-	const [placeable, setPlaceable] = React.useState<Co[]>([]);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
 
@@ -158,6 +155,45 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		return dests;
 	};
 
+	const availableMoveCoords = React.useMemo(() => {
+		if (!isMyTurn || locked || selectedCard === null) return [];
+		const card = myHand[selectedCard];
+		if (!card) return [];
+
+		if (isPathMode) {
+			if (selectedSourceDot) {
+				return getValidDestinations(selectedSourceDot, card.colors);
+			}
+
+			const sources: Co[] = [];
+			const coords = buildAllCoords(G.radius);
+			for (const source of coords) {
+				if (getValidDestinations(source, card.colors).length > 0) sources.push(source);
+			}
+			return sources;
+		}
+
+		const coords = buildAllCoords(G.radius);
+		const colors = selectedColor ? [selectedColor] : card.colors;
+		const seen = new Set<string>();
+		const moves: Co[] = [];
+
+		for (const coord of coords) {
+			for (const color of colors) {
+				if (canPlace(G, coord, color, rules)) {
+					const k = key(coord);
+					if (!seen.has(k)) {
+						seen.add(k);
+						moves.push(coord);
+					}
+					break;
+				}
+			}
+		}
+
+		return moves;
+	}, [G, isMyTurn, isPathMode, locked, myHand, rules, selectedCard, selectedColor, selectedSourceDot]);
+
 	const onHexClick = (coord: Co) => {
 		if (!isMyTurn || locked) return;
 
@@ -187,7 +223,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				const validDests = getValidDestinations(coord, card.colors);
 				if (validDests.length > 0) {
 					setSelectedSourceDot(coord);
-					setPlaceable(validDests);
 					// Default pick to first card color; user can override via onPickColor.
 					setSelectedColor(
 						(selectedColor && card.colors.includes(selectedColor))
@@ -200,7 +235,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 			if (key(coord) === key(selectedSourceDot)) {
 				setSelectedSourceDot(null);
-				setPlaceable([]);
 				setSelectedColor(null);
 				return;
 			}
@@ -212,7 +246,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				setSelectedCard(null);
 				setSelectedColor(null);
 				setSelectedSourceDot(null);
-				setPlaceable([]);
 				return;
 			}
 
@@ -223,14 +256,12 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				setSelectedCard(null);
 				setSelectedColor(null);
 				setSelectedSourceDot(null);
-				setPlaceable([]);
 				return;
 			}
 
 			const validDests = getValidDestinations(coord, card.colors);
 			if (validDests.length > 0) {
 				setSelectedSourceDot(coord);
-				setPlaceable(validDests);
 				setSelectedColor(
 					(selectedColor && card.colors.includes(selectedColor))
 						? selectedColor
@@ -238,7 +269,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				);
 			} else {
 				setSelectedSourceDot(null);
-				setPlaceable([]);
 				setSelectedColor(null);
 			}
 			return;
@@ -260,7 +290,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				moves.playCard({ handIndex: selectedCard, pick: selectedColor, coord });
 				setSelectedCard(null);
 				setSelectedColor(null);
-				setPlaceable([]);
 			}
 			return;
 		}
@@ -269,28 +298,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				moves.playCard({ handIndex: selectedCard, pick: color, coord });
 				setSelectedCard(null);
 				setSelectedColor(null);
-				setPlaceable([]);
 				return;
 			}
 		}
-	};
-
-	const recomputePlaceable = (color: Color | null) => {
-		if (!color) { setPlaceable([]); return; }
-		const coords = buildAllCoords(G.radius);
-		setPlaceable(coords.filter((c) => canPlace(G, c, color, rules)));
-	};
-
-	const computeValidSources = (cardColors: Color[]): Co[] => {
-		const coords = buildAllCoords(G.radius);
-		const sources: Co[] = [];
-		for (const coord of coords) {
-			const validDests = getValidDestinations(coord, cardColors);
-			if (validDests.length > 0) {
-				sources.push(coord);
-			}
-		}
-		return sources;
 	};
 
 	const onPickColor = (index: number, color: Color) => {
@@ -298,14 +308,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		setSelectedCard(index);
 		setSelectedColor(color);
 		setSelectedSourceDot(null);
-		if (isPathMode) {
-			const card = myHand[index];
-			if (card) {
-				setPlaceable(computeValidSources(card.colors));
-			}
-		} else {
-			recomputePlaceable(color);
-		}
 	};
 
 	const handleRotation = (rotation: number) => {
@@ -314,7 +316,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		setPendingRotationTile(null);
 		setSelectedCard(null);
 		setSelectedColor(null);
-		setPlaceable([]);
 		setRotatable([]);
 	};
 
@@ -322,7 +323,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (locked) {
 			setSelectedCard(null);
 			setSelectedColor(null);
-			setPlaceable([]);
 			setRotationMode(false);
 			setRotatable([]);
 			setPendingRotationTile(null);
@@ -419,7 +419,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			moves.stashToTreasure?.({ handIndex: selectedCard });
 			setSelectedCard(null);
 			setSelectedColor(null);
-			setPlaceable([]);
 		}
 	};
 	const onTakeTreasure = (i: number) => moves.takeFromTreasure && moves.takeFromTreasure({ index: i });
@@ -501,10 +500,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					>
 						{aiPaused ? '▶ Resume AI' : '⏸ Pause AI'}
 					</button>
-					<label className="options-toggle">
-						<input type="checkbox" checked={showRing} onChange={(e) => setShowRing(e.target.checked)} />
-						Show Ring
-					</label>
 				</div>
 			</aside>
 
@@ -521,26 +516,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					lanes={G.lanes}
 					radius={G.radius}
 					onHexClick={onHexClick}
-					showRing={showRing}
-					highlightCoords={rotationMode ? rotatable : placeable}
+					highlightCoords={rotationMode ? rotatable : availableMoveCoords}
 					highlightColor={rotationMode ? '#8b5cf6' : (selectedColor ? asVisibleColor(selectedColor) : '#8b5cf6')}
+					highlightIsRotation={rotationMode}
 					origins={G.origins}
 					pendingRotationTile={pendingRotationTile}
 					onRotationSelect={handleRotation}
 					selectedColor={rotationMode ? null : selectedColor}
 					selectedSourceDot={selectedSourceDot}
 				/>
-				{/* Mode hints */}
-				{isPathMode && selectedCard !== null && !selectedSourceDot && (
-					<div className="mode-hint mode-hint--path">
-						Click a dot to select source, then click a neighbor to place.
-					</div>
-				)}
-				{isPathMode && selectedSourceDot && (
-					<div className="mode-hint mode-hint--source">
-						Click a highlighted dot to place, or source again to deselect.
-					</div>
-				)}
 			</main>
 
 			{/* FLOATING CARDS */}
@@ -555,7 +539,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								if (selectedCard === index) {
 									setSelectedCard(null);
 									setSelectedColor(null);
-									setPlaceable([]);
 									setSelectedSourceDot(null);
 									return;
 								}
@@ -563,16 +546,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								setSelectedSourceDot(null);
 								const c = myHand[index];
 								if (!c) return;
-								if (isPathMode) {
-									setPlaceable(computeValidSources(c.colors));
-									setSelectedColor(null);
-								} else if (selectedColor) {
-									recomputePlaceable(selectedColor);
-								} else {
-									const coords = buildAllCoords(G.radius);
-									const union = coords.filter((co) => c.colors.some((col) => canPlace(G, co, col, rules)));
-									setPlaceable(union);
-								}
+								if (isPathMode) setSelectedColor(null);
 							}}
 							onPickColor={onPickColor}
 						/>
@@ -585,7 +559,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									setRotationMode(!rotationMode);
 									setSelectedCard(null);
 									setSelectedColor(null);
-									setPlaceable([]);
 								}}
 								disabled={!isMyTurn || locked}
 								title="Rotate Mode"
@@ -599,7 +572,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								undo();
 								setSelectedCard(null);
 								setSelectedColor(null);
-								setPlaceable([]);
 								setPendingRotationTile(null);
 								setRotatable([]);
 								setRotationMode(false);

@@ -47,7 +47,7 @@ const HEX_PLACEMENT: PlacementRules = {
 	TWO_TO_ROTATE: false,
 	OVERWRITE: 'none',
 	CONSOLIDATION: false,
-	CONSOLIDATION_END: false,
+	CONSOLIDATION_END: 0,
 };
 
 const HEX_SCORING: ObjectiveScoringRules = {
@@ -91,7 +91,7 @@ export const HEX_RULES: Rules = {
 	// Placement configuration
 	PLACEMENT: HEX_PLACEMENT,
 	// UI display settings
-	UI: { HEX_SIZE: 18, SHOW_AXES: false, SHOW_RING: false },
+	UI: { HEX_SIZE: 18, SHOW_AXES: false },
 	// Maximum number of players allowed in the game
 	MAX_PLAYERS: 6,
 	// Origin rule: 'center' (single origin at 0,0), 'random' (random origins only, excluding center), or 'random-and-center' (center + random origins)
@@ -123,8 +123,8 @@ export const PATH_RULES: Rules = {
 		NO_BUILD_FROM_RIM: true,
 		// Consolidation: once a pathway reaches rim, can reinforce existing paths backward toward center
 		CONSOLIDATION: true,
-		// Game ends when a continuous path reaches from rim back to center
-		CONSOLIDATION_END: true,
+		// Game ends when this many continuous paths reach from rim back to center
+		CONSOLIDATION_END: 3,
 	},
 	SCORING: {
 		...HEX_SCORING,

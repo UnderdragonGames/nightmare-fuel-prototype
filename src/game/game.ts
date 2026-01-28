@@ -1,6 +1,6 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
-import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, hasRimToCenterPath } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths } from './helpers';
 import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
 import { enumerateActions } from './ai';
 import { buildDeck } from './deck';
@@ -316,10 +316,10 @@ export const HexStringsGame: Game<GState> = {
 		const { G, ctx } = context;
 		const rules = G.rules;
 
-		// CONSOLIDATION_END: Game ends when a continuous same-color path reaches from rim to center
-		if (rules.PLACEMENT.CONSOLIDATION_END) {
-			const completedColor = hasRimToCenterPath(G);
-			if (completedColor) {
+		// CONSOLIDATION_END: Game ends when enough continuous same-color paths reach from rim to center
+		if (rules.PLACEMENT.CONSOLIDATION_END > 0) {
+			const completedPaths = countRimToCenterPaths(G);
+			if (completedPaths >= rules.PLACEMENT.CONSOLIDATION_END) {
 				return { scores: computeScores(G) };
 			}
 		}
@@ -350,5 +350,4 @@ export const HexStringsGame: Game<GState> = {
 		},
 	},
 };
-
 

@@ -79,8 +79,8 @@ export type PlacementRules = {
 	OVERWRITE: PlacementOverwriteRule;
 	// Consolidation: once a pathway reaches the rim, can place backwards along existing paths (reinforcement limits apply)
 	CONSOLIDATION: boolean;
-	// Consolidation win: game ends when a single continuous path reaches from rim back to center
-	CONSOLIDATION_END: boolean;
+	// Consolidation win: game ends when this many continuous paths reach from rim back to center
+	CONSOLIDATION_END: number;
 };
 
 export type Rules = {
@@ -117,7 +117,7 @@ export type Rules = {
 	// Placement configuration
 	PLACEMENT: PlacementRules;
 	// UI display settings
-	UI: { HEX_SIZE: number; SHOW_AXES: boolean; SHOW_RING: boolean };
+	UI: { HEX_SIZE: number; SHOW_AXES: boolean };
 	// Maximum number of players allowed in the game
 	MAX_PLAYERS: number;
 	// Origin rule: 'center' (single origin at 0,0), 'random' (random origins only, excluding center), or 'random-and-center' (center + random origins)

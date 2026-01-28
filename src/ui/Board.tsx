@@ -1,5 +1,5 @@
 import React from 'react';
-import { axialToPixel, asVisibleColor, buildAllCoords, key, ringIndex, edgeIndexToColor, neighbors } from '../game/helpers';
+import { axialToPixel, asVisibleColor, buildAllCoords, key, edgeIndexToColor, neighbors } from '../game/helpers';
 import { Hex } from './Hex';
 import type { Color, Co, HexTile, Rules, PathLane } from '../game/types';
 
@@ -7,11 +7,14 @@ type Props = {
 	rules: Rules;
 	board: Record<string, HexTile>;
 	lanes?: PathLane[];
+	phantomLanes?: PathLane[];
+	phantomOpacity?: number;
+	phantomDash?: string;
 	radius: number;
 	onHexClick: (coord: Co) => void;
-	showRing?: boolean;
 	highlightCoords?: Co[];
 	highlightColor?: string;
+	highlightIsRotation?: boolean;
 	origins?: Co[];
 	pendingRotationTile?: Co | null;
 	onRotationSelect?: (rotation: number) => void;
@@ -20,9 +23,8 @@ type Props = {
 	showCoords?: boolean;
 };
 
-export const Board: React.FC<Props> = ({ rules, board, lanes = [], radius, onHexClick, showRing, highlightCoords = [], highlightColor = '#000000', origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null, showCoords = false }) => {
+export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes = [], phantomOpacity = 0.35, phantomDash = '6,4', radius, onHexClick, highlightCoords = [], highlightColor = '#000000', highlightIsRotation = false, origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null, showCoords = false }) => {
 	const size = rules.UI.HEX_SIZE;
-	const effectiveShowRing = showRing ?? rules.UI.SHOW_RING;
 	const coords = buildAllCoords(radius);
 	const width = size * 3 * (radius + 1);
 	const height = Math.sqrt(3) * size * (radius * 2 + 1);
@@ -37,13 +39,13 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], radius, onHex
 	const laneWidth = size * 0.2;
 	const laneGap = laneWidth * 1.1;
 	
-	// Precompute all lane segments for path mode (rendered on layer above all hexes)
-	const allLaneSegments: Array<{ x1: number; y1: number; x2: number; y2: number; color: Color; key: string }> = [];
-	
-	if (isPathMode) {
+	const buildLaneSegments = (laneList: PathLane[], keyPrefix: string) => {
+		const segments: Array<{ x1: number; y1: number; x2: number; y2: number; color: Color; key: string }> = [];
+		if (!isPathMode || laneList.length === 0) return segments;
+
 		// Group lanes by *undirected* edge so backtracking/recolor lanes render side-by-side, not on top.
 		const groups = new Map<string, PathLane[]>();
-		for (const ln of lanes) {
+		for (const ln of laneList) {
 			const a = key(ln.from);
 			const b = key(ln.to);
 			const gk = a < b ? `${a}<->${b}` : `${b}<->${a}`;
@@ -96,14 +98,20 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], radius, onHex
 				const x2 = pFrom.x + dx * tEnd + offX;
 				const y2 = pFrom.y + dy * tEnd + offY;
 
-				allLaneSegments.push({
+				segments.push({
 					x1, y1, x2, y2,
 					color: ln.color,
-					key: `${gk}-${i}-${ln.color}-${key(ln.from)}->${key(ln.to)}`,
+					key: `${keyPrefix}-${gk}-${i}-${ln.color}-${key(ln.from)}->${key(ln.to)}`,
 				});
 			}
 		}
-	}
+
+		return segments;
+	};
+
+	// Precompute lane segments for path mode (rendered on layer above all hexes)
+	const allLaneSegments = buildLaneSegments(lanes, 'lane');
+	const phantomLaneSegments = buildLaneSegments(phantomLanes, 'phantom');
 
 	return (
 		<svg 
@@ -140,8 +148,9 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], radius, onHex
 				const isOrigin = originSet.has(key(c));
 				const isHighlighted = highlightSet.has(key(c));
 				const isHighlight = isHighlighted && occupants.length === 0;
-				const isRotatable = isHighlighted && occupants.length > 0;
+				const isRotatable = highlightIsRotation && isHighlighted && occupants.length > 0;
 				const isPendingRotation = pendingRotationTile !== null && key(pendingRotationTile) === key(c);
+				const showMoveStroke = !highlightIsRotation && isHighlighted && !isPathMode;
 				const split = !isPathMode && sortedOccupants.length >= 2 ? [asVisibleColor(sortedOccupants[0] as Color), asVisibleColor(sortedOccupants[1] as Color)] as [string, string] : null;
 				
 				// In path mode, hex fill is neutral - lanes show the colors
@@ -158,24 +167,10 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], radius, onHex
 							fill={hexFill}
 							splitFills={split ?? undefined}
 							fillOpacity={isHighlight ? 0.35 : (isRotatable && !isPathMode ? 0.7 : 1)}
-							stroke={isRotatable && !isPathMode ? highlightColor : (isOrigin ? '#aa66ff' : '#2a2a3d')}
-							strokeWidth={isRotatable && !isPathMode ? 3 : (isOrigin ? 2 : 1)}
+							stroke={isRotatable && !isPathMode ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#aa66ff' : '#2a2a3d'))}
+							strokeWidth={isRotatable && !isPathMode ? 3 : (showMoveStroke ? 2 : (isOrigin ? 2 : 1))}
 							onClick={() => !isPathMode && onHexClick(c)}
 						>
-							{effectiveShowRing && (
-								<text x={0} y={4} fontSize={8} textAnchor="middle" fill="#606070">{ringIndex(c)}</text>
-							)}
-							{showCoords && (
-								<text
-									x={0}
-									y={size * 0.35}
-									fontSize={8}
-									textAnchor="middle"
-									fill="#9aa0b8"
-								>
-									{c.q},{c.r}
-								</text>
-							)}
 							{isOrigin && occupants.length === 0 && !isPathMode && (
 								<circle cx={0} cy={0} r={size * 0.3} fill="none" stroke="#aa66ff" strokeWidth={2} strokeDasharray="4,2" />
 							)}
@@ -260,8 +255,40 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], radius, onHex
 					))}
 				</g>
 			)}
+
+			{/* Layer 3: Phantom lane segments (path mode only) - render above real lanes */}
+			{isPathMode && phantomLaneSegments.length > 0 && (
+				<g style={{ mixBlendMode: 'screen' }}>
+					{phantomLaneSegments.map((seg) => (
+						<g key={seg.key}>
+							<line
+								x1={seg.x1}
+								y1={seg.y1}
+								x2={seg.x2}
+								y2={seg.y2}
+								stroke="#ffffff"
+								strokeWidth={laneWidth * 1.35}
+								strokeLinecap="round"
+								strokeDasharray={phantomDash}
+								opacity={phantomOpacity * 0.4}
+							/>
+							<line
+								x1={seg.x1}
+								y1={seg.y1}
+								x2={seg.x2}
+								y2={seg.y2}
+								stroke={asVisibleColor(seg.color)}
+								strokeWidth={laneWidth * 1.1}
+								strokeLinecap="round"
+								strokeDasharray={phantomDash}
+								opacity={phantomOpacity}
+							/>
+						</g>
+					))}
+				</g>
+			)}
 			
-			{/* Layer 2.5: Preview lanes for highlighted hexes (path mode only) */}
+			{/* Layer 3.5: Preview lanes for highlighted hexes (path mode only) */}
 			{isPathMode && selectedColor && selectedSourceDot && (
 				<g>
 					{highlightCoords.map((c) => {
@@ -339,6 +366,27 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], radius, onHex
 					</g>
 				);
 			})}
+			
+			{/* Layer 4: Coordinate labels - render above all overlays */}
+			{showCoords && (
+				<g className="board__coords">
+					{coords.map((c) => {
+						const center = axialToPixel(c, size);
+						return (
+							<text
+								key={`coord-${key(c)}`}
+								x={center.x}
+								y={center.y + size * 0.55}
+								fontSize={8}
+								textAnchor="middle"
+								fill="#9aa0b8"
+							>
+								{c.q},{c.r}
+							</text>
+						);
+					})}
+				</g>
+			)}
 		</svg>
 	);
 };
