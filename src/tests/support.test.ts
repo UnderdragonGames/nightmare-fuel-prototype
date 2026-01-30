@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { enumerateActions, type Action } from '../game/ai';
 import type { GState } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
+import { makeCard } from '../game/cardFactory';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
 
@@ -20,7 +21,7 @@ const G: GState = {
   lanes: [{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' }, { from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'B' }, { from: { q: 2, r: 0 }, to: { q: 3, r: 0 }, color: 'B' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 0 }, color: 'O' }, { from: { q: -1, r: 0 }, to: { q: -2, r: 0 }, color: 'O' }, { from: { q: -2, r: 0 }, to: { q: -3, r: 0 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 0 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 0 }, color: 'O' }, { from: { q: -1, r: 0 }, to: { q: -2, r: 0 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'G' }, { from: { q: 1, r: -1 }, to: { q: 2, r: -2 }, color: 'G' }, { from: { q: 2, r: -2 }, to: { q: 3, r: -3 }, color: 'G' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'G' }],
   deck: [],
   discard: [],
-  hands: { '0': [{ colors: ['B', 'O', 'G'] }] },
+  hands: { '0': [makeCard(['B', 'O', 'G'])] },
   treasure: [],
   prefs: {},
   stats: { placements: 0 },

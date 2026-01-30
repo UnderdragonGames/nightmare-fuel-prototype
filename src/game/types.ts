@@ -4,7 +4,21 @@ export type PlayerID = BgioPlayerID;
 
 export type Color = 'R' | 'O' | 'Y' | 'G' | 'B' | 'V';
 
-export type Card = { colors: Color[] };
+export type Stat = 'vitality' | 'form' | 'freedom' | 'sanity' | 'will' | 'hope';
+
+export type CardFlags = { needsNewPrint: boolean; needsDuplicate: boolean };
+
+export type Card = {
+	id: number;
+	name: string;
+	colors: Color[];
+	stats: Partial<Record<Stat, number>>;
+	text: string | null;
+	isAction: boolean;
+	synergies: string[];
+	synergyCount: number;
+	flags: CardFlags;
+};
 
 export type Co = { q: number; r: number };
 

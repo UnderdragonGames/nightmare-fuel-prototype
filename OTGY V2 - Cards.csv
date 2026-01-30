@@ -1,0 +1,493 @@
+Name,Card no.,,,Stats Summary,Synergy Summary,Needs new print,Needs duplicate,Description/Text (v6),Vitality,Form,Freedom,Sanity,Will,Hope,1st Synergy ,2nd Synergy,3rd Synergy,4th Synergy,Synergy Count,Art Edits,,,Category,Image Inspiration,Image Description,Calculated Villains,Old Description (v5)
+Acidic Mucus,1,,,"Vitality 1
+Sanity 1","Blob
+Ghost",TRUE,FALSE,,1,,,1,,,Blob,Ghost,,,2,,,,,,,,
+Allow a Brief Reprieve,2,,,,,TRUE,FALSE,Every player draws a card.,,,,,,,,,,,0,,,,,,,,Villain: Advance the time marker. Survivor: No effect.
+Alluring Flame,3,,,"Vitality 1
+Freedom 1
+Will 1","Dragon
+Witch",FALSE,FALSE,,1,,1,,1,,Dragon,Witch,,,2,,,,,,,,
+Alter Fate,4,,,,,TRUE,FALSE,"Look at the top 5 cards of the deck, take one card, then discard the rest.",,,,,,,,,,,0,,,,,,,,Look at the top 5 cards of the deck. Return them in the order you see fit.
+Annihilate Flesh Creatures,5,,,"Vitality 1
+Form 1
+Sanity 1
+Hope 1","Blob
+Ghost
+Robot",FALSE,FALSE,,1,1,,1,,1,Blob,Ghost,Robot,,3,,,,,,,,
+Any Purpose Plot Device,6,,,"Vitality 1
+Form 1
+Freedom 1
+Sanity 1
+Will 1
+Hope 1","Alien
+Cultist
+Robot
+Zombie",TRUE,FALSE,,1,1,1,1,1,1,Alien,Cultist,Robot,Zombie,4,,,,,,,,
+Appear as a Dead Loved One,7,,,"
+Form 1
+Hope 1","Ghost
+Zombie",FALSE,FALSE,,,1,,,,1,Ghost,Zombie,,,2,,,,,,,,
+Armed to the Teeth,8,,,,,TRUE,FALSE,Draw 5 cards.,,,,,,,,,,,0,,,,,,,,"Place this card in front of you. For the rest of this round, at the end of your turns, draw cards until your hand size is 5 (instead of 3)."
+Bargain for Power,9,,,"
+Form 1
+Hope 1",Witch,FALSE,FALSE,,,1,,,,1,Witch,,,,1,,,,,,,,
+Barren Wasteland,10,,,,,FALSE,FALSE,"Place this card on the draw pile face up. Players do not draw cards. When all hands are empty, place this card in the discard pile.",,,,,,,,,,,0,,,,,,,,"Place this card on the draw pile face up. Players do not draw cards. When all hands are empty, place this card in the discard pile."
+Become Like Me!,11,,,"
+Form 1
+Freedom 1",Mutant,FALSE,FALSE,,,1,1,,,,Mutant,,,,1,,,,,,,,
+Blinding Flare,12,,,"
+Form 1
+Freedom 1",Dragon,FALSE,FALSE,,,1,1,,,,Dragon,,,,1,,,,,,,,
+Blood Drain,13,,,"Vitality 1
+Will 1",Vampire,FALSE,FALSE,,1,,,,1,,Vampire,,,,1,,,,,,,,
+Brain Slug,14,,,"Vitality 1
+Sanity 1
+Will 1","Blob
+Zombie
+Robot
+Demon",TRUE,FALSE,,1,,,1,1,,Blob,Zombie,Robot,Demon,4,,,,,,,,
+Cap of the Court Jester,15,,,"
+Sanity 1
+Will 1","Robot
+Mutant
+Cultist
+Alien",TRUE,FALSE,,,,,1,1,,Robot,Mutant,Cultist,Alien,4,,,,,,,,
+Ceaseless Chant,16,,,"
+Sanity 1
+Hope 1",Cultist,FALSE,FALSE,,,,,1,,1,Cultist,,,,1,,,,,,,,
+Charismatic Voice,17,,,"
+Sanity 1
+Will 1",Vampire,FALSE,FALSE,,,,,1,1,,Vampire,,,,1,,,,,,,,
+Cocoon,18,,,"
+Form 1
+Freedom 1","Blob
+Mutant",FALSE,FALSE,,,1,1,,,,Blob,Mutant,,,2,,,,,,,,
+Combo,19,,,,,TRUE,TRUE,Place 2 hexes or play 2 additional actions.,,,,,,,,,,,0,,,,,,,,Play 2 additional cards.
+Creature From Beyond!,20,,,"
+Form 1
+Freedom 1
+Sanity 1
+Will 1
+Hope 1","Cultist
+Demon
+Mutant",TRUE,FALSE,,,1,1,1,1,1,Cultist,Demon,Mutant,,3,,,,,,,,
+Crush with Metal,21,,,"Vitality 1
+Freedom 1",Robot,FALSE,FALSE,,1,,1,,,,Robot,,,,1,,,,,,,,
+Cultism 101 Handbook,22,,,"
+Form 1
+Sanity 1",Cultist,FALSE,FALSE,,,1,,1,,,Cultist,,,,1,,,,,,,,
+Debilitate,23,,,,,TRUE,FALSE,All players including you discard one card at random.,,,,,,,,,,,0,,,,,,,,Survivor: No effect. Villain: Place this card next to 1 of survivor's stats. Stat tokens of this type may not be moved TO the survivor side for the remainder of the round.
+Demand Fealty to the Master,24,,,"
+Freedom 1
+Will 1",Cultist,FALSE,FALSE,,,,1,,1,,Cultist,,,,1,,,,,,,,
+Demonstrate Your Power,25,,,"
+Sanity 1
+Will 1
+Hope 1","Demon
+Mutant
+Vampire
+Werewolf",FALSE,FALSE,,,,,1,1,1,Demon,Mutant,Vampire,Werewolf,4,,,,,,,,
+Deploy Advanced Technology,26,,,"Vitality 1
+Form 1
+Freedom 1
+Sanity 1
+Will 1","Alien
+Robot
+Blob",TRUE,FALSE,,1,1,1,1,1,,Alien,Robot,Blob,,3,,,,,,,,
+Deterioration of Thought,27,,,"
+Form 1
+Will 1","Zombie
+Robot",FALSE,FALSE,,,1,,,1,,Zombie,Robot,,,2,,,,,,,,
+Dimensional Anomaly,28,,,,,FALSE,FALSE,Every player passes their hand to the right.,,,,,,,,,,,0,,,,,,,,Every player passes their hand to the player on their right.
+Dragon Breath,29,,,"Vitality 1
+Freedom 1",Dragon,FALSE,FALSE,,1,,1,,,,Dragon,,,,1,,,,,,,,
+Drink,30,,,"Vitality 1
+Form 1",Vampire,FALSE,FALSE,,1,1,,,,,Vampire,,,,1,,,,,,,,
+Eat,31,,,"Vitality 1
+Form 1","Blob
+Dragon
+Werewolf
+Zombie",FALSE,FALSE,,1,1,,,,,Blob,Dragon,Werewolf,Zombie,4,,,,,,,,
+Embrace Chaos,32,,,,,FALSE,FALSE,All players discard their hands and draw 3 new cards.,,,,,,,,,,,0,,,,,,,,All players discard their hands and draw 3 new cards.
+Enchanted Corset,33,,,"
+Form 1
+Freedom 1","Ghost
+Demon
+Witch",TRUE,FALSE,,,1,1,,,,Ghost,Demon,Witch,,3,,,,,,,,
+Enchanting Mirror,34,,,"
+Freedom 1
+Will 1","Witch
+Demon
+Vampire",TRUE,FALSE,,,,1,,1,,Witch,Demon,Vampire,,3,,,,,,,,
+Entice,35,,,"
+Will 1
+Hope 1",Vampire,FALSE,FALSE,,,,,,1,1,Vampire,,,,1,,,,,,,,
+Expand to Block the Exits,36,,,"
+Freedom 1
+Hope 1","Blob
+Robot",FALSE,FALSE,,,,1,,,1,Blob,,,Robot,2,,,,,,,,
+Fire From Above,37,,,"Vitality 1
+Will 1","Dragon
+Alien",FALSE,FALSE,,1,,,,1,,Dragon,Alien,,,2,,,,,,,,
+Flying Objects,38,,,"Vitality 1
+Sanity 1",Ghost,FALSE,FALSE,,1,,,1,,,Ghost,,,,1,,,,,,,,
+Formula of Unpredictable Growths,39,,,"
+Form 1
+Hope 1","Witch
+Dragon
+Cultist
+Zombie",TRUE,FALSE,,,1,,,,1,Witch,Dragon,Cultist,Zombie,4,,,,,,,,
+Gas,40,,,"Vitality 1
+Freedom 1","Dragon
+Alien
+Robot
+Demon",TRUE,FALSE,,1,,1,,,,Dragon,Alien,Robot,Demon,4,,,,,,,,
+Gaze of Domination,41,,,"
+Freedom 1
+Sanity 1
+Will 1","Witch
+Blob
+Vampire
+Robot",TRUE,FALSE,,,,1,1,1,,Witch,Blob,Vampire,Robot,4,,,,,,,,
+Hasten Transformation,42,,,"
+Form 1
+Will 1","Werewolf
+Alien
+Cultist
+Zombie",TRUE,FALSE,,,1,,,1,,Werewolf,Alien,Cultist,Zombie,4,,,,,,,,
+Help Yourself Out,43,,,,,TRUE,TRUE,"Move a hex of any color you control.
+(Must be revealed)",,,,,,,,,,,0,,,,,,,,Villain: No effect. Survivor: Move 3 stat tokens.
+Howling,44,,,"
+Freedom 1
+Sanity 1",Werewolf,FALSE,FALSE,,,,1,1,,,Werewolf,,,,1,,,,,,,,
+Illusionary Maze,45,,,"
+Sanity 1
+Hope 1",Ghost,FALSE,FALSE,,,,,1,,1,Ghost,,,,1,,,,,,,,
+Incessant Moaning,46,,,"
+Sanity 1
+Will 1","Zombie
+Alien
+Werewolf",TRUE,FALSE,,,,,1,1,,Zombie,Alien,Werewolf,,3,,,,,,,,
+Indescribable Horror,47,,,"
+Sanity 1
+Hope 1","Zombie
+Mutant
+Werewolf",FALSE,FALSE,,,,,1,,1,Zombie,Mutant,Werewolf,,3,,,,,,,,
+Ingenuity,48,,,,,TRUE,TRUE,"Place a stat token of your choice on a hex, it counts for both now.",,,,,,,,,,,0,,,,,,,,Play another card. Move 1 stat token of EACH icon listed on the card in the same direction.
+Join. Or. Die.,49,,,"
+Will 1
+Hope 1",Robot,FALSE,FALSE,,,,,,1,1,Robot,,,,1,,,,,,,,
+Jump Scare,50,,,"Vitality 1
+Sanity 1","Zombie
+Vampire
+Werewolf",TRUE,FALSE,,1,,,1,,,Zombie,Vampire,Werewolf,,3,,,,,,,,
+Love Potion,51,,,"
+Sanity 1
+Will 1",Witch,FALSE,FALSE,,,,,1,1,,Witch,,,,1,,,,,,,,
+Lycanthropic Bite,52,,,"
+Form 1
+Sanity 1","Mutant
+Werewolf",FALSE,FALSE,,,1,,1,,,Mutant,Werewolf,,,2,,,,,,,,
+Make a Deal,53,,,"
+Form 1
+Will 1","Demon
+Vampire",TRUE,FALSE,,,1,,,1,,Demon,Vampire,,,2,,,,,,,,
+Malfunction,54,,,,,TRUE,FALSE,Replace any hex tile with a dead tile.,,,,,,,,,,,0,,,,,,,,"Place this card in front of you. When any other player's turn ends, you may put this in the discard pile and perform the most recent move in the reverse direction, twice."
+Many Tentacles Somehow,55,,,"
+Form 1
+Sanity 1
+Will 1
+Hope 1","Cultist
+Mutant",FALSE,FALSE,,,1,,1,1,1,Cultist,Mutant,,,2,,,,,,,,
+Mind Lock,56,,,"
+Freedom 1
+Sanity 1","Dragon
+Mutant
+Blob
+Demon",TRUE,FALSE,,,,1,1,,,Dragon,Mutant,Blob,Demon,4,,,,,,,,
+Mist,57,,,"Vitality 1
+Hope 1","Dragon
+Vampire",FALSE,FALSE,,1,,,,,1,Dragon,Vampire,,,2,,,,,,,,
+Modify,58,,,"
+Form 1
+Sanity 1",Robot,FALSE,FALSE,,,1,,1,,,Robot,,,,1,,,,,,,,
+Molecular Agitation,59,,,"
+Form 1
+Will 1","Blob
+Cultist
+Robot
+Zombie",TRUE,FALSE,,,1,,,1,,Blob,Cultist,Robot,Zombie,4,,,,,,,,
+Monologue,60,,,,,TRUE,FALSE,No effect other than you feeling proud of yourself. Put this card in any player's hand. Play another card.,,,,,,,,,,,0,,,,,,,,Villain: No effect other than you feeling proud of yourself. Survivor: Put this card in a villain's hand. Play another card.
+Moon Tide Surge,61,,,"Vitality 1
+Form 1","Blob
+Werewolf",FALSE,FALSE,,1,1,,,,,Blob,Werewolf,,,2,,,,,,,,
+Mutatron 3000,62,,,"
+Form 1
+Will 1
+Hope 1","Alien
+Mutant
+Blob",TRUE,FALSE,,,1,,,1,1,Alien,Mutant,Blob,,3,,,,,,,,
+Mystery Box,63,,,,,FALSE,FALSE,"Reveal as many cards from the deck as there are players. In the order of play starting with you, each player picks one of the cards and immediately plays it.",,,,,,,,,,,0,,,,,,,,"Reveal as many cards from the deck as there are players. In the order of play starting with you, each player picks one of the cards and immediately plays it."
+Necronomicon,64,,,"
+Sanity 1
+Will 1
+Hope 1","Cultist
+Witch
+Demon
+Dragon",TRUE,FALSE,,,,,1,1,1,Cultist,Witch,Demon,Dragon,4,,,,,,,,
+New Agenda,65,,,,,TRUE,FALSE,"Place a stat token of any color over one of your agendas. That is now your new agenda.
+(Must be revealed)",,,,,,,,,,,0,,,,,,,,Survivor: No effect. Villain: Place a stat token from out of play onto one of your agendas.
+Ooze,66,,,"Vitality 1
+Freedom 1",Blob,FALSE,FALSE,,1,,1,,,,Blob,,,,1,,,,,,,,
+Overwhelming Speed,67,,,"
+Freedom 1
+Hope 1","Vampire
+Ghost
+Mutant",TRUE,FALSE,,,,1,,,1,Vampire,Ghost,Mutant,,3,,,,,,,,
+Parasite,68,,,"
+Form 1
+Will 1",Robot,FALSE,FALSE,,,1,,,1,,Robot,,,,1,,,,,,,,
+Paralyzing Fear,69,,,"
+Freedom 1
+Will 1",Ghost,FALSE,FALSE,,,,1,,1,,Ghost,,,,1,,,,,,,,
+Petrify Body,70,,,"
+Form 1
+Freedom 1","Witch
+Dragon
+Alien",TRUE,FALSE,,,1,1,,,,Witch,Dragon,Alien,,3,,,,,,,,
+Petrify Mind,71,,,"
+Sanity 1
+Hope 1","Ghost
+Vampire
+Alien",TRUE,FALSE,,,,,1,,1,Ghost,Vampire,Alien,,3,,,,,,,,
+Pit Trap,72,,,"Vitality 1
+Freedom 1","Dragon
+Zombie
+Blob
+Werewolf",TRUE,FALSE,,1,,1,,,,Dragon,Zombie,Blob,Werewolf,4,,,,,,,,
+Placebo,73,,,,,TRUE,FALSE,Replace any hex tile with a dead tile.,,,,,,,,,,,0,,,,,,,,"Place this card next to the survivor. The next time they would move a stat, they put this card in the discard pile instead."
+Poison,74,,,"Vitality 1
+Hope 1","Blob
+Demon
+Vampire
+Dragon",TRUE,FALSE,,1,,,,,1,Blob,Demon,Vampire,Dragon,4,,,,,,,,
+Possession,75,,,"
+Freedom 1
+Sanity 1",Ghost,FALSE,FALSE,,,,1,1,,,Ghost,,,,1,,,,,,,,
+Prepare to Sacrifice,76,,,"Vitality 1
+Form 1","Cultist
+Vampire
+Werewolf",FALSE,FALSE,,1,1,,,,,Cultist,Vampire,Werewolf,,3,,,,,,,,
+Princebane Spell,77,,,"Vitality 1
+Form 1
+Freedom 1","Vampire
+Witch
+Cultist
+Werewolf",TRUE,FALSE,,1,1,1,,,,Vampire,Witch,Cultist,Werewolf,4,,,,,,,,
+Probe,78,,,"
+Sanity 1
+Hope 1","Alien
+Ghost
+Mutant",TRUE,FALSE,,,,,1,,1,Alien,Ghost,Mutant,,3,,,,,,,,
+Procession of Elimination,79,,,,,TRUE,FALSE,You may look at the unused villain boards for the remainder of the round.,,,,,,,,,,,0,,,,,,,,"When your turn ends, you may look at the unused villain boards for the remainder of the round."
+Prophecy of Doom,80,,,"
+Sanity 1
+Will 1
+Hope 1","Witch
+Ghost
+Demon
+Cultist",TRUE,FALSE,,,,,1,1,1,Witch,Ghost,Demon,Cultist,4,,,,,,,,
+Psychic Assault,81,,,"Vitality 1
+Will 1",Alien,FALSE,FALSE,,1,,,,1,,Alien,,,,1,,,,,,,,
+Steal,82,,,,,TRUE,FALSE,Take 1 card at random from another player.,,,,,,,,,,,0,,,,,,,,Take 2 cards at random from another player.
+Re-examine Priorities,83,,,,,TRUE,FALSE,"Switch around your primary, secondary and tertiary agendas. Mark the changes with stat tokens.
+(Must be revealed)",,,,,,,,,,,0,,,,,,,,Survivor: No Effect. Villain: Switch around your agendas. Mark the changes with stat tokens from out of play.
+Reorganize,84,,,"Vitality 1
+Form 1","Robot
+Mutant
+Werewolf",TRUE,FALSE,,1,1,,,,,Robot,Mutant,Werewolf,,3,,,,,,,,
+Reprogramming,85,,,"
+Sanity 1
+Will 1","Cultist
+Robot",FALSE,FALSE,,,,,1,1,,Cultist,Robot,,,2,,,,,,,,
+Restrict,86,,,,,TRUE,FALSE,"Place a stat token on this card. The next time a villain would move a stat token of the stat token's type, they put this card in the discard pile instead.",,,,,,,,,,,0,,,,,,,,"Place this card over a revealed villain's agenda. The next time that villain would move a stat token of the agenda's type, they put this card in the discard pile instead."
+Spy on Villain,87,,,,,TRUE,TRUE,Look at one player's villain card. Don't show anyone else.,,,,,,,,,,,0,,,,,,,,Reveal a villain.
+Roar,88,,,"
+Sanity 1
+Hope 1",Dragon,FALSE,FALSE,,,,,1,,1,Dragon,,,,1,,,,,,,,
+Sabotage,89,,,,,FALSE,FALSE,Place this card next to another player. Skip their next turn and put this card in the discard pile.,,,,,,,,,,,0,,,,,,,,Place this card next to another player. Skip their next turn and put this card in the discard pile.
+Seal Power,90,,,,,FALSE,FALSE,"Place this card in front of a villain. The next time they use a synergy, it doesn't count. (They only place one hex)",,,,,,,,,,,0,,,,,,,,Place this card on a villain board. This card is put in the discard pile when a card with that villain's synergy icon is played. That villain does not benefit from synergies and cannot use their special ability until the card is removed.
+Seize the Opportunity,91,,,,,TRUE,FALSE,Place an additional hex of the same color as one the last person placed.,,,,,,,,,,,0,,,,,,,,Repeat the previous move.
+Shackles of the Damned,92,,,"
+Freedom 1
+Hope 1","Demon
+Dragon
+Ghost",FALSE,FALSE,,,,1,,,1,Demon,Dragon,Ghost,,3,,,,,,,,
+Shrink,93,,,"
+Form 1
+Freedom 1","Witch
+Alien
+Blob",TRUE,FALSE,,,1,1,,,,Witch,Alien,Blob,,3,,,,,,,,
+Sleeping Potion,94,,,"Vitality 1
+Freedom 1","Witch
+Dragon",TRUE,FALSE,,1,,1,,,,Witch,Dragon,,,2,,,,,,,,
+Soar,95,,,"Vitality 1
+Freedom 1
+Sanity 1
+Hope 1","Demon
+Dragon
+Mutant
+Ghost",TRUE,FALSE,,1,,1,1,,1,Demon,Dragon,Mutant,Ghost,4,,,,,,,,
+Spell of Despair,96,,,"
+Will 1
+Hope 1","Cultist
+Witch
+Ghost
+Demon",TRUE,FALSE,,,,,,1,1,Cultist,Witch,Ghost,Demon,4,,,,,,,,
+Staff of Snakes and Spiders,97,,,"Vitality 1
+Form 1
+Freedom 1","Witch
+Mutant
+Cultist",TRUE,FALSE,,1,1,1,,,,Witch,Mutant,Cultist,,3,,,,,,,,
+Sticky Ectoplasm,98,,,"
+Freedom 1
+Hope 1","Blob
+Ghost",FALSE,FALSE,,,,1,,,1,Blob,Ghost,,,2,,,,,,,,
+Strange Green Goo,99,,,"
+Form 1
+Freedom 1
+Hope 1","Alien
+Blob
+Witch",FALSE,FALSE,,,1,1,,,1,Alien,Blob,Witch,,3,,,,,,,,
+Steal,100,,,,,FALSE,FALSE,Take 1 card at random from another player.,,,,,,,,,,,0,,,,,,,,Look at another player's hand and take 1 card.
+Strings of the Puppetmaster,101,,,"
+Will 1
+Hope 1","Vampire
+Alien
+Demon
+Witch",TRUE,FALSE,,,,,,1,1,Vampire,Alien,Demon,Witch,4,,,,,,,,
+Stun Ray Gun,102,,,"
+Freedom 1
+Will 1",Alien,FALSE,FALSE,,,,1,,1,,Alien,,,,1,,,,,,,,
+Surprisingly Strong Grip,103,,,"Vitality 1
+Freedom 1",Zombie,FALSE,FALSE,,1,,1,,,,Zombie,,,,1,,,,,,,,
+Swarm of Imps,104,,,"
+Freedom 1
+Sanity 1",Demon,FALSE,FALSE,,,,1,1,,,Demon,,,,1,,,,,,,,
+Taunt with Tortured Souls,105,,,"
+Sanity 1
+Will 1
+Hope 1","Demon
+Ghost",FALSE,FALSE,,,,,1,1,1,Demon,Ghost,,,2,,,,,,,,
+Tempt,106,,,"
+Freedom 1
+Will 1",Demon,FALSE,FALSE,,,,1,,1,,Demon,,,,1,,,,,,,,
+Terrorize,107,,,"
+Sanity 1
+Hope 1","Ghost
+Vampire
+Cultiist
+Alien",TRUE,FALSE,,,,,1,,1,Ghost,Vampire,Cultiist,Alien,4,,,,,,,,
+The Infection is Spreading,108,,,"Vitality 1
+Form 1
+Will 1","Vampire
+Werewolf
+Zombie",FALSE,FALSE,,1,1,,,1,,Vampire,Werewolf,Zombie,,3,,,,,,,,
+The Lunar Eclipse Grants Power,109,,,"Vitality 1
+Form 1
+Freedom 1
+Sanity 1
+Will 1
+Hope 1","Alien
+Cultist
+Werewolf
+Witch",FALSE,FALSE,,1,1,1,1,1,1,Alien,Cultist,Werewolf,Witch,4,,,,,,,,
+The Scrambler,110,,,"Vitality 1
+Form 1","Robot
+Mutant
+Zombie
+Blob",TRUE,FALSE,,1,1,,,,,Robot,Mutant,Zombie,Blob,4,,,,,,,,
+This Prey is Mine,111,,,,,FALSE,FALSE,"Replace any hex with a hex of a different color.
+(Except dead hexes).",,,,,,,,,,,0,,,,,,,,"Survivor: No effect. Villain: Place this card next to the survivor board. Prevent the next move that would reduce any of the Survivor's stats to 0, discard this card instead."
+Tome of Forgotten Lore,112,,,"
+Form 1
+Will 1","Cultist
+Witch",FALSE,FALSE,,,1,,,1,,Cultist,Witch,,,2,,,,,,,,
+Too Many Eyes,113,,,"
+Sanity 1
+Will 1",Mutant,FALSE,FALSE,,,,,1,1,,Mutant,,,,1,,,,,,,,
+Tractor Beam,114,,,"
+Freedom 1
+Hope 1",Alien,FALSE,FALSE,,,,1,,,1,Alien,,,,1,,,,,,,,
+Trample,115,,,"Vitality 1
+Hope 1",Mutant,FALSE,FALSE,,1,,,,,1,Mutant,,,,1,,,,,,,,
+Transformation Ray Gun,116,,,"
+Form 1
+Freedom 1
+Sanity 1
+Hope 1","Alien
+Mutant
+Dragon
+Werewolf",TRUE,FALSE,,,1,1,1,,1,Alien,Mutant,Dragon,Werewolf,4,,,,,,,,
+Twist,117,,,"Vitality 1
+Form 1","Zombie
+Blob
+Werewolf",TRUE,FALSE,,1,1,,,,,Zombie,Blob,Werewolf,,3,,,,,,,,
+Undead Tactics,118,,,"Vitality 1
+Freedom 1
+Sanity 1
+Will 1
+Hope 1","Ghost
+Vampire
+Zombie
+Demon",TRUE,FALSE,,1,,1,1,1,1,Ghost,Vampire,Zombie,Demon,4,,,,,,,,
+Unrelenting Pursuit,119,,,"Vitality 1
+Sanity 1","Robot
+Werewolf
+Ghost",TRUE,FALSE,,1,,,1,,,Robot,Werewolf,Ghost,,3,,,,,,,,
+Unstoppable,120,,,"
+Sanity 1
+Hope 1","Zombie
+Dragon",FALSE,FALSE,,,,,1,,1,Zombie,Dragon,,,2,,,,,,,,
+Versatile Magic,121,,,"Vitality 1
+Form 1
+Freedom 1
+Will 1","Vampire
+Witch",FALSE,FALSE,,1,1,1,,1,,Vampire,Witch,,,2,,,,,,,,
+Violent Onslaught,122,,,"Vitality 1
+Hope 1","Werewolf
+Dragon",TRUE,FALSE,,1,,,,,1,Werewolf,Dragon,,,2,,,,,,,,
+Virus,123,,,"Vitality 1
+Form 1
+Sanity 1","Robot
+Zombie",FALSE,FALSE,,1,1,,1,,,Robot,Zombie,,,2,,,,,,,,
+Visions of the Afterlife,124,,,"Vitality 1
+Hope 1",Demon,FALSE,FALSE,,1,,,,,1,Demon,,,,1,,,,,,,,
+Whisper in the Ear,125,,,"
+Will 1
+Hope 1",Demon,FALSE,FALSE,,,,,,1,1,Demon,,,,1,,,,,,,,
+X Caliber Rifle,126,,,"Vitality 1
+Form 1
+Freedom 1","Werewolf
+Mutant
+Robot",TRUE,FALSE,,1,1,1,,,,Werewolf,Mutant,Robot,,3,,,,,,,,
+,,,,,,,,,,,,,,,,,,,240,,,,,,,,
+,,,Villain Synergy Icons ->,,,,,Sum E (*Recount and Rebalance),Sum H,Sum I,Sum J,Sum K,Sum L,Sum M,PA Hits,SA Hits,TA Hits,Sum Hits,,,,,,,,,Sum E (*Recount and Rebalance)
+,,,Alien,,,,,20,40,40,41,41,41,40,10,11,10,18,,,,,,,,,10
+,,,Blob,,,,,20,,,,,,,11,11,10,16,,,,,,,,,9
+,,,Cultist,,,,,19,,,,,,,10,13,12,18,,,,,,,,,9
+,,,Demon,,,,,21,,,,,,,13,10,13,18,,,,,,,,,10
+,,,Dragon,,,,,20,,,,,,,11,10,11,16,,,,,,,,,10
+,,,Ghost,,,,,20,,,,,,,14,13,8,18,,,,,,,,,9
+,,,Mutant,,,,,20,,,,,,,11,10,11,18,,,,,,,,,10
+,,,Robot,,,,,20,,,,,,,10,11,10,16,,,,,,,,,10
+,,,Vampire,,,,,20,,,,,,,11,10,9,18,,,,,,,,,10
+,,,Werewolf,,,,,20,,,,,,,12,9,13,17,,,,,,,,,10
+,,,Witch,,,,,20,,,,,,,11,11,11,16,,,,,,,,,9
+,,,Zombie,,,,,19,,,,,,,11,11,8,16,,,,,,,,,10
+,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,Should Be,,,,,10,40,40,40,40,40,40,,,,,,,,,,,,,10
+,,,Range,,,,,9-10,40-41,,,,,,5-7,5-6,5-6,16-18,,,,,,,,,9-10
+,,,,,,,,Average Synergies,,,,,,,,,,,,,,,,,,,
+,,,,,,,,  A,101,,,,,,,,,,,,,,,,,,
+,,,,,,,,Avg,2.38,,,,,,,,,,,,,,,,,,

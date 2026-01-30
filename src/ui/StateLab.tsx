@@ -7,6 +7,7 @@ import { MODE_RULESETS, BASE_DIRECTIONS, buildColorToDir } from '../game/rulesCo
 import { Board } from './Board';
 import { asVisibleColor, key, neighbors } from '../game/helpers';
 import { computeScoresRaw } from '../game/scoring';
+import { makeCard } from '../game/cardFactory';
 
 type EditMode = 'origin' | 'hex' | 'path';
 type HexTool = 'add' | 'remove' | 'clear' | 'rotate';
@@ -423,7 +424,7 @@ const serializeCoords = (coords: Co[]): string =>
 	`[${coords.map((c) => `{ q: ${c.q}, r: ${c.r} }`).join(', ')}]`;
 
 const serializeCards = (cards: Card[]): string =>
-	`[${cards.map((c) => `{ colors: [${c.colors.map((col) => `'${col}'`).join(', ')}] }`).join(', ')}]`;
+	`[${cards.map((c) => `makeCard([${c.colors.map((col) => `'${col}'`).join(', ')}])`).join(', ')}]`;
 
 const serializeLanes = (lanes: { from: Co; to: Co; color: Color }[]): string =>
 	`[${lanes.map((l) => `{ from: { q: ${l.from.q}, r: ${l.from.r} }, to: { q: ${l.to.q}, r: ${l.to.r} }, color: '${l.color}' }`).join(', ')}]`;
@@ -527,7 +528,7 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		lanes: [],
 		deck: [],
 		discard: [],
-		hands: { '0': [{ colors: ['B', 'O'] }] },
+		hands: { '0': [makeCard(['B', 'O'])] },
 		treasure: [],
 		prefs: {},
 		stats: { placements: 0 },
@@ -898,6 +899,7 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		return `import { describe, it, expect } from 'vitest';
 import { enumerateActions, type Action, applyMicroAction } from '../game/ai';
 import type { GState } from '../game/types';
+import { makeCard } from '../game/cardFactory';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { computeScoresRaw } from '../game/scoring';
 
@@ -1333,7 +1335,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 										value={card.colors.join('')}
 										onChange={(e) => {
 											const next = [...hand];
-											next[i] = { colors: parseColors(e.target.value) };
+											next[i] = makeCard(parseColors(e.target.value));
 											updateHand(next);
 										}}
 									/>
@@ -1355,7 +1357,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 									/>
 								</div>
 							))}
-							<button className="sl-btn sl-btn--sm" onClick={() => updateHand([...hand, { colors: ['B'] }])}>
+							<button className="sl-btn sl-btn--sm" onClick={() => updateHand([...hand, makeCard(['B'])])}>
 								<IconPlus size={11} /> Add Card
 							</button>
 						</div>
@@ -1377,7 +1379,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 										value={card.colors.join('')}
 										onChange={(e) => {
 											const next = [...G.treasure];
-											next[i] = { colors: parseColors(e.target.value) };
+											next[i] = makeCard(parseColors(e.target.value));
 											updateTreasure(next);
 										}}
 									/>
@@ -1392,7 +1394,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 									/>
 								</div>
 							))}
-							<button className="sl-btn sl-btn--sm" onClick={() => updateTreasure([...G.treasure, { colors: ['R'] }])}>
+							<button className="sl-btn sl-btn--sm" onClick={() => updateTreasure([...G.treasure, makeCard(['R'])])}>
 								<IconPlus size={11} /> Add Treasure
 							</button>
 						</div>

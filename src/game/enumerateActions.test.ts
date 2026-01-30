@@ -3,6 +3,7 @@ import { enumerateActions, type Action } from './ai';
 import type { Card, Co, GState, PlayerID, Rules } from './types';
 import { PATH_RULES, HEX_RULES, buildColorToDir, BASE_EDGE_COLORS } from './rulesConfig';
 import { key } from './helpers';
+import { makeCard } from './cardFactory';
 
 const TEST_PATH_RULES: Rules = {
 	...PATH_RULES,
@@ -92,7 +93,7 @@ const expectAbsent = (actual: string[], forbidden: string[]): void => {
 describe('enumerateActions', () => {
 	it('path mode: simple origin-only placements + stash + end', () => {
 		const G = createTestState({
-			hands: { '0': [{ colors: ['B', 'O'] }] },
+			hands: { '0': [makeCard(['B', 'O'])] },
 		});
 
 		const allowed = [
@@ -115,7 +116,7 @@ describe('enumerateActions', () => {
 		const G = createTestState({
 			rules: TEST_HEX_RULES,
 			origins: [],
-			hands: { '0': [{ colors: ['R'] }, { colors: ['B'] }] },
+			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
 		});
 		setTile(G, co(0, 0), ['B'], 0);
 

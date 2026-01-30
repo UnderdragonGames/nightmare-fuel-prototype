@@ -1,33 +1,17 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
 import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths } from './helpers';
-import type { Card, Color, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
+import type { Card, GState, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
 import { enumerateActions } from './ai';
 import { buildDeck } from './deck';
+import { NIGHTMARES } from './nightmares';
 import { computeScores } from './scoring';
 
-// Nightmare color combinations (each combination is associated with a nightmare)
-// Color mapping: Red=R, Orange=O, Yellow=Y, Green=G, Blue=B, Purple=V
-const MONSTER_COMBINATIONS: Array<{ nightmare: string; colors: [Color, Color, Color] }> = [
-	{ nightmare: 'Alien', colors: ['B', 'G', 'V'] },
-	{ nightmare: 'Dragon', colors: ['R', 'Y', 'B'] },
-	{ nightmare: 'Cultist', colors: ['V', 'O', 'G'] },
-	{ nightmare: 'Robot', colors: ['V', 'B', 'R'] },
-	{ nightmare: 'Blob', colors: ['B', 'R', 'Y'] },
-	{ nightmare: 'Zombie', colors: ['R', 'V', 'O'] },
-	{ nightmare: 'Witch', colors: ['O', 'G', 'V'] },
-	{ nightmare: 'Vampire', colors: ['O', 'R', 'Y'] },
-	{ nightmare: 'Ghost', colors: ['Y', 'O', 'G'] },
-	{ nightmare: 'Demon', colors: ['Y', 'B', 'R'] },
-	{ nightmare: 'Werewolf', colors: ['G', 'V', 'O'] },
-	{ nightmare: 'Mutant', colors: ['G', 'B', 'Y'] },
-];
-
 const buildPreferenceOptions = (): PlayerPrefs[] => {
-	return MONSTER_COMBINATIONS.map(({ colors }) => ({
-		primary: colors[0]!,
-		secondary: colors[1]!,
-		tertiary: colors[2]!,
+	return NIGHTMARES.map(({ priorities }) => ({
+		primary: priorities.primary,
+		secondary: priorities.secondary,
+		tertiary: priorities.tertiary,
 	}));
 };
 
@@ -350,4 +334,3 @@ export const HexStringsGame: Game<GState> = {
 		},
 	},
 };
-
