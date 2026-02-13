@@ -87,6 +87,8 @@ export const HEX_RULES: Rules = {
 	END_ON_DECK_EXHAUST: true,
 	// If true, game ends only after all players have had equal turns since deck exhaustion
 	EQUAL_TURNS: true,
+	// Action card play rule
+	ACTION_CARDS: 'one-per-turn',
 	// Scoring configuration
 	SCORING: HEX_SCORING,
 	// Placement configuration

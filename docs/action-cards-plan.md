@@ -54,6 +54,61 @@ This plan treats any card with non-empty rules text as an action card.
 - This Prey is Mine: Replace any hex with a hex of a different color. (Except dead hexes).
   - Actions: `replaceHexColor(coord, newColor)`.
 
+## Action card implementation checklist
+Each row is a per-card status checklist. Keep these in sync with code, tests, and UI support.
+
+Definition of done:
+- Effects wired: `resolveCardEffects` + `applyGameEffects` can run end-to-end without throwing and with correct game state changes (including triggers/attachments if applicable).
+- UI inputs: The UI exposes the required UI elements listed in the per-card “UI inputs” array (no JSON escape hatch).
+- Tests: There is at least one test that exercises the card end-to-end (effects + state changes), not just mapping coverage.
+
+| ID | Card | Effects wired | UI inputs (array) | Tests |
+| --- | --- | --- | --- | --- |
+| 2 | Allow a Brief Reprieve | [x] | [] | [ ] |
+| 4 | Alter Fate | [x] | ["showRevealedCards(deckTop=5)", "selectRevealedCardIndex"] | [ ] |
+| 8 | Armed to the Teeth | [x] | [] | [ ] |
+| 10 | Barren Wasteland | [x] | [] | [ ] |
+| 19 | Combo | [x] | ["booleanSelect(useExtraPlacements)"] | [ ] |
+| 23 | Debilitate | [x] | [] | [ ] |
+| 28 | Dimensional Anomaly | [ ] | [] | [ ] |
+| 32 | Embrace Chaos | [x] | [] | [ ] |
+| 43 | Help Yourself Out | [ ] | ["selectOwnedHex", "selectDestinationHex"] | [ ] |
+| 48 | Ingenuity | [ ] | ["selectStat", "selectHex"] | [ ] |
+| 54 | Malfunction | [x] | ["selectHex"] | [ ] |
+| 60 | Monologue | [x] | ["targetPlayer"] | [ ] |
+| 63 | Mystery Box | [ ] | ["showRevealedCards(deckTop=playerCount)", "selectDraftPickByPlayer", "autoPlayConfirm"] | [ ] |
+| 65 | New Agenda | [ ] | ["selectAgendaSlot", "selectStat"] | [ ] |
+| 73 | Placebo | [x] | ["selectHex"] | [ ] |
+| 79 | Procession of Elimination | [x] | ["showUnusedVillainsUntilEndOfRound(forPlayer=pid)"] | [ ] |
+| 82 | Steal (82) | [x] | ["targetPlayer"] | [ ] |
+| 83 | Re-examine Priorities | [x] | ["reorderPrefs(primary,secondary,tertiary)"] | [ ] |
+| 86 | Restrict | [ ] | ["selectStat"] | [ ] |
+| 87 | Spy on Villain | [ ] | ["targetPlayer", "showVillainCard(forPlayer=pid)"] | [ ] |
+| 89 | Sabotage | [x] | ["targetPlayer"] | [ ] |
+| 90 | Seal Power | [ ] | ["targetPlayer"] | [ ] |
+| 91 | Seize the Opportunity | [x] | [] | [ ] |
+| 100 | Steal (100) | [x] | ["targetPlayer"] | [ ] |
+| 111 | This Prey is Mine | [x] | ["selectHex", "selectColor"] | [ ] |
+
+## UI elements checklist
+Keep this list in sync with the per-card “UI inputs” arrays.
+
+- [ ] targetPlayer selector
+- [ ] showRevealedCards(deckTop=N)
+- [ ] selectRevealedCardIndex
+- [ ] selectDraftPickByPlayer
+- [ ] autoPlayConfirm (immediate play prompt)
+- [ ] booleanSelect(useExtraPlacements)
+- [ ] selectOwnedHex
+- [ ] selectDestinationHex
+- [ ] selectHex (any hex)
+- [ ] selectStat
+- [ ] selectAgendaSlot
+- [ ] reorderPrefs(primary,secondary,tertiary)
+- [ ] selectColor
+- [ ] showUnusedVillainsUntilEndOfRound(forPlayer=pid)
+- [ ] showVillainCard(forPlayer=pid)
+
 ## Core action primitives to implement
 - Card flow: `drawCards`, `discardCard`, `discardHand`, `revealTop`, `draftInTurnOrder`, `autoPlayPickedCard`, `moveCardToPlayerHand`, `randomStealCard`.
 - Turn control: `grantExtraPlay`, `grantExtraPlacements`, `grantExtraActionPlays`, `markSkipNextTurn`, `suppressDrawsUntil`.

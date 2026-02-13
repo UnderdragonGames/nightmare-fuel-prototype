@@ -163,3 +163,12 @@ export const NIGHTMARES: Nightmare[] = [
 		},
 	},
 ];
+
+export const NIGHTMARE_BY_NAME: Record<string, Nightmare> = Object.fromEntries(
+	NIGHTMARES.map((nightmare) => [nightmare.name, nightmare])
+);
+
+export const getNightmareByName = (name: string | null | undefined): Nightmare | null => {
+	if (!name) return null;
+	return NIGHTMARE_BY_NAME[name] ?? null;
+};

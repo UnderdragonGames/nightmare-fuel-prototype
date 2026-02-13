@@ -12,6 +12,7 @@ export const makeCard = (colors: Color[], overrides: Partial<Omit<Card, 'colors'
 		stats,
 		text,
 		isAction: overrides.isAction ?? Boolean(text),
+		actions: overrides.actions,
 		synergies,
 		synergyCount: overrides.synergyCount ?? synergies.length,
 		flags: overrides.flags ?? { needsNewPrint: false, needsDuplicate: false },

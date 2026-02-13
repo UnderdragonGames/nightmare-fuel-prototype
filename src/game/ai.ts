@@ -159,10 +159,11 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 				if (tile) {
 					tile.colors.push(args.pick);
 				} else {
-					newG.board[k] = { colors: [args.pick], rotation: 0 };
+					newG.board[k] = { colors: [args.pick], rotation: 0, dead: false };
 				}
 			}
 			newG.stats.placements += 1;
+			newG.action.lastPlacedColor = args.pick;
 			const [used] = hand.splice(args.handIndex, 1);
 			if (used) newG.discard.push(used);
 			break;

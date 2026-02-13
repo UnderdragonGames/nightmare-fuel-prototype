@@ -4,6 +4,7 @@ import type { Card, Co, GState, PlayerID, Rules } from './types';
 import { PATH_RULES, HEX_RULES, buildColorToDir, BASE_EDGE_COLORS } from './rulesConfig';
 import { key } from './helpers';
 import { makeCard } from './cardFactory';
+import { initActionState } from './effects';
 
 const TEST_PATH_RULES: Rules = {
 	...PATH_RULES,
@@ -35,9 +36,12 @@ const createTestState = (overrides: Partial<GState> = {}): GState => {
 		hands: {},
 		treasure: [],
 		prefs: {},
+		nightmares: {},
+		nightmareState: {},
 		stats: { placements: 0 },
-		meta: { deckExhaustionCycle: null, stashBonus: {} },
+		meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
 		origins: [{ q: 0, r: 0 }],
+		action: initActionState([]),
 		...overrides,
 	};
 };
@@ -45,7 +49,7 @@ const createTestState = (overrides: Partial<GState> = {}): GState => {
 const co = (q: number, r: number): Co => ({ q, r });
 
 const setTile = (G: GState, coord: Co, colors: Card['colors'], rotation = 0): void => {
-	G.board[key(coord)] = { colors: [...colors], rotation };
+	G.board[key(coord)] = { colors: [...colors], rotation, dead: false };
 };
 
 const actionKey = (a: Action): string => {

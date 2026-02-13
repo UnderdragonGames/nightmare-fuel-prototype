@@ -55,6 +55,11 @@ const NeuralCard: React.FC<{
 					))}
 				</svg>
 			</div>
+			{card.text && (
+				<div className="neural-card__text">
+					{card.text}
+				</div>
+			)}
 
 			<div className="neural-card__actions">
 				{card.colors.map((color) => (

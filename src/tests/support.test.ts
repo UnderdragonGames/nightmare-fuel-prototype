@@ -3,6 +3,7 @@ import { enumerateActions, type Action } from '../game/ai';
 import type { GState } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { makeCard } from '../game/cardFactory';
+import { initActionState } from '../game/effects';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
 
@@ -24,9 +25,12 @@ const G: GState = {
   hands: { '0': [makeCard(['B', 'O', 'G'])] },
   treasure: [],
   prefs: {},
+  nightmares: {},
+  nightmareState: {},
   stats: { placements: 0 },
-  meta: { deckExhaustionCycle: null, stashBonus: {} },
+  meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
   origins: [{ q: 0, r: 0 }],
+  action: initActionState(['0']),
 };
 
 const actionKey = (a: Action): string => {

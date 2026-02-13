@@ -8,6 +8,55 @@ export type Stat = 'vitality' | 'form' | 'freedom' | 'sanity' | 'will' | 'hope';
 
 export type CardFlags = { needsNewPrint: boolean; needsDuplicate: boolean };
 
+export type CardActionTarget = 'current' | 'each' | 'player';
+export type CardActionTrigger = 'onMoveStatOfType' | 'onSynergy';
+export type CardActionDuration = 'round';
+export type CardActionCondition = 'handsEmpty';
+export type CardActionPlacementColor = 'lastPlaced';
+export type ActionCardsRule = 'one-per-turn' | 'unlimited';
+
+export type CardAction =
+	| { type: 'drawCards'; count: number; target: CardActionTarget; playerId?: PlayerID }
+	| { type: 'randomDiscard'; count: number; target: CardActionTarget; playerId?: PlayerID }
+	| { type: 'discardHand'; target: CardActionTarget; playerId?: PlayerID }
+	| { type: 'revealTop'; count: number | 'playerCount' }
+	| { type: 'pickOneToHand' }
+	| { type: 'discardRest' }
+	| { type: 'placeOnDrawPileTopFaceUp' }
+	| { type: 'suppressDrawsUntil'; condition: CardActionCondition }
+	| { type: 'moveSelfToDiscard'; condition?: CardActionCondition }
+	| { type: 'grantExtraPlacements'; count: number }
+	| { type: 'grantExtraActionPlays'; count: number }
+	| { type: 'grantExtraPlay'; count: number }
+	| { type: 'rotateHands'; direction: 'clockwise' | 'counterclockwise' }
+	| { type: 'selectOwnedHex' }
+	| { type: 'moveHex' }
+	| { type: 'chooseStat' }
+	| { type: 'placeTokenOnHex' }
+	| { type: 'markHexCountsForTwoStats' }
+	| { type: 'replaceHexWithDead' }
+	| { type: 'moveCardToPlayerHand' }
+	| { type: 'draftInTurnOrder' }
+	| { type: 'autoPlayPickedCard' }
+	| { type: 'chooseAgenda' }
+	| { type: 'setAgendaOverride' }
+	| { type: 'reorderPlayerPrefs' }
+	| { type: 'markAgendaTokens' }
+	| { type: 'attachTokenToCard' }
+	| { type: 'registerTrigger'; trigger: CardActionTrigger }
+	| { type: 'discardSelfOnTrigger' }
+	| { type: 'privateRevealVillain' }
+	| { type: 'markSkipNextTurn' }
+	| { type: 'discardSelfAfterSkip' }
+	| { type: 'attachToPlayer' }
+	| { type: 'reduceSynergyOnce' }
+	| { type: 'readLastPlacedColor' }
+	| { type: 'grantExtraPlacement'; color: CardActionPlacementColor }
+	| { type: 'randomStealCard'; count: number }
+	| { type: 'replaceHexColor' }
+	| { type: 'grantRevealUnusedVillains'; duration: CardActionDuration }
+	| { type: 'choice'; options: CardAction[][] };
+
 export type Card = {
 	id: number;
 	name: string;
@@ -15,6 +64,7 @@ export type Card = {
 	stats: Partial<Record<Stat, number>>;
 	text: string | null;
 	isAction: boolean;
+	actions?: CardAction[];
 	synergies: string[];
 	synergyCount: number;
 	flags: CardFlags;
@@ -23,6 +73,47 @@ export type Card = {
 export type Co = { q: number; r: number };
 
 export type PlayerPrefs = { primary: Color; secondary: Color; tertiary: Color };
+export type NightmareId = string;
+export type NightmareState = { abilityUsesRemaining: number; handSizeBonus: number };
+
+export type NightmareAction =
+	| { type: 'randomizeColorDirections' }
+	| { type: 'fillTreasureToMax' }
+	| { type: 'drawCards'; count: number; target: 'current' }
+	| { type: 'destroyPath' }
+	| { type: 'removeLane' }
+	| { type: 'changeLaneColor' }
+	| { type: 'destroyNode' }
+	| { type: 'grantExtraPlacements'; count: number }
+	| { type: 'randomStealCard'; count: number }
+	| { type: 'swapPrefsSecondaryTertiary' }
+	| { type: 'increaseHandSize'; amount: number };
+
+export type AttachedCard = {
+	card: Card;
+	targetPlayerId?: PlayerID;
+	token?: Stat;
+	expires?: 'afterSkip' | 'afterTrigger' | 'endOfRound' | 'manual';
+};
+
+export type Trigger =
+	| { type: 'onMoveStatOfType'; stat: Stat; card: Card; targetPlayerId?: PlayerID }
+	| { type: 'onSynergy'; card: Card; targetPlayerId?: PlayerID };
+
+export type ActionState = {
+	revealed: Card[];
+	faceUpDrawPile: Card[];
+	suppressedDraws: { condition: 'handsEmpty'; sourceCardId?: number } | null;
+	extraPlays: Record<PlayerID, number>;
+	extraPlacements: Record<PlayerID, { count: number; color?: Color | null }>;
+	extraActionPlays: Record<PlayerID, number>;
+	skipNextTurn: Record<PlayerID, boolean>;
+	agendaOverrides: Record<PlayerID, Stat | null>;
+	revealUnusedVillainsUntil: Record<PlayerID, number | null>;
+	attachedCards: AttachedCard[];
+	triggers: Trigger[];
+	lastPlacedColor: Color | null;
+};
 
 // Path-mode lane segment between adjacent nodes.
 export type PathLane = { from: Co; to: Co; color: Color };
@@ -30,6 +121,7 @@ export type PathLane = { from: Co; to: Co; color: Color };
 export type HexTile = {
 	colors: Color[];
 	rotation: number; // 0-5, number of 60-degree clockwise rotations from default orientation
+	dead: boolean;
 };
 
 export type GState = {
@@ -43,12 +135,16 @@ export type GState = {
 	hands: Record<PlayerID, Card[]>;
 	treasure: Card[];
 	prefs: Record<PlayerID, PlayerPrefs>;
+	nightmares: Record<PlayerID, NightmareId>;
+	nightmareState: Record<PlayerID, NightmareState>;
 	stats: { placements: number };
 	meta: {
 		deckExhaustionCycle: number | null; // cycle index when deck was first exhausted
 		stashBonus: Record<PlayerID, number>; // bonus draws earned this turn (paid out at endTurnAndRefill, then reset)
+		actionPlaysThisTurn: Record<PlayerID, number>;
 	};
 	origins: Co[]; // starting places for scoring (center or random)
+	action: ActionState;
 };
 
 export type OutwardRule = 'none' | 'outwardOnly' | 'dirOnly' | 'dirOrOutward';
@@ -130,6 +226,8 @@ export type Rules = {
 	END_ON_DECK_EXHAUST: boolean;
 	// If true, game ends only after all players have had equal turns since deck exhaustion
 	EQUAL_TURNS: boolean;
+	// Action card play rule: 'one-per-turn' or 'unlimited'
+	ACTION_CARDS: ActionCardsRule;
 	// Scoring configuration
 	SCORING: ObjectiveScoringRules;
 	// Placement configuration
@@ -153,11 +251,38 @@ export type ScoringRules = BaseScoringRules;
 
 export type Scores = Record<PlayerID, number>;
 
+export type GameEffect =
+	| { type: 'drawCards'; playerId: PlayerID; count: number }
+	| { type: 'discardCard'; playerId: PlayerID; handIndex: number }
+	| { type: 'discardHand'; playerId: PlayerID }
+	| { type: 'randomDiscard'; playerId: PlayerID; count: number }
+	| { type: 'revealTop'; count: number }
+	| { type: 'discardRevealed' }
+	| { type: 'draftInTurnOrder'; order: PlayerID[]; picks: Record<PlayerID, number> }
+	| { type: 'autoPlayPickedCard'; playerId: PlayerID; revealedIndex: number; effects?: GameEffect[] }
+	| { type: 'moveCardToPlayerHand'; playerId: PlayerID; card?: Card; usePlayedCard?: boolean }
+	| { type: 'placeOnDrawPileTopFaceUp'; card?: Card; usePlayedCard?: boolean }
+	| { type: 'randomStealCard'; fromPlayerId: PlayerID; toPlayerId: PlayerID; count: number }
+	| { type: 'grantExtraPlay'; playerId: PlayerID; count: number }
+	| { type: 'grantExtraPlacements'; playerId: PlayerID; count: number; color?: Color }
+	| { type: 'grantExtraActionPlays'; playerId: PlayerID; count: number }
+	| { type: 'markSkipNextTurn'; playerId: PlayerID }
+	| { type: 'suppressDrawsUntil'; condition: 'handsEmpty'; sourceCardId?: number }
+	| { type: 'replaceHexWithDead'; coord: Co }
+	| { type: 'replaceHexColor'; coord: Co; color: Color }
+	| { type: 'moveHex'; from: Co; to: Co }
+	| { type: 'reorderPlayerPrefs'; playerId: PlayerID; order: PlayerPrefs }
+	| { type: 'setAgendaOverride'; playerId: PlayerID; stat: Stat | null }
+	| { type: 'grantRevealUnusedVillains'; playerId: PlayerID; untilRound?: number | null }
+	| { type: 'registerTrigger'; trigger: Trigger }
+	| { type: 'attachCard'; card?: Card; usePlayedCard?: boolean; targetPlayerId?: PlayerID; token?: Stat; expires?: AttachedCard['expires'] };
+
 export type MovePlayCardArgs =
 	// Hex mode: place a color at a coord
 	| { handIndex: number; pick: Color; coord: Co }
 	// Path mode: place a lane from -> coord (must be adjacent)
 	| { handIndex: number; pick: Color; coord: Co; source: Co };
+export type MovePlayActionArgs = { handIndex: number; effects?: GameEffect[] };
 export type MoveStashArgs = { handIndex: number };
 export type MoveTakeTreasureArgs = { index: number };
 export type MoveRotateTileArgs = { coord: Co; handIndex: number; rotation: number }; // rotation: 1-5 (60°-300°), excluding 3 (180°)
