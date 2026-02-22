@@ -23,6 +23,246 @@ type AllowedForm = IllegalForm;
 
 const COLOR_ORDER: Color[] = ['R', 'O', 'Y', 'G', 'B', 'V'];
 
+/* ─── SVG Icons ─── */
+
+const IconFile: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9 1z" />
+		<path d="M9 1v4h4" />
+	</svg>
+);
+
+const IconUpload: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M14 10v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-3" />
+		<polyline points="4 5 8 1 12 5" />
+		<line x1="8" y1="1" x2="8" y2="11" />
+	</svg>
+);
+
+const IconDownload: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M14 10v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-3" />
+		<polyline points="4 7 8 11 12 7" />
+		<line x1="8" y1="11" x2="8" y2="1" />
+	</svg>
+);
+
+const IconCopy: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<rect x="5" y="5" width="9" height="9" rx="1" />
+		<path d="M3 11H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1" />
+	</svg>
+);
+
+const IconSave: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M13 15H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h7l4 4v9a1 1 0 0 1-1 1z" />
+		<path d="M11 15V9H5v6" />
+		<path d="M5 1v4h4" />
+	</svg>
+);
+
+const IconX: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<line x1="3" y1="3" x2="13" y2="13" />
+		<line x1="13" y1="3" x2="3" y2="13" />
+	</svg>
+);
+
+const IconPlus: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+		<line x1="8" y1="2" x2="8" y2="14" />
+		<line x1="2" y1="8" x2="14" y2="8" />
+	</svg>
+);
+
+const IconMinus: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+		<line x1="2" y1="8" x2="14" y2="8" />
+	</svg>
+);
+
+const IconTrash: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M2 4h12" />
+		<path d="M5 4V2h6v2" />
+		<path d="M13 4l-1 10H4L3 4" />
+	</svg>
+);
+
+const IconRotate: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M1 4v4h4" />
+		<path d="M1 8C2 4.5 5 2 8.5 2 12 2 14.5 5 14.5 8S12 14 8.5 14c-2 0-3.8-1-5-2.5" />
+	</svg>
+);
+
+const IconOrigin: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<circle cx="8" cy="8" r="3" />
+		<line x1="8" y1="1" x2="8" y2="4" />
+		<line x1="8" y1="12" x2="8" y2="15" />
+		<line x1="1" y1="8" x2="4" y2="8" />
+		<line x1="12" y1="8" x2="15" y2="8" />
+	</svg>
+);
+
+const IconPath: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<circle cx="3" cy="13" r="2" />
+		<circle cx="13" cy="3" r="2" />
+		<path d="M5 11C6 7 10 9 11 5" />
+	</svg>
+);
+
+const IconHex: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+		<polygon points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5" />
+	</svg>
+);
+
+const IconEye: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" />
+		<circle cx="8" cy="8" r="2" />
+	</svg>
+);
+
+const IconEyeOff: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M6.5 6.5a2 2 0 0 0 3 3" />
+		<path d="M2 2l12 12" />
+		<path d="M10 12.5C9.4 12.8 8.7 13 8 13c-4 0-7-5-7-5s1.2-2 3.2-3.4" />
+		<path d="M13 10.5c1-1 1.7-2 2-2.5 0 0-3-5-7-5-.6 0-1.2.1-1.7.3" />
+	</svg>
+);
+
+const IconCheck: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+		<polyline points="3 8 6.5 12 13 4" />
+	</svg>
+);
+
+const IconCheckAll: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<polyline points="1.5 8 5 12 12.5 4" />
+		<polyline points="5 8 8.5 12 15 4" />
+	</svg>
+);
+
+const IconUncheckAll: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<rect x="2" y="2" width="12" height="12" rx="2" />
+		<line x1="5" y1="5" x2="11" y2="11" />
+		<line x1="11" y1="5" x2="5" y2="11" />
+	</svg>
+);
+
+const IconChevron: React.FC<{ size?: number }> = ({ size = 10 }) => (
+	<svg width={size} height={size} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<polyline points="3 4 5 6.5 7 4" />
+	</svg>
+);
+
+const IconBan: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<circle cx="8" cy="8" r="6" />
+		<line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+	</svg>
+);
+
+const IconSettings: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+		<circle cx="8" cy="8" r="2.5" />
+		<path d="M13.3 10a1.2 1.2 0 0 0 .2 1.3l.1.1a1.4 1.4 0 1 1-2 2l-.1-.1a1.2 1.2 0 0 0-2 .9v.1a1.4 1.4 0 1 1-2.8 0v-.1A1.2 1.2 0 0 0 5.4 13l-.1.1a1.4 1.4 0 1 1-2-2l.1-.1a1.2 1.2 0 0 0-.9-2H2.4a1.4 1.4 0 0 1 0-2.8h.1a1.2 1.2 0 0 0 1.1-1.3L3.5 5a1.4 1.4 0 1 1 2-2l.1.1A1.2 1.2 0 0 0 7 2.3V2.2a1.4 1.4 0 0 1 2.8 0v.1a1.2 1.2 0 0 0 2 .9l.1-.1a1.4 1.4 0 1 1 2 2l-.1.1a1.2 1.2 0 0 0 .9 2h.1a1.4 1.4 0 0 1 0 2.8h-.1a1.2 1.2 0 0 0-1.3.2z" />
+	</svg>
+);
+
+const IconEraser: React.FC<{ size?: number }> = ({ size = 14 }) => (
+	<svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+		<path d="M14 14H6l-4-4 8-8 6 6-4 4" />
+		<path d="M2 10l6 6" />
+	</svg>
+);
+
+/* ─── Menu Dropdown Component ─── */
+
+const MenuDropdown: React.FC<{
+	label: string;
+	children: React.ReactNode;
+}> = ({ label, children }) => {
+	const [open, setOpen] = React.useState(false);
+	const ref = React.useRef<HTMLDivElement>(null);
+
+	React.useEffect(() => {
+		const handler = (e: MouseEvent) => {
+			if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+		};
+		if (open) document.addEventListener('mousedown', handler);
+		return () => document.removeEventListener('mousedown', handler);
+	}, [open]);
+
+	return (
+		<div className="sl-menu" ref={ref}>
+			<button
+				className={`sl-menu__trigger ${open ? 'sl-menu__trigger--active' : ''}`}
+				onClick={() => setOpen(!open)}
+			>
+				{label}
+			</button>
+			{open && (
+				<div className="sl-menu__dropdown" onClick={() => setOpen(false)}>
+					{children}
+				</div>
+			)}
+		</div>
+	);
+};
+
+const MenuItem: React.FC<{
+	icon?: React.ReactNode;
+	label: string;
+	shortcut?: string;
+	onClick: () => void;
+	disabled?: boolean;
+}> = ({ icon, label, shortcut, onClick, disabled }) => (
+	<button
+		className="sl-menu__item"
+		onClick={onClick}
+		disabled={disabled}
+	>
+		<span className="sl-menu__item-icon">{icon}</span>
+		<span className="sl-menu__item-label">{label}</span>
+		{shortcut && <span className="sl-menu__item-shortcut">{shortcut}</span>}
+	</button>
+);
+
+const MenuSeparator: React.FC = () => <div className="sl-menu__separator" />;
+
+/* ─── Toolbar Icon Button ─── */
+
+const ToolButton: React.FC<{
+	icon: React.ReactNode;
+	label: string;
+	active?: boolean;
+	onClick: () => void;
+	disabled?: boolean;
+	danger?: boolean;
+}> = ({ icon, label, active, onClick, disabled, danger }) => (
+	<button
+		className={`sl-tool-btn ${active ? 'sl-tool-btn--active' : ''} ${danger ? 'sl-tool-btn--danger' : ''}`}
+		onClick={onClick}
+		disabled={disabled}
+		title={label}
+		aria-label={label}
+	>
+		{icon}
+	</button>
+);
+
+/* ─── Reused sub-components ─── */
+
 const ColorPicker: React.FC<{
 	value: Color;
 	onChange: (c: Color) => void;
@@ -201,6 +441,33 @@ const buildRules = (mode: 'hex' | 'path', radius: number, edgeColors: string): R
 	};
 };
 
+/* ─── Collapsible Section ─── */
+
+const CollapsibleSection: React.FC<{
+	title: string;
+	icon?: React.ReactNode;
+	defaultOpen?: boolean;
+	badge?: string | number;
+	children: React.ReactNode;
+}> = ({ title, icon, defaultOpen = true, badge, children }) => {
+	const [open, setOpen] = React.useState(defaultOpen);
+	return (
+		<section className="sl-section">
+			<button className="sl-section__header" onClick={() => setOpen(!open)}>
+				<span className={`sl-section__chevron ${open ? 'sl-section__chevron--open' : ''}`}>
+					<IconChevron />
+				</span>
+				{icon && <span className="sl-section__icon">{icon}</span>}
+				<span className="sl-section__title">{title}</span>
+				{badge !== undefined && <span className="sl-section__badge">{badge}</span>}
+			</button>
+			{open && <div className="sl-section__body">{children}</div>}
+		</section>
+	);
+};
+
+/* ─── Main Component ─── */
+
 export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 	const [mode, setMode] = React.useState<'hex' | 'path'>(MODE_RULESETS.path.MODE);
 	const [radius, setRadius] = React.useState(3);
@@ -239,11 +506,17 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 	});
 	const [loadText, setLoadText] = React.useState('');
 	const [loadStatus, setLoadStatus] = React.useState<string | null>(null);
+	const [loadStateText, setLoadStateText] = React.useState('');
+	const [loadStateStatus, setLoadStateStatus] = React.useState<string | null>(null);
 	const [pendingExpected, setPendingExpected] = React.useState<string[] | null>(null);
 	const [pendingForbidden, setPendingForbidden] = React.useState<string[] | null>(null);
 	const [createStatus, setCreateStatus] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	const [createMessage, setCreateMessage] = React.useState<string | null>(null);
 	const [projectRootHandle, setProjectRootHandle] = React.useState<FileSystemDirectoryHandle | null>(null);
+	const [showLoadPanel, setShowLoadPanel] = React.useState(false);
+	const [showLoadStateDialog, setShowLoadStateDialog] = React.useState(false);
+	const [hoveredActionKey, setHoveredActionKey] = React.useState<string | null>(null);
+	const fileInputRef = React.useRef<HTMLInputElement>(null);
 
 	const rules = React.useMemo(() => buildRules(mode, radius, edgeColors), [mode, radius, edgeColors]);
 
@@ -298,6 +571,17 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		if (mode !== 'path' || editMode !== 'path' || !pendingSource) return [];
 		return neighbors(pendingSource);
 	}, [mode, editMode, pendingSource]);
+
+	const hoveredLane = React.useMemo((): PathLane | null => {
+		if (!hoveredActionKey) return null;
+		const parsed = parsePlayLaneKey(hoveredActionKey);
+		return parsed?.lane ?? null;
+	}, [hoveredActionKey]);
+
+	const hoveredHighlightCoords = React.useMemo((): Co[] => {
+		if (!hoveredLane) return [];
+		return [hoveredLane.from, hoveredLane.to];
+	}, [hoveredLane]);
 
 	const updateHand = (next: Card[]) => {
 		setG((prev) => ({
@@ -393,13 +677,11 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 			if (pathTool === 'remove') {
 				for (let i = nextLanes.length - 1; i >= 0; i -= 1) {
 					const lane = nextLanes[i];
-					if (
-						lane.from.q === pendingSource.q
-						&& lane.from.r === pendingSource.r
-						&& lane.to.q === coord.q
-						&& lane.to.r === coord.r
-						&& lane.color === selectedColor
-					) {
+					const fwd = lane.from.q === pendingSource.q && lane.from.r === pendingSource.r
+						&& lane.to.q === coord.q && lane.to.r === coord.r;
+					const rev = lane.from.q === coord.q && lane.from.r === coord.r
+						&& lane.to.q === pendingSource.q && lane.to.r === pendingSource.r;
+					if ((fwd || rev) && lane.color === selectedColor) {
 						nextLanes.splice(i, 1);
 						break;
 					}
@@ -525,6 +807,37 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		setExpectedScores(parsedExpectedScores);
 		setPendingExpected(parsedExpected);
 		setPendingForbidden(parsedForbidden);
+		setShowMovesHandIndex(null);
+		setPendingSource(null);
+	};
+
+	const loadStateFromJSON = (raw: string) => {
+		const parsed = JSON.parse(raw) as GState;
+		if (!parsed.rules || !parsed.board) {
+			throw new Error('Invalid state JSON. Expected a GState object with rules, board, etc.');
+		}
+		const parsedMode = parsed.rules.MODE;
+		const parsedRadius = parsed.rules.RADIUS;
+		const parsedEdge = (parsed.rules.EDGE_COLORS as Color[]).join('');
+		const nextRules = buildRules(parsedMode, parsedRadius, parsedEdge);
+		const nextPlayerID = (Object.keys(parsed.hands ?? {})[0] ?? '0') as PlayerID;
+		const nextPrefs = parsed.prefs?.[nextPlayerID] ?? { primary: 'R', secondary: 'O', tertiary: 'Y' };
+
+		setMode(parsedMode);
+		setRadius(parsedRadius);
+		setEdgeColors(parsedEdge);
+		setTitle('imported-state');
+		setPlayerID(nextPlayerID);
+		setGoalPrefs(nextPrefs);
+		setG({
+			...parsed,
+			rules: nextRules,
+			radius: nextRules.RADIUS,
+			prefs: { ...parsed.prefs, [nextPlayerID]: nextPrefs },
+		});
+		setExpectedScores({});
+		setPendingExpected(null);
+		setPendingForbidden(null);
 		setShowMovesHandIndex(null);
 		setPendingSource(null);
 	};
@@ -728,34 +1041,247 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 		}
 	};
 
+	/* Hidden file input for Load File menu item */
+	const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = () => {
+			const text = String(reader.result ?? '');
+			setLoadText(text);
+			try {
+				loadTestFromText(text);
+				setLoadStatus('Loaded test from file.');
+				setShowLoadPanel(false);
+			} catch (err) {
+				setLoadStatus(err instanceof Error ? err.message : 'Failed to load test.');
+				setShowLoadPanel(true);
+			}
+		};
+		reader.readAsText(file);
+		// reset so the same file can be loaded again
+		e.target.value = '';
+	};
+
 	return (
 		<div className="state-lab">
-			<header className="state-lab__header">
-				<div className="state-lab__title">
-					<strong>State Lab</strong>
-					<span>Build a GState + expected moves</span>
+			{/* Hidden file input */}
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept=".ts,.tsx,.js"
+				style={{ display: 'none' }}
+				onChange={handleFileLoad}
+			/>
+
+			{/* ─── Menu Bar ─── */}
+			<header className="sl-menubar">
+				<div className="sl-menubar__left">
+					<div className="sl-menubar__brand">
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+							<rect x="1" y="1" width="14" height="14" rx="3" stroke="var(--accent-primary)" strokeWidth="1.5" />
+							<circle cx="8" cy="8" r="3" fill="var(--accent-primary)" opacity="0.6" />
+							<circle cx="8" cy="8" r="1.5" fill="var(--accent-primary)" />
+						</svg>
+						<span>State Lab</span>
+					</div>
+
+					<MenuDropdown label="File">
+						<MenuItem icon={<IconUpload />} label="Load Test File..." onClick={() => fileInputRef.current?.click()} />
+						<MenuItem icon={<IconFile />} label="Load from Clipboard..." onClick={() => setShowLoadPanel(true)} />
+						<MenuItem icon={<IconDownload />} label="Load State..." onClick={() => setShowLoadStateDialog(true)} />
+						<MenuSeparator />
+						<MenuItem icon={<IconCopy />} label="Copy Test to Clipboard" onClick={() => navigator.clipboard.writeText(exportTest)} />
+						<MenuItem
+							icon={<IconSave />}
+							label="Create Test File"
+							onClick={createTestFile}
+							disabled={createStatus === 'saving'}
+						/>
+						<MenuItem icon={<IconDownload />} label="Download Test" onClick={() => downloadTestFile(`${slugify(title)}.test.ts`, exportTest)} />
+						<MenuSeparator />
+						<MenuItem icon={<IconX />} label="Exit Lab" onClick={onExit} />
+					</MenuDropdown>
+
+					<MenuDropdown label="Edit">
+						<MenuItem icon={<IconTrash />} label="Clear Board" onClick={() => { setG((prev) => ({ ...prev, board: {}, lanes: [] })); setPendingSource(null); }} />
+						<MenuItem icon={<IconOrigin />} label="Clear Origins" onClick={() => setG((prev) => ({ ...prev, origins: [] }))} />
+						<MenuSeparator />
+						<MenuItem icon={<IconCheckAll />} label="Include All Actions" onClick={() => setExcludedAllowed(new Set())} />
+						<MenuItem icon={<IconUncheckAll />} label="Exclude All Actions" onClick={() => setExcludedAllowed(new Set(actionKeys))} />
+					</MenuDropdown>
 				</div>
-				<button className="state-lab__exit" onClick={onExit}>Exit Lab</button>
+
+				<div className="sl-menubar__center">
+					<input
+						className="sl-menubar__title-input"
+						value={title}
+						onChange={(e) => setTitle(e.target.value)}
+						placeholder="test title..."
+					/>
+				</div>
+
+				<div className="sl-menubar__right">
+					{createMessage && (
+						<span className={`sl-menubar__status ${createStatus === 'error' ? 'sl-menubar__status--error' : ''}`}>
+							{createMessage}
+						</span>
+					)}
+					<button className="sl-menubar__exit" onClick={onExit} title="Exit Lab">
+						<IconX size={12} />
+					</button>
+				</div>
 			</header>
+
+			{/* ─── Toolbar ─── */}
+			<div className="sl-toolbar">
+				<div className="sl-toolbar__group">
+					<span className="sl-toolbar__label">Mode</span>
+					<div className="sl-toolbar__toggle">
+						<button
+							className={`sl-toolbar__toggle-btn ${mode === 'path' ? 'sl-toolbar__toggle-btn--active' : ''}`}
+							onClick={() => setMode('path')}
+						>
+							<IconPath size={12} /> Path
+						</button>
+						<button
+							className={`sl-toolbar__toggle-btn ${mode === 'hex' ? 'sl-toolbar__toggle-btn--active' : ''}`}
+							onClick={() => setMode('hex')}
+						>
+							<IconHex size={12} /> Hex
+						</button>
+					</div>
+				</div>
+
+				<div className="sl-toolbar__sep" />
+
+				<div className="sl-toolbar__group">
+					<span className="sl-toolbar__label">Tool</span>
+					{mode === 'path' && (
+						<>
+							<ToolButton
+								icon={<IconPath />}
+								label="Path Lanes"
+								active={editMode === 'path'}
+								onClick={() => setEditMode('path')}
+							/>
+						</>
+					)}
+					{mode === 'hex' && (
+						<ToolButton
+							icon={<IconHex />}
+							label="Hex Tiles"
+							active={editMode === 'hex'}
+							onClick={() => setEditMode('hex')}
+						/>
+					)}
+					<ToolButton
+						icon={<IconOrigin />}
+						label="Origins"
+						active={editMode === 'origin'}
+						onClick={() => setEditMode('origin')}
+					/>
+				</div>
+
+				{editMode === 'hex' && (
+					<>
+						<div className="sl-toolbar__sep" />
+						<div className="sl-toolbar__group">
+							<ToolButton icon={<IconPlus />} label="Add Color" active={hexTool === 'add'} onClick={() => setHexTool('add')} />
+							<ToolButton icon={<IconMinus />} label="Remove Color" active={hexTool === 'remove'} onClick={() => setHexTool('remove')} />
+							<ToolButton icon={<IconEraser />} label="Clear Tile" active={hexTool === 'clear'} onClick={() => setHexTool('clear')} />
+							<ToolButton icon={<IconRotate />} label="Set Rotation" active={hexTool === 'rotate'} onClick={() => setHexTool('rotate')} />
+						</div>
+						{hexTool === 'rotate' && (
+							<div className="sl-toolbar__group">
+								<span className="sl-toolbar__label">Rot</span>
+								<input
+									className="sl-toolbar__mini-input"
+									type="number"
+									min={0}
+									max={5}
+									value={rotationValue}
+									onChange={(e) => setRotationValue(Number(e.target.value) || 0)}
+								/>
+							</div>
+						)}
+					</>
+				)}
+
+				{editMode === 'path' && (
+					<>
+						<div className="sl-toolbar__sep" />
+						<div className="sl-toolbar__group">
+							<ToolButton icon={<IconPlus />} label="Add Lane" active={pathTool === 'add'} onClick={() => setPathTool('add')} />
+							<ToolButton icon={<IconMinus />} label="Remove Lane" active={pathTool === 'remove'} onClick={() => setPathTool('remove')} />
+						</div>
+					</>
+				)}
+
+				{(editMode === 'hex' || editMode === 'path') && (
+					<>
+						<div className="sl-toolbar__sep" />
+						<div className="sl-toolbar__group">
+							<span className="sl-toolbar__label">Color</span>
+							<ColorPicker value={selectedColor} onChange={setSelectedColor} />
+						</div>
+					</>
+				)}
+
+				{pendingSource && editMode === 'path' && (
+					<div className="sl-toolbar__group">
+						<span className="sl-toolbar__hint">
+							Source: ({pendingSource.q},{pendingSource.r}) -- click destination
+						</span>
+					</div>
+				)}
+			</div>
+
+			{/* ─── Body ─── */}
 			<div className="state-lab__body">
 				<aside className="state-lab__sidebar">
-					<section className="state-lab__section">
-						<h3>Ruleset</h3>
-						<div className="state-lab__row">
-							<label>Title</label>
-							<input
-								value={title}
-								onChange={(e) => setTitle(e.target.value)}
-								placeholder="enumerate-actions"
-							/>
-						</div>
-						<div className="state-lab__row">
-							<label>Mode</label>
-							<select value={mode} onChange={(e) => setMode(e.target.value as 'hex' | 'path')}>
-								<option value="path">path</option>
-								<option value="hex">hex</option>
-							</select>
-						</div>
+					{/* Load Panel (shown via File menu) */}
+					{showLoadPanel && (
+						<CollapsibleSection title="Load Test" icon={<IconUpload size={12} />} defaultOpen={true}>
+							<div className="state-lab__note">Paste a generated test file. Loads trusted input only.</div>
+							<div className="sl-field">
+								<textarea
+									rows={6}
+									value={loadText}
+									onChange={(e) => setLoadText(e.target.value)}
+									placeholder="Paste test contents here..."
+									className="sl-textarea"
+								/>
+							</div>
+							<div className="sl-button-row">
+								<button
+									className="sl-btn sl-btn--primary"
+									onClick={() => {
+										try {
+											loadTestFromText(loadText);
+											setLoadStatus('Loaded test into lab.');
+											setShowLoadPanel(false);
+										} catch (err) {
+											setLoadStatus(err instanceof Error ? err.message : 'Failed to load test.');
+										}
+									}}
+									disabled={!loadText.trim()}
+								>
+									<IconUpload size={12} /> Load
+								</button>
+								<button className="sl-btn" onClick={() => fileInputRef.current?.click()}>
+									<IconFile size={12} /> Browse...
+								</button>
+								<button className="sl-btn" onClick={() => setShowLoadPanel(false)}>
+									Cancel
+								</button>
+							</div>
+							{loadStatus && <div className="state-lab__note">{loadStatus}</div>}
+						</CollapsibleSection>
+					)}
+
+					{/* Ruleset */}
+					<CollapsibleSection title="Ruleset" icon={<IconSettings size={12} />}>
 						<div className="state-lab__row">
 							<label>Radius</label>
 							<input
@@ -775,147 +1301,35 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 								maxLength={6}
 							/>
 						</div>
-						<div className="state-lab__divider">
-							<span>Overrides</span>
-						</div>
-						<div className="state-lab__note">No overrides set.</div>
 						<div className="state-lab__row">
 							<label>Player ID</label>
 							<input value={playerID} onChange={(e) => setPlayerID(e.target.value as PlayerID)} />
 						</div>
-					</section>
+					</CollapsibleSection>
 
-					<section className="state-lab__section">
-						<h3>Load Test</h3>
-						<div className="state-lab__note">Paste a generated test file or upload one. Loads trusted input only.</div>
-						<div className="state-lab__row">
-							<textarea
-								rows={6}
-								value={loadText}
-								onChange={(e) => setLoadText(e.target.value)}
-								placeholder="Paste test contents here..."
-							/>
-						</div>
-						<div className="state-lab__row state-lab__row--actions">
-							<input
-								type="file"
-								accept=".ts,.tsx,.js"
-								onChange={(e) => {
-									const file = e.target.files?.[0];
-									if (!file) return;
-									const reader = new FileReader();
-									reader.onload = () => {
-										setLoadText(String(reader.result ?? ''));
-									};
-									reader.readAsText(file);
-								}}
-							/>
-							<button
-								onClick={() => {
-									try {
-										loadTestFromText(loadText);
-										setLoadStatus('Loaded test into lab.');
-									} catch (err) {
-										setLoadStatus(err instanceof Error ? err.message : 'Failed to load test.');
-									}
-								}}
-								disabled={!loadText.trim()}
-							>
-								Load
-							</button>
-						</div>
-						{loadStatus && <div className="state-lab__note">{loadStatus}</div>}
-					</section>
-
-					<section className="state-lab__section">
-						<h3>Scoring</h3>
+					{/* Scoring */}
+					<CollapsibleSection title="Scoring" icon={
+						<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+							<polyline points="1 12 5 4 9 8 15 1" />
+						</svg>
+					}>
 						<div className="state-lab__note">Goal priorities for score deltas.</div>
 						<GoalPicker value={goalPrefs} onChange={setGoalPrefs} />
-					</section>
+					</CollapsibleSection>
 
-					<section className="state-lab__section">
-						<h3>Board Tool</h3>
-						<div className="state-lab__row">
-							<label>Tool</label>
-							<select value={editMode} onChange={(e) => setEditMode(e.target.value as EditMode)}>
-								{mode === 'path' && <option value="path">path lanes</option>}
-								{mode === 'hex' && <option value="hex">hex tiles</option>}
-								<option value="origin">origins</option>
-							</select>
-						</div>
-						{editMode === 'hex' && (
-							<>
-								<div className="state-lab__row">
-									<label>Hex tool</label>
-									<select value={hexTool} onChange={(e) => setHexTool(e.target.value as HexTool)}>
-										<option value="add">add color</option>
-										<option value="remove">remove color</option>
-										<option value="clear">clear tile</option>
-										<option value="rotate">set rotation</option>
-									</select>
-								</div>
-								<div className="state-lab__row">
-									<label>Color</label>
-									<ColorPicker value={selectedColor} onChange={setSelectedColor} />
-								</div>
-								{hexTool === 'rotate' && (
-									<div className="state-lab__row">
-										<label>Rotation</label>
-										<input
-											type="number"
-											min={0}
-											max={5}
-											value={rotationValue}
-											onChange={(e) => setRotationValue(Number(e.target.value) || 0)}
-										/>
-									</div>
-								)}
-							</>
-						)}
-						{editMode === 'path' && (
-							<>
-								<div className="state-lab__row">
-									<label>Path tool</label>
-									<select value={pathTool} onChange={(e) => setPathTool(e.target.value as PathTool)}>
-										<option value="add">add lane</option>
-										<option value="remove">remove lane</option>
-									</select>
-								</div>
-								<div className="state-lab__row">
-									<label>Color</label>
-									<ColorPicker value={selectedColor} onChange={setSelectedColor} />
-								</div>
-								{pendingSource && (
-									<div className="state-lab__note">Source set: ({pendingSource.q},{pendingSource.r}) → click destination</div>
-								)}
-							</>
-						)}
-						{editMode === 'origin' && (
-							<div className="state-lab__note">Click to toggle origin coordinates.</div>
-						)}
-						<div className="state-lab__row state-lab__row--actions">
-							<button
-								onClick={() => {
-									setG((prev) => ({ ...prev, board: {}, lanes: [] }));
-									setPendingSource(null);
-								}}
-							>
-								Clear Board
-							</button>
-							<button
-								onClick={() => setG((prev) => ({ ...prev, origins: [] }))}
-							>
-								Clear Origins
-							</button>
-						</div>
-					</section>
-
-					<section className="state-lab__section">
-						<h3>Hand</h3>
+					{/* Hand */}
+					<CollapsibleSection title="Hand" icon={
+						<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+							<rect x="2" y="1" width="12" height="14" rx="2" />
+							<line x1="5" y1="5" x2="11" y2="5" />
+							<line x1="5" y1="8" x2="9" y2="8" />
+						</svg>
+					} badge={hand.length}>
 						<div className="state-lab__stack">
 							{hand.map((card, i) => (
-								<div key={`hand-${i}`} className="state-lab__row state-lab__row--hand">
+								<div key={`hand-${i}`} className="sl-card-row">
 									<input
+										className="sl-card-row__input"
 										value={card.colors.join('')}
 										onChange={(e) => {
 											const next = [...hand];
@@ -923,35 +1337,43 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 											updateHand(next);
 										}}
 									/>
-									<button
+									<ToolButton
+										icon={<IconTrash size={12} />}
+										label="Remove card"
 										onClick={() => {
 											const next = [...hand];
 											next.splice(i, 1);
 											updateHand(next);
 										}}
-									>
-										Remove
-									</button>
-									<button
+									/>
+									<ToolButton
+										icon={showMovesHandIndex === i ? <IconEyeOff size={12} /> : <IconEye size={12} />}
+										label={showMovesHandIndex === i ? 'Hide Moves' : 'Show Moves'}
+										active={showMovesHandIndex === i}
 										disabled={mode !== 'path'}
-										onClick={() => {
-											setShowMovesHandIndex((prev) => (prev === i ? null : i));
-										}}
-									>
-										{showMovesHandIndex === i ? 'Hide Moves' : 'Show Moves'}
-									</button>
+										onClick={() => setShowMovesHandIndex((prev) => (prev === i ? null : i))}
+									/>
 								</div>
 							))}
-							<button onClick={() => updateHand([...hand, { colors: ['B'] }])}>Add Card</button>
+							<button className="sl-btn sl-btn--sm" onClick={() => updateHand([...hand, { colors: ['B'] }])}>
+								<IconPlus size={11} /> Add Card
+							</button>
 						</div>
-					</section>
+					</CollapsibleSection>
 
-					<section className="state-lab__section">
-						<h3>Treasure</h3>
+					{/* Treasure */}
+					<CollapsibleSection title="Treasure" icon={
+						<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+							<path d="M1 6h14v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6z" />
+							<path d="M3 6V4a5 5 0 0 1 10 0v2" />
+							<line x1="8" y1="9" x2="8" y2="12" />
+						</svg>
+					} badge={G.treasure.length}>
 						<div className="state-lab__stack">
 							{G.treasure.map((card, i) => (
-								<div key={`treasure-${i}`} className="state-lab__row">
+								<div key={`treasure-${i}`} className="sl-card-row">
 									<input
+										className="sl-card-row__input"
 										value={card.colors.join('')}
 										onChange={(e) => {
 											const next = [...G.treasure];
@@ -959,33 +1381,48 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 											updateTreasure(next);
 										}}
 									/>
-									<button
+									<ToolButton
+										icon={<IconTrash size={12} />}
+										label="Remove treasure"
 										onClick={() => {
 											const next = [...G.treasure];
 											next.splice(i, 1);
 											updateTreasure(next);
 										}}
-									>
-										Remove
-									</button>
+									/>
 								</div>
 							))}
-							<button onClick={() => updateTreasure([...G.treasure, { colors: ['R'] }])}>Add Treasure</button>
+							<button className="sl-btn sl-btn--sm" onClick={() => updateTreasure([...G.treasure, { colors: ['R'] }])}>
+								<IconPlus size={11} /> Add Treasure
+							</button>
 						</div>
-					</section>
+					</CollapsibleSection>
 
-					<section className="state-lab__section">
-						<h3>Allowed (Enumerated)</h3>
-						<div className="state-lab__row state-lab__row--actions">
-							<button onClick={() => setExcludedAllowed(new Set())}>Include All</button>
-							<button onClick={() => setExcludedAllowed(new Set(actionKeys))}>Exclude All</button>
+					{/* Allowed (Enumerated) */}
+					<CollapsibleSection
+						title="Allowed Actions"
+						icon={<IconCheck size={12} />}
+						badge={`${actionKeys.length - excludedAllowed.size + extraAllowed.length}/${actionKeys.length + extraAllowed.length}`}
+					>
+						<div className="sl-button-row" style={{ marginBottom: 8 }}>
+							<button className="sl-btn sl-btn--sm" onClick={() => setExcludedAllowed(new Set())}>
+								<IconCheckAll size={11} /> All
+							</button>
+							<button className="sl-btn sl-btn--sm" onClick={() => setExcludedAllowed(new Set(actionKeys))}>
+								<IconUncheckAll size={11} /> None
+							</button>
 						</div>
 						<div className="state-lab__list">
 							{actions.map((a) => {
 								const keyValue = actionKey(a);
 								const delta = scoreDeltaByAction[keyValue];
 								return (
-									<label key={keyValue} className="state-lab__item">
+									<label
+										key={keyValue}
+										className={`state-lab__item state-lab__item--hoverable${hoveredActionKey === keyValue ? ' state-lab__item--hovered' : ''}`}
+										onMouseEnter={() => setHoveredActionKey(keyValue)}
+										onMouseLeave={() => setHoveredActionKey(null)}
+									>
 										<input
 											type="checkbox"
 											checked={!excludedAllowed.has(keyValue)}
@@ -999,11 +1436,11 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 											}}
 										/>
 										<span>{actionToLabel(a)}</span>
-										<span className="state-lab__score-chip">Δ {delta ?? 0}</span>
+										<span className="state-lab__score-chip">{delta ?? 0}</span>
 										<input
 											className="state-lab__score-input"
 											type="number"
-											placeholder="expect"
+											placeholder="exp"
 											value={expectedScores[keyValue] ?? ''}
 											onChange={(e) => {
 												const nextValue = e.target.value;
@@ -1019,10 +1456,10 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 								);
 							})}
 						</div>
-					</section>
+					</CollapsibleSection>
 
-					<section className="state-lab__section">
-						<h3>Additional Allowed</h3>
+					{/* Additional Allowed */}
+					<CollapsibleSection title="Additional Allowed" icon={<IconPlus size={12} />} defaultOpen={false}>
 						<div className="state-lab__stack">
 							<div className="state-lab__row">
 								<label>Type</label>
@@ -1135,23 +1572,29 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 								</div>
 							)}
 							<button
+								className="sl-btn sl-btn--sm"
 								onClick={() => {
 									const built = buildActionKey(allowedForm);
 									if (!built) return;
 									setExtraAllowed((prev) => [...prev, built]);
 								}}
 							>
-								Add Allowed
+								<IconPlus size={11} /> Add Allowed
 							</button>
 							{extraAllowed.length > 0 && (
 								<div className="state-lab__list">
 									{extraAllowed.map((item, i) => (
-										<div key={`${item}-${i}`} className="state-lab__item state-lab__item--inline">
+										<div
+											key={`${item}-${i}`}
+											className={`state-lab__item state-lab__item--inline state-lab__item--hoverable${hoveredActionKey === item ? ' state-lab__item--hovered' : ''}`}
+											onMouseEnter={() => setHoveredActionKey(item)}
+											onMouseLeave={() => setHoveredActionKey(null)}
+										>
 											<span>{item}</span>
 											<input
 												className="state-lab__score-input"
 												type="number"
-												placeholder="expect"
+												placeholder="exp"
 												value={expectedScores[item] ?? ''}
 												onChange={(e) => {
 													const nextValue = e.target.value;
@@ -1163,20 +1606,20 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 													});
 												}}
 											/>
-											<button
+											<ToolButton
+												icon={<IconTrash size={12} />}
+												label="Remove"
 												onClick={() => setExtraAllowed((prev) => prev.filter((_, idx) => idx !== i))}
-											>
-												Remove
-											</button>
+											/>
 										</div>
 									))}
 								</div>
 							)}
 						</div>
-					</section>
+					</CollapsibleSection>
 
-					<section className="state-lab__section">
-						<h3>Expected Illegal</h3>
+					{/* Expected Illegal */}
+					<CollapsibleSection title="Expected Illegal" icon={<IconBan size={12} />} defaultOpen={false} badge={expectedIllegal.length || undefined}>
 						<div className="state-lab__stack">
 							<div className="state-lab__row">
 								<label>Type</label>
@@ -1289,45 +1732,52 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 								</div>
 							)}
 							<button
+								className="sl-btn sl-btn--sm"
 								onClick={() => {
 									const built = buildActionKey(illegalForm);
 									if (!built) return;
 									setExpectedIllegal((prev) => [...prev, built]);
 								}}
 							>
-								Add Illegal
+								<IconBan size={11} /> Add Illegal
 							</button>
 							{expectedIllegal.length > 0 && (
 								<div className="state-lab__list">
 									{expectedIllegal.map((item, i) => (
-										<div key={`${item}-${i}`} className="state-lab__item state-lab__item--inline">
+										<div
+											key={`${item}-${i}`}
+											className={`state-lab__item state-lab__item--inline state-lab__item--hoverable${hoveredActionKey === item ? ' state-lab__item--hovered' : ''}`}
+											onMouseEnter={() => setHoveredActionKey(item)}
+											onMouseLeave={() => setHoveredActionKey(null)}
+										>
 											<span>{item}</span>
-											<button
+											<ToolButton
+												icon={<IconTrash size={12} />}
+												label="Remove"
 												onClick={() => setExpectedIllegal((prev) => prev.filter((_, idx) => idx !== i))}
-											>
-												Remove
-											</button>
+											/>
 										</div>
 									))}
 								</div>
 							)}
 						</div>
-					</section>
+					</CollapsibleSection>
 
-					<section className="state-lab__section">
-						<h3>Test Output</h3>
-						<div className="state-lab__note">Create writes to src/tests after you pick the project root once (or via the dev server, otherwise it downloads a file).</div>
-						<div className="state-lab__row state-lab__row--actions">
-							<button onClick={() => navigator.clipboard.writeText(exportTest)}>Copy</button>
-							<button onClick={createTestFile} disabled={createStatus === 'saving'}>
-								{createStatus === 'saving' ? 'Creating...' : 'Create'}
+					{/* Test Output */}
+					<CollapsibleSection title="Test Output" icon={<IconFile size={12} />} defaultOpen={false}>
+						<div className="state-lab__note">Outputs generated test code. Use File menu to save or copy.</div>
+						<div className="sl-button-row" style={{ marginBottom: 8 }}>
+							<button className="sl-btn sl-btn--sm" onClick={() => navigator.clipboard.writeText(exportTest)}>
+								<IconCopy size={11} /> Copy
+							</button>
+							<button className="sl-btn sl-btn--sm sl-btn--primary" onClick={createTestFile} disabled={createStatus === 'saving'}>
+								<IconSave size={11} /> {createStatus === 'saving' ? 'Creating...' : 'Create'}
 							</button>
 						</div>
-						{createMessage && <div className="state-lab__note">{createMessage}</div>}
 						<pre className="state-lab__code">
 							<code>{exportTest}</code>
 						</pre>
-					</section>
+					</CollapsibleSection>
 				</aside>
 
 				<main className="state-lab__board">
@@ -1335,20 +1785,64 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 						rules={rules}
 						board={G.board}
 						lanes={G.lanes}
-						phantomLanes={phantomLanes}
-						phantomOpacity={0.35}
-						phantomDash="6,4"
+						phantomLanes={hoveredLane ? [hoveredLane] : phantomLanes}
+						phantomOpacity={hoveredLane ? 0.8 : 0.35}
+						phantomDash={hoveredLane ? '0' : '6,4'}
 						radius={G.radius}
 						onHexClick={onHexClick}
 						showCoords
-						highlightCoords={highlightCoords}
-						highlightColor="#8b5cf6"
+						highlightCoords={hoveredHighlightCoords.length > 0 ? hoveredHighlightCoords : highlightCoords}
+						highlightColor={hoveredLane ? '#f59e0b' : '#8b5cf6'}
 						origins={G.origins}
 						selectedColor={mode === 'path' ? selectedColor : null}
 						selectedSourceDot={pendingSource}
 					/>
 				</main>
 			</div>
+
+			{/* Load State Dialog */}
+			{showLoadStateDialog && (
+				<div className="sl-dialog-overlay" onClick={() => setShowLoadStateDialog(false)}>
+					<div className="sl-dialog" onClick={(e) => e.stopPropagation()}>
+						<div className="sl-dialog__header">
+							<h3>Load State</h3>
+							<button className="sl-dialog__close" onClick={() => setShowLoadStateDialog(false)}>
+								<IconX size={14} />
+							</button>
+						</div>
+						<div className="sl-dialog__body">
+							<div className="state-lab__note">Paste exported game state JSON (from the gear button in-game).</div>
+							<textarea
+								rows={8}
+								value={loadStateText}
+								onChange={(e) => setLoadStateText(e.target.value)}
+								placeholder='Paste game state JSON here...'
+								className="sl-textarea"
+								autoFocus
+							/>
+						</div>
+						<div className="sl-dialog__footer">
+							{loadStateStatus && <span className={`sl-dialog__status ${loadStateStatus.startsWith('Failed') ? 'sl-dialog__status--error' : ''}`}>{loadStateStatus}</span>}
+							<button className="sl-btn" onClick={() => setShowLoadStateDialog(false)}>Cancel</button>
+							<button
+								className="sl-btn sl-btn--primary"
+								onClick={() => {
+									try {
+										loadStateFromJSON(loadStateText);
+										setLoadStateStatus('Loaded state into lab.');
+										setShowLoadStateDialog(false);
+									} catch (err) {
+										setLoadStateStatus(err instanceof Error ? err.message : 'Failed to load state.');
+									}
+								}}
+								disabled={!loadStateText.trim()}
+							>
+								Load
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

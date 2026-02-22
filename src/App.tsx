@@ -141,13 +141,16 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				}
 			}
 
-			// Consolidation exception: if the player explicitly picked a color, allow non-directional moves
-			// (but canPlacePath will strictly gate them).
-			if (selectedColor && cardColors.includes(selectedColor)) {
+			// Also check all neighbors for consolidation moves (off-direction recoloring).
+			// When a color is explicitly selected, only check that color; otherwise check all card colors.
+			const colorsToCheck = selectedColor && cardColors.includes(selectedColor)
+				? [selectedColor]
+				: cardColors;
+			for (const col of colorsToCheck) {
 				for (const dest of neighbors(source)) {
 					if (isOriginCoord(dest)) continue;
 					if (dests.some((d) => d.q === dest.q && d.r === dest.r)) continue;
-					if (canPlacePath(G, source, dest, selectedColor, rules)) dests.push(dest);
+					if (canPlacePath(G, source, dest, col, rules)) dests.push(dest);
 				}
 			}
 			return dests;
@@ -608,6 +611,19 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					<Treasure rules={rules} cards={G.treasure} onTake={onTakeTreasure} />
 				</div>
 			)}
+
+			{/* Secret export state button */}
+			<button
+				className="secret-export-btn"
+				onClick={() => {
+					navigator.clipboard.writeText(JSON.stringify(G));
+					const btn = document.querySelector('.secret-export-btn') as HTMLElement | null;
+					if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = '⚙'; }, 1200); }
+				}}
+				title="Export state to clipboard (for Lab)"
+			>
+				⚙
+			</button>
 
 			{/* Game Over overlay */}
 			{ctx.gameover && !gameOverDismissed && (

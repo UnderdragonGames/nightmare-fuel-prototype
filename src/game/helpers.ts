@@ -117,12 +117,17 @@ const countIncomingLanes = (G: GState, node: Co): { count: number; sources: Set<
 
 type DirectedCaps = Map<string, number>; // key: `${uKey}->${vKey}`
 
-const buildDirectedCapsAfterLane = (G: GState, from: Co, to: Co): DirectedCaps => {
+const buildDirectedCaps = (G: GState): DirectedCaps => {
 	const caps: DirectedCaps = new Map();
 	for (const ln of G.lanes) {
 		const k = laneKey(ln.from, ln.to);
 		caps.set(k, (caps.get(k) ?? 0) + 1);
 	}
+	return caps;
+};
+
+const buildDirectedCapsAfterLane = (G: GState, from: Co, to: Co): DirectedCaps => {
+	const caps = buildDirectedCaps(G);
 	{
 		const k = laneKey(from, to);
 		caps.set(k, (caps.get(k) ?? 0) + 1);
@@ -368,20 +373,59 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 		if (sources.size > 0 && !sources.has(key(source))) return false;
 	}
 
-	// Fork support invariant (computed on explicit directed lanes)
-	// Same reasoning as above: recoloring an existing edge shouldn't be blocked by directed fork-support accounting.
+	// Per-path node limit: at each non-origin source node, enforce three constraints:
+	// 1. Unique outgoing DIRECTIONS cannot exceed total incoming lane count
+	// 2. Same-color lanes per directed outgoing edge cannot exceed incoming lane count
+	// 3. Total outgoing lanes cannot exceed IN + min(max(IN-1, 0), 2) (with tolerance for pre-existing violations)
+	// Consolidation recolor on an existing edge is exempt (same reasoning as NO_INTERSECT).
 	if (rules.PLACEMENT.FORK_SUPPORT && (!isConsolidationRecolorMove || !isConsolidationBacktrack)) {
-		const caps = buildDirectedCapsAfterLane(G, source, dest);
-		const allNodes = collectNodesFromEdges(caps);
-		const originKeys = new Set(G.origins.map((o) => key(o)));
+		if (!sourceIsOrigin) {
+			// Total incoming lanes to source
+			let totalIn = 0;
+			for (const ln of G.lanes) {
+				if (ln.to.q === source.q && ln.to.r === source.r) totalIn++;
+			}
 
-		for (const nodeKey of allNodes) {
-			if (originKeys.has(nodeKey)) continue;
-			const inCount = countIncoming(nodeKey, caps, allNodes);
-			const outCount = countOutgoing(nodeKey, caps, allNodes);
-			const allowedExtra = Math.min(Math.max(inCount - 1, 0), 2);
-			const maxOut = inCount + allowedExtra;
-			if (outCount > maxOut) return false;
+			if (totalIn > 0) {
+				// Constraint 1: unique outgoing directions must not exceed incoming lane count
+				const outDirsBefore = new Set<string>();
+				let totalOutBefore = 0;
+				for (const ln of G.lanes) {
+					if (ln.from.q === source.q && ln.from.r === source.r) {
+						outDirsBefore.add(key(ln.to));
+						totalOutBefore++;
+					}
+				}
+				const destKey = key(dest);
+				const outDirsAfter = new Set(outDirsBefore);
+				outDirsAfter.add(destKey);
+				if (outDirsAfter.size > totalIn && outDirsAfter.size > outDirsBefore.size) {
+					return false;
+				}
+
+				// Constraint 2: same-color lanes per directed outgoing edge must not exceed incoming count
+				let sameColorOnEdge = 0;
+				for (const ln of G.lanes) {
+					if (ln.from.q === source.q && ln.from.r === source.r
+						&& ln.to.q === dest.q && ln.to.r === dest.r
+						&& ln.color === color) {
+						sameColorOnEdge++;
+					}
+				}
+				if (sameColorOnEdge + 1 > totalIn) {
+					return false;
+				}
+
+				// Constraint 3: total outgoing lanes (with before/after tolerance for pre-existing violations)
+				const allowedExtra = Math.min(Math.max(totalIn - 1, 0), 2);
+				const maxOut = totalIn + allowedExtra;
+				const totalOutAfter = totalOutBefore + 1;
+				if (totalOutAfter > maxOut) {
+					const surplusBefore = Math.max(totalOutBefore - maxOut, 0);
+					const surplusAfter = totalOutAfter - maxOut;
+					if (surplusAfter > surplusBefore) return false;
+				}
+			}
 		}
 	}
 

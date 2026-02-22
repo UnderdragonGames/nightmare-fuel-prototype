@@ -53,7 +53,6 @@ describe('enumerate-actions', () => {
 	it('matches expected actions', () => {
 		const actual = enumerateActions(G, '0').map(actionKey).sort();
 		const expected = [
-  "play:0:O:-1,1->-2,1",
   "play:0:O:-1,2->-2,2",
   "play:0:O:-2,0->-3,0",
   "play:0:O:-2,1->-3,1",
@@ -84,7 +83,6 @@ describe('enumerate-actions', () => {
   "play:4:R:0,0->-1,1",
   "play:4:R:0,2->-1,3",
   "play:4:R:1,0->0,1",
-  "play:4:R:1,1->0,2",
   "play:5:V:-1,2->-1,3",
   "play:5:V:-2,1->-2,2",
   "play:5:V:0,0->0,1",
