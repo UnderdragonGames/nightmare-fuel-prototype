@@ -4,9 +4,7 @@ import type { GState } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { computeScoresRaw } from '../game/scoring';
 
-// Test to address strange inconsistencies between consolidation moves and regular moves
-
-const EDGE_COLORS = ['V', 'O', 'R', 'B', 'G', 'Y'] as const;
+const EDGE_COLORS = ['V', 'O', 'Y', 'B', 'R', 'G'] as const;
 
 const rules = {
 	...MODE_RULESETS.path,
@@ -112,12 +110,12 @@ const G: GState = {
 		"5,-1": { colors: [], rotation: 0 },
 		"5,0": { colors: [], rotation: 0 }
 	},
-	lanes: [{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'R' }, { from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'R' }, { from: { q: 2, r: 0 }, to: { q: 1, r: 1 }, color: 'G' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'O' }, { from: { q: 1, r: -1 }, to: { q: 2, r: -2 }, color: 'O' }, { from: { q: 1, r: 1 }, to: { q: 0, r: 2 }, color: 'G' }, { from: { q: 0, r: 2 }, to: { q: 1, r: 2 }, color: 'R' }, { from: { q: 2, r: -2 }, to: { q: 1, r: -2 }, color: 'Y' }, { from: { q: 1, r: 2 }, to: { q: 1, r: 3 }, color: 'B' }, { from: { q: 1, r: 3 }, to: { q: 2, r: 2 }, color: 'O' }, { from: { q: 2, r: 2 }, to: { q: 2, r: 1 }, color: 'V' }, { from: { q: 1, r: -2 }, to: { q: 1, r: -3 }, color: 'V' }, { from: { q: 1, r: -3 }, to: { q: 0, r: -2 }, color: 'G' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 0 }, color: 'Y' }, { from: { q: 0, r: -2 }, to: { q: 0, r: -1 }, color: 'B' }, { from: { q: -1, r: 0 }, to: { q: -1, r: 1 }, color: 'B' }, { from: { q: -1, r: 1 }, to: { q: -1, r: 2 }, color: 'B' }, { from: { q: -1, r: 2 }, to: { q: 0, r: 1 }, color: 'O' }, { from: { q: 2, r: 1 }, to: { q: 3, r: 1 }, color: 'R' }, { from: { q: 3, r: 1 }, to: { q: 3, r: 0 }, color: 'V' }, { from: { q: 3, r: 0 }, to: { q: 4, r: 0 }, color: 'R' }, { from: { q: 4, r: 0 }, to: { q: 5, r: 0 }, color: 'R' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'O' }, { from: { q: 0, r: -1 }, to: { q: -1, r: -1 }, color: 'Y' }, { from: { q: -1, r: -1 }, to: { q: -2, r: -1 }, color: 'Y' }, { from: { q: -2, r: -1 }, to: { q: -3, r: 0 }, color: 'G' }, { from: { q: -3, r: 0 }, to: { q: -3, r: -1 }, color: 'V' }, { from: { q: -3, r: -1 }, to: { q: -3, r: -2 }, color: 'V' }, { from: { q: 1, r: -1 }, to: { q: 2, r: -2 }, color: 'O' }, { from: { q: 2, r: -2 }, to: { q: 3, r: -2 }, color: 'R' }, { from: { q: 4, r: -3 }, to: { q: 5, r: -3 }, color: 'R' }, { from: { q: 4, r: -3 }, to: { q: 3, r: -2 }, color: 'R' }, { from: { q: 3, r: -2 }, to: { q: 4, r: -3 }, color: 'O' }],
+	lanes: [{ from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'V' }, { from: { q: 0, r: -1 }, to: { q: 1, r: -2 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 0 }, color: 'G' }, { from: { q: 1, r: -2 }, to: { q: 2, r: -2 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'O' }, { from: { q: 2, r: -2 }, to: { q: 3, r: -2 }, color: 'Y' }, { from: { q: 3, r: -2 }, to: { q: 4, r: -2 }, color: 'Y' }, { from: { q: 4, r: -2 }, to: { q: 5, r: -2 }, color: 'Y' }, { from: { q: 1, r: 0 }, to: { q: 2, r: -1 }, color: 'O' }, { from: { q: 1, r: -2 }, to: { q: 0, r: -1 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' }, { from: { q: 0, r: -1 }, to: { q: -1, r: -1 }, color: 'G' }, { from: { q: 1, r: -2 }, to: { q: 0, r: -2 }, color: 'G' }, { from: { q: 2, r: -1 }, to: { q: 3, r: -1 }, color: 'Y' }, { from: { q: 3, r: -1 }, to: { q: 4, r: -1 }, color: 'Y' }, { from: { q: 4, r: -1 }, to: { q: 5, r: -1 }, color: 'Y' }, { from: { q: 2, r: -1 }, to: { q: 1, r: 0 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'V' }, { from: { q: -1, r: -1 }, to: { q: -2, r: -1 }, color: 'G' }, { from: { q: -2, r: -1 }, to: { q: -3, r: 0 }, color: 'R' }, { from: { q: -3, r: 0 }, to: { q: -4, r: 0 }, color: 'G' }, { from: { q: -4, r: 0 }, to: { q: -3, r: -1 }, color: 'O' }, { from: { q: -3, r: -1 }, to: { q: -2, r: -2 }, color: 'O' }, { from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'Y' }, { from: { q: -2, r: -2 }, to: { q: -1, r: -3 }, color: 'O' }, { from: { q: -1, r: -3 }, to: { q: -1, r: -4 }, color: 'V' }],
 	deck: [],
 	discard: [],
-	hands: { '0': [{ colors: ['R', 'O', 'Y', 'G', 'B', 'V'] }] },
-	treasure: [{ colors: [] }, { colors: [] }, { colors: [] }, { colors: [] }],
-	prefs: { '0': { primary: 'R', secondary: 'V', tertiary: 'O' } },
+	hands: { '0': [{ colors: ['B', 'Y'] }, { colors: ['R', 'V'] }] },
+	treasure: [{ colors: [] }, { colors: [] }],
+	prefs: { '0': { primary: 'V', secondary: 'G', tertiary: 'O' } },
 	stats: { placements: 0 },
 	meta: { deckExhaustionCycle: null, stashBonus: {} },
 	origins: [{ q: 0, r: 0 }],
@@ -143,59 +141,39 @@ const actionKey = (a: Action): string => {
 	}
 };
 
-describe('imported-state', () => {
+describe('blocked-consolidation', () => {
 	it('matches expected actions', () => {
 		const actual = enumerateActions(G, '0').map(actionKey).sort();
 		const expected = [
-  "play:0:B:-1,2->-1,3",
-  "play:0:B:0,-2->0,-1",
-  "play:0:B:2,2->2,3",
-  "play:0:B:3,-2->3,-1",
-  "play:0:B:3,1->3,2",
-  "play:0:B:4,-3->4,-2",
-  "play:0:G:-1,2->-2,3",
-  "play:0:G:1,-3->0,-2",
-  "play:0:G:3,-2->2,-1",
-  "play:0:O:-1,2->0,1",
-  "play:0:O:1,-1->2,-2",
-  "play:0:O:1,-3->2,-4",
-  "play:0:O:3,-2->4,-3",
-  "play:0:O:4,-3->5,-4",
-  "play:0:R:0,0->1,0",
-  "play:0:R:1,-1->2,-1",
-  "play:0:R:1,-1->2,-2",
-  "play:0:R:1,-3->2,-3",
-  "play:0:R:1,-2->2,-2",
-  "play:0:R:2,-2->1,-1",
-  "play:0:R:2,-2->3,-2",
-  "play:0:R:2,2->3,2",
-  "play:0:R:3,-2->4,-2",
-  "play:0:R:3,1->4,1",
-  "play:0:R:4,-3->5,-3",
-  "play:0:V:-3,0->-2,-1",
-  "play:0:V:0,-2->0,-3",
-  "play:0:V:1,-3->1,-4",
-  "play:0:V:2,2->2,1",
-  "play:0:V:3,-2->3,-3",
-  "play:0:V:3,1->3,0",
-  "play:0:V:4,-3->4,-4",
-  "play:0:Y:-1,2->-2,2",
-  "play:0:Y:0,-2->-1,-2",
-  "play:0:Y:0,0->-1,0",
-  "play:0:Y:1,-3->0,-3",
-  "play:0:Y:2,-2->1,-2",
-  "play:0:Y:4,-3->3,-3",
+  "play:0:B:-1,0->-1,1",
+  "play:0:B:0,0->0,1",
+  "play:0:B:2,0->2,1",
+  "play:0:Y:0,-2->1,-2",
+  "play:0:Y:0,0->1,0",
+  "play:0:Y:1,-2->2,-2",
+  "play:0:Y:1,0->2,0",
+  "play:0:Y:2,-1->3,-1",
+  "play:0:Y:2,0->3,0",
+  "play:1:R:-1,0->-2,1",
+  "play:1:R:0,0->-1,1",
+  "play:1:R:2,0->1,1",
+  "play:1:V:0,-2->0,-3",
+  "stash:0",
+  "stash:1",
   "take:0",
   "take:1",
-  "take:2",
-  "take:3",
   "end",
+  "play:1:V:-1,-3->-2,-2"
 ];
 		expect(actual).toEqual([...expected].sort());
+		const forbidden = [];
+		for (const key of forbidden) expect(actual).not.toContain(key);
 	});
 	it('matches expected score deltas', () => {
 		const baseScores = computeScoresRaw(G);
-		const expectedScores = {};
+		const expectedScores = {
+  "play:1:V:-1,-3->-2,-2": 1
+};
 		for (const action of enumerateActions(G, '0')) {
 			const k = actionKey(action);
 			if (expectedScores[k] === undefined) continue;

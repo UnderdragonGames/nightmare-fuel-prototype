@@ -262,6 +262,20 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				return;
 			}
 
+			// Fallback: try ALL card colors to find any valid move to this destination.
+			// This handles cases where the valid color is neither the direction color nor
+			// the explicitly selected color (e.g., consolidation with an unselected color).
+			for (const col of card.colors) {
+				if (col === dirColor || col === selectedColor) continue; // already tried
+				if (canPlacePath(G, selectedSourceDot, coord, col as Color, rules)) {
+					moves.playCard({ handIndex: selectedCard, pick: col as Color, source: selectedSourceDot, coord });
+					setSelectedCard(null);
+					setSelectedColor(null);
+					setSelectedSourceDot(null);
+					return;
+				}
+			}
+
 			const validDests = getValidDestinations(coord, card.colors);
 			if (validDests.length > 0) {
 				setSelectedSourceDot(coord);

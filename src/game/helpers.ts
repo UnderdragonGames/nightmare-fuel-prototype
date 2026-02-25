@@ -1,4 +1,4 @@
-import type { Card, Co, Color, GState, Rules } from './types';
+import type { Card, Co, Color, GState, PathLane, Rules } from './types';
 
 export const key = (c: Co): string => `${c.q},${c.r}`;
 export const parse = (s: string): Co => {
@@ -113,6 +113,16 @@ const countIncomingLanes = (G: GState, node: Co): { count: number; sources: Set<
 		}
 	}
 	return { count, sources };
+};
+
+/**
+ * Check if a lane goes inward (from higher ring to lower ring).
+ * Inward-going lanes (whether from consolidation backtrack or normal color-directed
+ * moves) should not count as "outward branching" for FORK_SUPPORT purposes,
+ * and inward arrivals should not create "intersections" for NO_INTERSECT purposes.
+ */
+const isInwardLane = (ln: PathLane): boolean => {
+	return ringIndex(ln.to) < ringIndex(ln.from);
 };
 
 type DirectedCaps = Map<string, number>; // key: `${uKey}->${vKey}`
@@ -315,9 +325,6 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	const sourceIsOrigin = G.origins.some((o) => o.q === source.q && o.r === source.r);
 	if (!sourceIsOrigin && !nodeHasAnyLane(G, source)) return false;
 
-	// Per-directed-segment capacity
-	if (countDirectedLanes(G, source, dest) >= rules.PLACEMENT.MAX_LANES_PER_PATH) return false;
-
 	// Core mechanic: normally, a color implies its direction.
 	const dir = rules.COLOR_TO_DIR[color];
 	const expectedDest: Co = { q: source.q + dir.q, r: source.r + dir.r };
@@ -340,15 +347,19 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 			// Prevent "global recolor": must extend from an existing segment of this color.
 			if (!nodeHasColorLane(G, source, color) && !nodeHasColorLane(G, dest, color)) return false;
 			isConsolidationRecolorMove = true;
-			isConsolidationBacktrack = ringIndex(source) > ringIndex(dest);
+			// Backtrack = reverse direction of an existing lane on this edge.
+			// Handles same-ring edges correctly (ring comparison can't determine direction).
+			isConsolidationBacktrack = countDirectedLanes(G, dest, source) > 0;
 		} else {
 			// Origins can stack, but cap parallel lanes at 2 per edge from an origin.
 			if (!directionMatch) return false;
 			// If already branching from this node, only add a new outward direction when this color is already present.
+			// Exclude inward-going lanes from the outgoing count since they represent
+			// backward/inward flow, not forward branching that consumes capacity.
 			if (!sourceIsOrigin && ringIndex(dest) > ringIndex(source)) {
 				const outgoing = new Set<string>();
 				for (const ln of G.lanes) {
-					if (ln.from.q === source.q && ln.from.r === source.r) {
+					if (ln.from.q === source.q && ln.from.r === source.r && !isInwardLane(ln)) {
 						outgoing.add(key(ln.to));
 					}
 				}
@@ -362,12 +373,22 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 		if (!directionMatch && !isNewColorOnExistingEdge) return false;
 	}
 
+	// Per-directed-segment capacity
+	// Consolidation can optionally exceed the normal lane limit (CONSOLIDATION_EXCEEDS_LANES_PER_PATH)
+	{
+		const directedCount = countDirectedLanes(G, source, dest);
+		const cap = rules.PLACEMENT.MAX_LANES_PER_PATH;
+		if (directedCount >= cap) {
+			if (!isConsolidationRecolorMove || !rules.PLACEMENT.CONSOLIDATION_EXCEEDS_LANES_PER_PATH) return false;
+		}
+	}
+
 	// NO_BUILD_FROM_RIM: cannot build FROM rim nodes
 	if (rules.PLACEMENT.NO_BUILD_FROM_RIM && ringIndex(source) >= G.radius) return false;
 
 	// NO_INTERSECT: all incoming lanes to dest must share the same source
-	// Consolidation recolor is constrained to an already-existing edge, so it cannot introduce a geometric intersection.
-	// Treat it as exempt from NO_INTERSECT's directed-incoming constraint (which would otherwise block "backtracking").
+	// Consolidation backtrack (reverse of existing lane) is exempt: it follows an existing edge
+	// in reverse, so it cannot introduce a geometric intersection.
 	if (rules.PLACEMENT.NO_INTERSECT && (!isConsolidationRecolorMove || !isConsolidationBacktrack)) {
 		const { sources } = countIncomingLanes(G, dest);
 		if (sources.size > 0 && !sources.has(key(source))) return false;
@@ -377,21 +398,32 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	// 1. Unique outgoing DIRECTIONS cannot exceed total incoming lane count
 	// 2. Same-color lanes per directed outgoing edge cannot exceed incoming lane count
 	// 3. Total outgoing lanes cannot exceed IN + min(max(IN-1, 0), 2) (with tolerance for pre-existing violations)
-	// Consolidation recolor on an existing edge is exempt (same reasoning as NO_INTERSECT).
+	// Consolidation backtrack on an existing edge is exempt (same reasoning as NO_INTERSECT).
+	// Inward-going lanes are excluded from outgoing counts since they represent
+	// backward/inward flow, not forward branching that consumes capacity.
 	if (rules.PLACEMENT.FORK_SUPPORT && (!isConsolidationRecolorMove || !isConsolidationBacktrack)) {
 		if (!sourceIsOrigin) {
-			// Total incoming lanes to source
+			// Total support at source node: incoming lanes PLUS inward outgoing lanes.
+			// Inward outgoing lanes (consolidation backtracks from this node) represent
+			// through-traffic and provide support for forward branching. This ensures
+			// a "2x path" where one lane is a consolidation backtrack still provides
+			// double support at the node for forking purposes.
 			let totalIn = 0;
 			for (const ln of G.lanes) {
-				if (ln.to.q === source.q && ln.to.r === source.r) totalIn++;
+				if (ln.to.q === source.q && ln.to.r === source.r) {
+					totalIn++; // Normal incoming lane
+				} else if (ln.from.q === source.q && ln.from.r === source.r && isInwardLane(ln)) {
+					totalIn++; // Inward outgoing = through-traffic support
+				}
 			}
 
 			if (totalIn > 0) {
 				// Constraint 1: unique outgoing directions must not exceed incoming lane count
+				// Exclude inward-going lanes from outgoing (they don't consume forward capacity)
 				const outDirsBefore = new Set<string>();
 				let totalOutBefore = 0;
 				for (const ln of G.lanes) {
-					if (ln.from.q === source.q && ln.from.r === source.r) {
+					if (ln.from.q === source.q && ln.from.r === source.r && !isInwardLane(ln)) {
 						outDirsBefore.add(key(ln.to));
 						totalOutBefore++;
 					}
@@ -482,10 +514,18 @@ export const isConsolidationMove = (G: GState, source: Co, dest: Co, color: Colo
 
 	const sourceRing = ringIndex(source);
 	const destRing = ringIndex(dest);
-	if (sourceRing === destRing) return false;
-
-	const outward = sourceRing > destRing ? source : dest;
 	const rimConnected = buildRimConnectedNodesForColor(G, color);
+
+	if (sourceRing === destRing) {
+		// Same-ring: must follow an existing lane in reverse (backtrack),
+		// and at least one node must be on the color's rim-connected path.
+		if (!rimConnected.has(key(source)) && !rimConnected.has(key(dest))) return false;
+		return countDirectedLanes(G, dest, source) > 0;
+	}
+
+	// Different-ring: the outward node must be on the color's rim-connected path.
+	// This covers both inward and outward consolidation steps.
+	const outward = sourceRing > destRing ? source : dest;
 	return rimConnected.has(key(outward));
 };
 

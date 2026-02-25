@@ -83,6 +83,8 @@ export type PlacementRules = {
 	CONSOLIDATION: boolean;
 	// Consolidation win: game ends when this many continuous paths reach from rim back to center
 	CONSOLIDATION_END: number;
+	// If true, consolidation moves can exceed MAX_LANES_PER_PATH (widths 4+ possible)
+	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: boolean;
 };
 
 export type Rules = {
