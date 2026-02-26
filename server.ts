@@ -1,5 +1,8 @@
 import { Server } from 'boardgame.io/server';
 import { PostgresStore } from 'bgio-postgres';
+import serve from 'koa-static';
+import { resolve } from 'path';
+import { readFile } from 'fs/promises';
 import { HexStringsGame } from './src/game/game.js';
 
 const dbUrl = process.env.DATABASE_URL;
@@ -21,8 +24,22 @@ const server = Server({
 		'http://localhost:5173',
 		'http://localhost:3000',
 		'http://127.0.0.1:5173',
-		'https://nightmare-fuel.vercel.app',
+		'https://nightmarefuel.underdragongames.com',
 	],
+});
+
+const distDir = resolve(import.meta.dir ?? '.', 'dist');
+
+// Serve static files from Vite build output
+server.app.use(serve(distDir));
+
+// SPA fallback: serve index.html for non-API routes
+server.app.use(async (ctx, next) => {
+	await next();
+	if (ctx.status === 404 && !ctx.path.startsWith('/games') && !ctx.path.startsWith('/.well-known')) {
+		ctx.type = 'html';
+		ctx.body = await readFile(resolve(distDir, 'index.html'), 'utf-8');
+	}
 });
 
 const port = Number(process.env.PORT) || 8000;
