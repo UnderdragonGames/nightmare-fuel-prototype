@@ -59,7 +59,6 @@ const buildOriginConnectedTiles = (G: GState): Set<string> => {
 	return connected;
 };
 
-const laneKey = (u: Co, v: Co): string => `${key(u)}->${key(v)}`;
 
 const nodeHasAnyLane = (G: GState, coord: Co): boolean => {
 	for (const ln of G.lanes) {
@@ -125,25 +124,7 @@ const isInwardLane = (ln: PathLane): boolean => {
 	return ringIndex(ln.to) < ringIndex(ln.from);
 };
 
-type DirectedCaps = Map<string, number>; // key: `${uKey}->${vKey}`
 
-const buildDirectedCaps = (G: GState): DirectedCaps => {
-	const caps: DirectedCaps = new Map();
-	for (const ln of G.lanes) {
-		const k = laneKey(ln.from, ln.to);
-		caps.set(k, (caps.get(k) ?? 0) + 1);
-	}
-	return caps;
-};
-
-const buildDirectedCapsAfterLane = (G: GState, from: Co, to: Co): DirectedCaps => {
-	const caps = buildDirectedCaps(G);
-	{
-		const k = laneKey(from, to);
-		caps.set(k, (caps.get(k) ?? 0) + 1);
-	}
-	return caps;
-};
 
 const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules): boolean => {
 	const targetRing = ringIndex(coord);

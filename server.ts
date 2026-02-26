@@ -28,7 +28,7 @@ const server = Server({
 	],
 });
 
-const distDir = resolve(import.meta.dir ?? '.', 'dist');
+const distDir = resolve(new URL('.', import.meta.url).pathname, 'dist');
 
 // Serve static files from Vite build output
 server.app.use(serve(distDir));

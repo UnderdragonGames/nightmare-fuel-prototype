@@ -195,7 +195,7 @@ describe('imported-state', () => {
 	});
 	it('matches expected score deltas', () => {
 		const baseScores = computeScoresRaw(G);
-		const expectedScores = {};
+		const expectedScores: Record<string, number> = {};
 		for (const action of enumerateActions(G, '0')) {
 			const k = actionKey(action);
 			if (expectedScores[k] === undefined) continue;

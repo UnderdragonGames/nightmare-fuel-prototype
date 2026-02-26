@@ -166,12 +166,12 @@ describe('blocked-consolidation', () => {
   "play:1:V:-1,-3->-2,-2"
 ];
 		expect(actual).toEqual([...expected].sort());
-		const forbidden = [];
+		const forbidden: string[] = [];
 		for (const key of forbidden) expect(actual).not.toContain(key);
 	});
 	it('matches expected score deltas', () => {
 		const baseScores = computeScoresRaw(G);
-		const expectedScores = {
+		const expectedScores: Record<string, number> = {
   "play:1:V:-1,-3->-2,-2": 1
 };
 		for (const action of enumerateActions(G, '0')) {
