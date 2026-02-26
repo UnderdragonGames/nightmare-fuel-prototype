@@ -799,7 +799,7 @@ const App: React.FC = () => {
 	const setViewer = useUIStore((s) => s.setViewer);
 	const matchID = useUIStore((s) => s.matchID);
 	const setMatchID = useUIStore((s) => s.setMatchID);
-	const serverURL = import.meta.env.VITE_SERVER_URL || 'http://localhost:8000';
+	const serverURL = import.meta.env.VITE_SERVER_URL || (import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin);
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 	const [isLabRoute, setIsLabRoute] = React.useState(false);
 
