@@ -3,6 +3,7 @@ import { RULES, buildColorToDir } from './rulesConfig';
 import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths } from './helpers';
 import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
 import { drawOne, initActionState, playActionCardFromHand } from './effects';
+import { emitEvent } from './hooks';
 import { enumerateActions } from './ai';
 import { buildDeck } from './deck';
 import { NIGHTMARES, getNightmareByName } from './nightmares';
@@ -33,7 +34,7 @@ const dealToHand = (G: GState, playerID: PlayerID, rules: Rules): void => {
 	const bonus = G.nightmareState[playerID]?.handSizeBonus ?? 0;
 	const targetSize = rules.HAND_SIZE + bonus;
 	while (G.hands[playerID]!.length < targetSize) {
-		const c = drawOne(G);
+		const c = drawOne(G, playerID);
 		if (!c) break;
 		G.hands[playerID]!.push(c);
 	}
@@ -217,20 +218,10 @@ export const HexStringsGame: Game<GState> = {
 			const { G, ctx, events } = context;
 			const pid = ctx.currentPlayer;
 			G.meta.actionPlaysThisTurn[pid] = 0;
-			if (!G.action.skipNextTurn[pid]) return;
-			G.action.skipNextTurn[pid] = false;
-			if (G.action.attachedCards.length > 0) {
-				const remaining: typeof G.action.attachedCards = [];
-				for (const attached of G.action.attachedCards) {
-					if (attached.targetPlayerId === pid && attached.expires === 'afterSkip') {
-						G.discard.push(attached.card);
-					} else {
-						remaining.push(attached);
-					}
-				}
-				G.action.attachedCards = remaining;
+			const { blocked } = emitEvent(G, { type: 'onTurnStart', playerId: pid });
+			if (blocked) {
+				events?.endTurn?.();
 			}
-			events?.endTurn?.();
 		},
 		activePlayers: { currentPlayer: 'active' },
 		stages: {
@@ -265,6 +256,10 @@ export const HexStringsGame: Game<GState> = {
 							}
 							G.stats.placements += 1;
 							G.action.lastPlacedColor = args.pick;
+							const coord: [import('./types').Co, import('./types').Co] = rules.MODE === 'path' && 'source' in args
+								? [args.source, args.coord]
+								: [args.coord, args.coord];
+							emitEvent(G, { type: 'onPlacement', playerId: pid, coord, color: args.pick });
 							const [used] = hand.splice(args.handIndex, 1);
 							if (used) G.discard.push(used);
 						},
@@ -277,6 +272,7 @@ export const HexStringsGame: Game<GState> = {
 							const hand = G.hands[pid] ?? [];
 							const card = hand[args.handIndex];
 							if (!card || !card.isAction) return;
+							if (G.rules.ACTION_CARDS === 'disabled') return;
 							const played = G.meta.actionPlaysThisTurn[pid] ?? 0;
 							const extra = G.action.extraActionPlays[pid] ?? 0;
 							if (G.rules.ACTION_CARDS === 'one-per-turn' && played > 0 && extra <= 0) return;
@@ -350,12 +346,13 @@ export const HexStringsGame: Game<GState> = {
 						const { G, ctx, events } = context;
 						const rules = G.rules;
 						const pid = ctx.currentPlayer;
+						emitEvent(G, { type: 'onTurnEnd', playerId: pid });
 						// First refill hand to normal HAND_SIZE
 						dealToHand(G, ctx.currentPlayer, rules);
 						// Then pay out stash bonus draws ON TOP of normal hand
 						const bonus = G.meta.stashBonus[pid] ?? 0;
 						for (let i = 0; i < bonus; i += 1) {
-							const c = drawOne(G);
+							const c = drawOne(G, pid);
 							if (!c) break;
 							G.hands[pid]!.push(c);
 						}

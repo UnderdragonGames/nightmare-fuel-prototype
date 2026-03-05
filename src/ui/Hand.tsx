@@ -36,6 +36,22 @@ const NeuralCard: React.FC<{
 		return { color, endX, endY };
 	});
 
+	if (card.isAction) {
+		return (
+			<div
+				className={`neural-card neural-card--action ${isSelected ? 'neural-card--selected' : ''}`}
+				onClick={onSelect}
+			>
+				<div className="neural-card__name">{card.name}</div>
+				{card.text && (
+					<div className="neural-card__text neural-card__text--action">
+						{card.text}
+					</div>
+				)}
+			</div>
+		);
+	}
+
 	return (
 		<div
 			className={`neural-card ${isSelected ? 'neural-card--selected' : ''}`}
@@ -55,11 +71,6 @@ const NeuralCard: React.FC<{
 					))}
 				</svg>
 			</div>
-			{card.text && (
-				<div className="neural-card__text">
-					{card.text}
-				</div>
-			)}
 
 			<div className="neural-card__actions">
 				{card.colors.map((color) => (

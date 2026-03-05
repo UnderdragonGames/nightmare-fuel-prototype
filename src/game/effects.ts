@@ -7,12 +7,13 @@ import type {
 	Co,
 	GameEffect,
 	GState,
+	HookDef,
 	NightmareAction,
 	PlayerID,
 	PlayerPrefs,
 	Stat,
-	Trigger,
 } from './types';
+import { emitEvent, registerHook } from './hooks';
 import { canPlace, inferPlacementRotation, inBounds, key } from './helpers';
 import { buildColorToDir } from './rulesConfig';
 
@@ -26,10 +27,6 @@ export type EffectContext = {
 
 const ensurePlayerNumber = (record: Record<PlayerID, number>, playerId: PlayerID): void => {
 	if (record[playerId] === undefined) record[playerId] = 0;
-};
-
-const ensurePlayerBool = (record: Record<PlayerID, boolean>, playerId: PlayerID): void => {
-	if (record[playerId] === undefined) record[playerId] = false;
 };
 
 const ensurePlayerNullableStat = (record: Record<PlayerID, Stat | null>, playerId: PlayerID): void => {
@@ -53,60 +50,60 @@ export const initActionState = (playerIDs: PlayerID[] = []): ActionState => {
 	const extraPlays: Record<PlayerID, number> = {};
 	const extraPlacements: Record<PlayerID, { count: number; color?: Color | null }> = {};
 	const extraActionPlays: Record<PlayerID, number> = {};
-	const skipNextTurn: Record<PlayerID, boolean> = {};
 	const agendaOverrides: Record<PlayerID, Stat | null> = {};
 	const revealUnusedVillainsUntil: Record<PlayerID, number | null> = {};
 	for (const pid of playerIDs) {
 		extraPlays[pid] = 0;
 		extraPlacements[pid] = { count: 0, color: null };
 		extraActionPlays[pid] = 0;
-		skipNextTurn[pid] = false;
 		agendaOverrides[pid] = null;
 		revealUnusedVillainsUntil[pid] = null;
 	}
 	return {
 		revealed: [],
 		faceUpDrawPile: [],
-		suppressedDraws: null,
+		hooks: [],
 		extraPlays,
 		extraPlacements,
 		extraActionPlays,
-		skipNextTurn,
 		agendaOverrides,
 		revealUnusedVillainsUntil,
 		attachedCards: [],
-		triggers: [],
 		lastPlacedColor: null,
 	};
 };
 
-const allHandsEmpty = (G: GState): boolean => Object.values(G.hands).every((hand) => hand.length === 0);
+export const allHandsEmpty = (G: GState): boolean => Object.values(G.hands).every((hand) => hand.length === 0);
 
-const resolveSuppressedDrawsIfReady = (G: GState): void => {
-	if (!G.action.suppressedDraws) return;
-	if (G.action.suppressedDraws.condition !== 'handsEmpty') return;
+/** Check if all onDraw block hooks should be cleared (Barren Wasteland condition: all hands empty). */
+export const resolveDrawHooksIfReady = (G: GState): void => {
 	if (!allHandsEmpty(G)) return;
-	const sourceCardId = G.action.suppressedDraws.sourceCardId;
-	if (sourceCardId !== undefined) {
-		const index = G.action.faceUpDrawPile.findIndex((card) => card.id === sourceCardId);
-		if (index >= 0) {
-			const [card] = G.action.faceUpDrawPile.splice(index, 1);
-			if (card) G.discard.push(card);
+	// Find and remove all onDraw block hooks, firing their side effects
+	const drawBlockHooks = G.action.hooks.filter((h) => h.event === 'onDraw' && h.behavior === 'block');
+	for (const hook of drawBlockHooks) {
+		for (const effect of hook.sideEffects) {
+			if (effect.type === 'moveFaceUpToDiscard') {
+				const idx = G.action.faceUpDrawPile.findIndex((c) => c.id === effect.sourceCardId);
+				if (idx >= 0) {
+					const [card] = G.action.faceUpDrawPile.splice(idx, 1);
+					if (card) G.discard.push(card);
+				}
+			}
 		}
+		const idx = G.action.hooks.indexOf(hook);
+		if (idx >= 0) G.action.hooks.splice(idx, 1);
 	}
-	G.action.suppressedDraws = null;
-};
-
-const isDrawSuppressed = (G: GState): boolean => {
-	if (!G.action.suppressedDraws) return false;
-	resolveSuppressedDrawsIfReady(G);
-	return G.action.suppressedDraws !== null;
 };
 
 export const readLastPlacedColor = (G: GState): Color | null => G.action.lastPlacedColor;
 
-export const drawOne = (G: GState): Card | null => {
-	if (isDrawSuppressed(G)) return null;
+export const drawOne = (G: GState, playerId?: PlayerID): Card | null => {
+	if (playerId !== undefined) {
+		// Check draw hooks — resolve condition first, then emit
+		resolveDrawHooksIfReady(G);
+		const { blocked } = emitEvent(G, { type: 'onDraw', playerId });
+		if (blocked) return null;
+	}
 	const card = G.deck.pop() ?? null;
 	return card;
 };
@@ -114,7 +111,7 @@ export const drawOne = (G: GState): Card | null => {
 export const drawCards = (G: GState, playerId: PlayerID, count: number): void => {
 	const hand = ensureHand(G, playerId);
 	for (let i = 0; i < count; i += 1) {
-		const card = drawOne(G);
+		const card = drawOne(G, playerId);
 		if (!card) break;
 		hand.push(card);
 	}
@@ -207,14 +204,6 @@ export const grantExtraActionPlays = (G: GState, playerId: PlayerID, count: numb
 	G.action.extraActionPlays[playerId] += count;
 };
 
-export const markSkipNextTurn = (G: GState, playerId: PlayerID): void => {
-	ensurePlayerBool(G.action.skipNextTurn, playerId);
-	G.action.skipNextTurn[playerId] = true;
-};
-
-export const suppressDrawsUntil = (G: GState, condition: 'handsEmpty', sourceCardId?: number): void => {
-	G.action.suppressedDraws = { condition, sourceCardId };
-};
 
 export const replaceHexWithDead = (G: GState, coord: Co): void => {
 	if (!inBounds(coord, G.radius)) return;
@@ -264,10 +253,6 @@ export const setAgendaOverride = (G: GState, playerId: PlayerID, stat: Stat | nu
 export const grantRevealUnusedVillains = (G: GState, playerId: PlayerID, untilRound: number | null): void => {
 	ensurePlayerNullableNumber(G.action.revealUnusedVillainsUntil, playerId);
 	G.action.revealUnusedVillainsUntil[playerId] = untilRound;
-};
-
-export const registerTrigger = (G: GState, trigger: Trigger): void => {
-	G.action.triggers.push(trigger);
 };
 
 export const attachCard = (G: GState, attached: AttachedCard): void => {
@@ -339,6 +324,20 @@ export const destroyPath = (G: GState, coord: Co): void => {
 		}
 	}
 	G.lanes = G.lanes.filter((ln) => !visited.has(key(ln.from)) && !visited.has(key(ln.to)));
+};
+
+export const rotateHands = (G: GState, playerOrder: PlayerID[], direction: 'clockwise' | 'counterclockwise'): void => {
+	if (playerOrder.length < 2) return;
+	const saved: Record<PlayerID, Card[]> = {};
+	for (const pid of playerOrder) {
+		saved[pid] = [...(G.hands[pid] ?? [])];
+	}
+	for (let i = 0; i < playerOrder.length; i++) {
+		const sourceIndex = direction === 'clockwise'
+			? (i - 1 + playerOrder.length) % playerOrder.length
+			: (i + 1) % playerOrder.length;
+		G.hands[playerOrder[i]!] = saved[playerOrder[sourceIndex]!]!;
+	}
 };
 
 export const swapPrefsSecondaryTertiary = (G: GState, playerId: PlayerID): void => {
@@ -471,11 +470,8 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 		case 'grantExtraActionPlays':
 			grantExtraActionPlays(G, effect.playerId, effect.count);
 			break;
-		case 'markSkipNextTurn':
-			markSkipNextTurn(G, effect.playerId);
-			break;
-		case 'suppressDrawsUntil':
-			suppressDrawsUntil(G, effect.condition, effect.sourceCardId);
+		case 'registerHook':
+			registerHook(G, effect.hook);
 			break;
 		case 'replaceHexWithDead':
 			replaceHexWithDead(G, effect.coord);
@@ -495,9 +491,6 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 		case 'grantRevealUnusedVillains':
 			grantRevealUnusedVillains(G, effect.playerId, effect.untilRound ?? null);
 			break;
-		case 'registerTrigger':
-			registerTrigger(G, effect.trigger);
-			break;
 		case 'attachCard': {
 			const card = effect.usePlayedCard ? context.playedCard : effect.card;
 			if (!card) break;
@@ -505,6 +498,9 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 			if (effect.usePlayedCard) context.markPlayedCardMoved();
 			break;
 		}
+		case 'rotateHands':
+			rotateHands(G, effect.playerOrder, effect.direction);
+			break;
 		default:
 			break;
 	}

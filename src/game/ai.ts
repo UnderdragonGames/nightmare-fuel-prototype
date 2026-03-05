@@ -8,7 +8,8 @@
  */
 
 import type { Ctx, PlayerID } from 'boardgame.io';
-import type { GState, Color, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, Card, PlayerPrefs } from './types';
+import type { GState, Color, Co, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, Card, PlayerPrefs } from './types';
+import { emitEvent } from './hooks';
 import { buildAllCoords, canPlace, canPlacePath, countRimToCenterPaths, key, neighbors, ringIndex } from './helpers';
 import { computeScores } from './scoring';
 
@@ -164,6 +165,10 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			}
 			newG.stats.placements += 1;
 			newG.action.lastPlacedColor = args.pick;
+			const coord: [Co, Co] = rules.MODE === 'path' && 'source' in args
+				? [args.source, args.coord]
+				: [args.coord, args.coord];
+			emitEvent(newG, { type: 'onPlacement', playerId: playerID, coord, color: args.pick });
 			const [used] = hand.splice(args.handIndex, 1);
 			if (used) newG.discard.push(used);
 			break;

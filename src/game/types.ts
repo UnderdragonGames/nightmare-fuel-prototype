@@ -9,11 +9,10 @@ export type Stat = 'vitality' | 'form' | 'freedom' | 'sanity' | 'will' | 'hope';
 export type CardFlags = { needsNewPrint: boolean; needsDuplicate: boolean };
 
 export type CardActionTarget = 'current' | 'each' | 'player';
-export type CardActionTrigger = 'onMoveStatOfType' | 'onSynergy';
 export type CardActionDuration = 'round';
 export type CardActionCondition = 'handsEmpty';
 export type CardActionPlacementColor = 'lastPlaced';
-export type ActionCardsRule = 'one-per-turn' | 'unlimited';
+export type ActionCardsRule = 'disabled' | 'one-per-turn' | 'unlimited';
 
 export type CardAction =
 	| { type: 'drawCards'; count: number; target: CardActionTarget; playerId?: PlayerID }
@@ -23,7 +22,7 @@ export type CardAction =
 	| { type: 'pickOneToHand' }
 	| { type: 'discardRest' }
 	| { type: 'placeOnDrawPileTopFaceUp' }
-	| { type: 'suppressDrawsUntil'; condition: CardActionCondition }
+	| { type: 'registerBlockDrawsHook' }
 	| { type: 'moveSelfToDiscard'; condition?: CardActionCondition }
 	| { type: 'grantExtraPlacements'; count: number }
 	| { type: 'grantExtraActionPlays'; count: number }
@@ -43,11 +42,10 @@ export type CardAction =
 	| { type: 'reorderPlayerPrefs' }
 	| { type: 'markAgendaTokens' }
 	| { type: 'attachTokenToCard' }
-	| { type: 'registerTrigger'; trigger: CardActionTrigger }
+	| { type: 'registerHook'; hookEvent: GameEventType }
 	| { type: 'discardSelfOnTrigger' }
 	| { type: 'privateRevealVillain' }
-	| { type: 'markSkipNextTurn' }
-	| { type: 'discardSelfAfterSkip' }
+	| { type: 'registerSkipTurnHook' }
 	| { type: 'attachToPlayer' }
 	| { type: 'reduceSynergyOnce' }
 	| { type: 'readLastPlacedColor' }
@@ -96,22 +94,41 @@ export type AttachedCard = {
 	expires?: 'afterSkip' | 'afterTrigger' | 'endOfRound' | 'manual';
 };
 
-export type Trigger =
-	| { type: 'onMoveStatOfType'; stat: Stat; card: Card; targetPlayerId?: PlayerID }
-	| { type: 'onSynergy'; card: Card; targetPlayerId?: PlayerID };
+export type GameEventType = 'onPlacement' | 'onStatMove' | 'onSynergyUse' | 'onDraw' | 'onTurnStart' | 'onTurnEnd';
+
+export type GameEvent =
+	| { type: 'onPlacement'; playerId: PlayerID; coord: [Co, Co]; color: Color }
+	| { type: 'onStatMove'; stat: Stat; playerId: PlayerID }
+	| { type: 'onSynergyUse'; playerId: PlayerID; synergyName: string }
+	| { type: 'onDraw'; playerId: PlayerID }
+	| { type: 'onTurnStart'; playerId: PlayerID }
+	| { type: 'onTurnEnd'; playerId: PlayerID };
+
+export type HookSideEffect =
+	| { type: 'discardSourceCard'; sourceCardId: number }
+	| { type: 'moveFaceUpToDiscard'; sourceCardId: number };
+
+export type HookDef = {
+	id: string;
+	event: GameEventType;
+	sourceCardId: number;
+	behavior: 'block' | 'modify' | 'observe';
+	oneShot: boolean;
+	targetPlayerId?: PlayerID;
+	stat?: Stat;
+	sideEffects: HookSideEffect[];
+};
 
 export type ActionState = {
 	revealed: Card[];
 	faceUpDrawPile: Card[];
-	suppressedDraws: { condition: 'handsEmpty'; sourceCardId?: number } | null;
+	hooks: HookDef[];
 	extraPlays: Record<PlayerID, number>;
 	extraPlacements: Record<PlayerID, { count: number; color?: Color | null }>;
 	extraActionPlays: Record<PlayerID, number>;
-	skipNextTurn: Record<PlayerID, boolean>;
 	agendaOverrides: Record<PlayerID, Stat | null>;
 	revealUnusedVillainsUntil: Record<PlayerID, number | null>;
 	attachedCards: AttachedCard[];
-	triggers: Trigger[];
 	lastPlacedColor: Color | null;
 };
 
@@ -266,16 +283,15 @@ export type GameEffect =
 	| { type: 'grantExtraPlay'; playerId: PlayerID; count: number }
 	| { type: 'grantExtraPlacements'; playerId: PlayerID; count: number; color?: Color }
 	| { type: 'grantExtraActionPlays'; playerId: PlayerID; count: number }
-	| { type: 'markSkipNextTurn'; playerId: PlayerID }
-	| { type: 'suppressDrawsUntil'; condition: 'handsEmpty'; sourceCardId?: number }
+	| { type: 'registerHook'; hook: HookDef }
 	| { type: 'replaceHexWithDead'; coord: Co }
 	| { type: 'replaceHexColor'; coord: Co; color: Color }
 	| { type: 'moveHex'; from: Co; to: Co }
 	| { type: 'reorderPlayerPrefs'; playerId: PlayerID; order: PlayerPrefs }
 	| { type: 'setAgendaOverride'; playerId: PlayerID; stat: Stat | null }
 	| { type: 'grantRevealUnusedVillains'; playerId: PlayerID; untilRound?: number | null }
-	| { type: 'registerTrigger'; trigger: Trigger }
-	| { type: 'attachCard'; card?: Card; usePlayedCard?: boolean; targetPlayerId?: PlayerID; token?: Stat; expires?: AttachedCard['expires'] };
+	| { type: 'attachCard'; card?: Card; usePlayedCard?: boolean; targetPlayerId?: PlayerID; token?: Stat; expires?: AttachedCard['expires'] }
+	| { type: 'rotateHands'; direction: 'clockwise' | 'counterclockwise'; playerOrder: PlayerID[] };
 
 export type MovePlayCardArgs =
 	// Hex mode: place a color at a coord

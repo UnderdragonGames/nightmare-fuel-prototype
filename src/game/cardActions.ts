@@ -1,4 +1,4 @@
-import type { Card, CardAction, Color, Co, GameEffect, PlayerID, PlayerPrefs, Stat, Trigger } from './types';
+import type { Card, CardAction, Color, Co, GameEffect, HookDef, PlayerID, PlayerPrefs, Stat } from './types';
 
 const drawEach = (count: number): CardAction => ({ type: 'drawCards', count, target: 'each' });
 const drawCurrent = (count: number): CardAction => ({ type: 'drawCards', count, target: 'current' });
@@ -15,8 +15,7 @@ export const CARD_ACTIONS_BY_ID: Record<number, CardAction[]> = {
 	8: [drawCurrent(5)],
 	10: [
 		{ type: 'placeOnDrawPileTopFaceUp' },
-		{ type: 'suppressDrawsUntil', condition: 'handsEmpty' },
-		{ type: 'moveSelfToDiscard', condition: 'handsEmpty' },
+		{ type: 'registerBlockDrawsHook' },
 	],
 	19: [choice([grantExtraPlacements(2)], [grantExtraActionPlays(2)])],
 	23: [randomDiscardEach(1)],
@@ -32,10 +31,10 @@ export const CARD_ACTIONS_BY_ID: Record<number, CardAction[]> = {
 	79: [{ type: 'grantRevealUnusedVillains', duration: 'round' }],
 	82: [{ type: 'randomStealCard', count: 1 }],
 	83: [{ type: 'reorderPlayerPrefs' }, { type: 'markAgendaTokens' }],
-	86: [{ type: 'attachTokenToCard' }, { type: 'registerTrigger', trigger: 'onMoveStatOfType' }, { type: 'discardSelfOnTrigger' }],
+	86: [{ type: 'attachTokenToCard' }, { type: 'registerHook', hookEvent: 'onStatMove' }, { type: 'discardSelfOnTrigger' }],
 	87: [{ type: 'privateRevealVillain' }],
-	89: [{ type: 'markSkipNextTurn' }, { type: 'discardSelfAfterSkip' }],
-	90: [{ type: 'attachToPlayer' }, { type: 'registerTrigger', trigger: 'onSynergy' }, { type: 'reduceSynergyOnce' }],
+	89: [{ type: 'registerSkipTurnHook' }],
+	90: [{ type: 'attachToPlayer' }, { type: 'registerHook', hookEvent: 'onSynergyUse' }, { type: 'reduceSynergyOnce' }],
 	91: [{ type: 'readLastPlacedColor' }, { type: 'grantExtraPlacement', color: 'lastPlaced' }],
 	100: [{ type: 'randomStealCard', count: 1 }],
 	111: [{ type: 'replaceHexColor' }],
@@ -127,9 +126,18 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 			case 'placeOnDrawPileTopFaceUp':
 				pushEffect({ type: 'placeOnDrawPileTopFaceUp', usePlayedCard: true });
 				break;
-			case 'suppressDrawsUntil':
-				pushEffect({ type: 'suppressDrawsUntil', condition: action.condition, sourceCardId: card.id });
+			case 'registerBlockDrawsHook': {
+				const hook: HookDef = {
+					id: `barren-wasteland-${card.id}`,
+					event: 'onDraw',
+					sourceCardId: card.id,
+					behavior: 'block',
+					oneShot: false,
+					sideEffects: [{ type: 'moveFaceUpToDiscard', sourceCardId: card.id }],
+				};
+				pushEffect({ type: 'registerHook', hook });
 				break;
+			}
 			case 'moveSelfToDiscard':
 				// No-op: played card is discarded unless moved elsewhere.
 				break;
@@ -143,7 +151,8 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 				pushEffect({ type: 'grantExtraPlay', playerId: ctx.currentPlayerId, count: action.count });
 				break;
 			case 'rotateHands':
-				throw new Error('rotateHands is not implemented.');
+				pushEffect({ type: 'rotateHands', direction: action.direction, playerOrder: ctx.playerOrder });
+				break;
 			case 'selectOwnedHex':
 				// Handled by UI selection; no direct effect.
 				break;
@@ -195,12 +204,27 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 				pushEffect({ type: 'attachCard', usePlayedCard: true, token, expires: 'afterTrigger' });
 				break;
 			}
-			case 'registerTrigger': {
-				const trigger: Trigger =
-					action.trigger === 'onMoveStatOfType'
-						? { type: 'onMoveStatOfType', stat: requireValue(ctx.chosenStat, 'registerTrigger requires chosenStat.'), card }
-						: { type: 'onSynergy', card };
-				pushEffect({ type: 'registerTrigger', trigger });
+			case 'registerHook': {
+				const hook: HookDef = action.hookEvent === 'onStatMove'
+					? {
+						id: `restrict-${card.id}`,
+						event: 'onStatMove',
+						sourceCardId: card.id,
+						behavior: 'block',
+						oneShot: true,
+						stat: requireValue(ctx.chosenStat, 'registerHook onStatMove requires chosenStat.'),
+						sideEffects: [{ type: 'discardSourceCard', sourceCardId: card.id }],
+					}
+					: {
+						id: `seal-power-${card.id}`,
+						event: 'onSynergyUse',
+						sourceCardId: card.id,
+						behavior: 'block',
+						oneShot: true,
+						targetPlayerId: ctx.targetPlayerId,
+						sideEffects: [{ type: 'discardSourceCard', sourceCardId: card.id }],
+					};
+				pushEffect({ type: 'registerHook', hook });
 				break;
 			}
 			case 'discardSelfOnTrigger':
@@ -209,14 +233,19 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 			case 'privateRevealVillain':
 				// UI-only.
 				break;
-			case 'markSkipNextTurn': {
-				const target = requireValue(ctx.targetPlayerId, 'markSkipNextTurn requires targetPlayerId.');
-				pushEffect({ type: 'markSkipNextTurn', playerId: target });
-				break;
-			}
-			case 'discardSelfAfterSkip': {
-				const target = requireValue(ctx.targetPlayerId, 'discardSelfAfterSkip requires targetPlayerId.');
+			case 'registerSkipTurnHook': {
+				const target = requireValue(ctx.targetPlayerId, 'registerSkipTurnHook requires targetPlayerId.');
+				const hook: HookDef = {
+					id: `sabotage-${card.id}-${target}`,
+					event: 'onTurnStart',
+					sourceCardId: card.id,
+					behavior: 'block',
+					oneShot: true,
+					targetPlayerId: target,
+					sideEffects: [{ type: 'discardSourceCard', sourceCardId: card.id }],
+				};
 				pushEffect({ type: 'attachCard', usePlayedCard: true, targetPlayerId: target, expires: 'afterSkip' });
+				pushEffect({ type: 'registerHook', hook });
 				break;
 			}
 			case 'attachToPlayer': {
@@ -256,7 +285,8 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 				const index = requireValue(ctx.choiceIndex, 'choice requires choiceIndex.');
 				const picked = action.options[index];
 				if (!picked) throw new Error('choiceIndex out of range.');
-				const nestedCard = { ...card, actions: picked };
+				// Use id: -1 to avoid conflict with CARD_ACTIONS_BY_ID when resolving the nested actions.
+				const nestedCard = { ...card, id: -1, actions: picked };
 				effects.push(...resolveCardEffects(nestedCard, ctx));
 				break;
 			}

@@ -240,7 +240,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	}, [G, isMyTurn, isPathMode, locked, myHand, rules, selectedCard, selectedColor, selectedSourceDot]);
 
 	const actionNeedsTargetPlayer = selectedActionList.some((action) =>
-		['randomStealCard', 'markSkipNextTurn', 'attachToPlayer', 'discardSelfAfterSkip', 'moveCardToPlayerHand'].includes(action.type)
+		['randomStealCard', 'registerSkipTurnHook', 'attachToPlayer', 'moveCardToPlayerHand'].includes(action.type)
 	);
 	const actionNeedsChoice = selectedActionList.some((action) => action.type === 'choice');
 	const actionNeedsCoord = selectedActionList.some((action) => action.type === 'replaceHexWithDead' || action.type === 'replaceHexColor');
@@ -300,6 +300,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 	const actionLimitAllows = (() => {
 		if (!isMyTurn || locked || selectedActionCard === null) return false;
+		if (rules.ACTION_CARDS === 'disabled') return false;
 		if (rules.ACTION_CARDS === 'unlimited') return true;
 		const played = G.meta.actionPlaysThisTurn[currentPlayer] ?? 0;
 		const extra = G.action.extraActionPlays[currentPlayer] ?? 0;

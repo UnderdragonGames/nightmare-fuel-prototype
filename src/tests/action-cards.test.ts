@@ -14,8 +14,7 @@ const OBVIOUS_ACTIONS: Record<number, CardAction[]> = {
 	8: [{ type: 'drawCards', count: 5, target: 'current' }], // Armed to the Teeth
 	10: [
 		{ type: 'placeOnDrawPileTopFaceUp' },
-		{ type: 'suppressDrawsUntil', condition: 'handsEmpty' },
-		{ type: 'moveSelfToDiscard', condition: 'handsEmpty' },
+		{ type: 'registerBlockDrawsHook' },
 	], // Barren Wasteland
 	23: [{ type: 'randomDiscard', count: 1, target: 'each' }], // Debilitate
 	32: [
@@ -25,7 +24,7 @@ const OBVIOUS_ACTIONS: Record<number, CardAction[]> = {
 	54: [{ type: 'replaceHexWithDead' }], // Malfunction
 	73: [{ type: 'replaceHexWithDead' }], // Placebo
 	82: [{ type: 'randomStealCard', count: 1 }], // Steal (82)
-	89: [{ type: 'markSkipNextTurn' }, { type: 'discardSelfAfterSkip' }], // Sabotage
+	89: [{ type: 'registerSkipTurnHook' }], // Sabotage
 	100: [{ type: 'randomStealCard', count: 1 }], // Steal (100)
 	111: [{ type: 'replaceHexColor' }], // This Prey is Mine
 };

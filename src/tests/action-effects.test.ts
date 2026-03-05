@@ -47,7 +47,7 @@ const playResolved = (
 };
 
 describe('action effects', () => {
-	it('TODO: Sabotage skips the target next turn and discards after skip', () => {
+	it('Sabotage registers a hook that blocks the target next turn', () => {
 		const G = createState(['0', '1']);
 		const sabotage = makeCard([], { id: 89, name: 'Sabotage', text: 'Skip their next turn.', isAction: true });
 		G.hands['0'] = [sabotage];
@@ -60,16 +60,13 @@ describe('action effects', () => {
 			lastPlacedColor: null,
 		});
 
-		expect(G.action.skipNextTurn['1']).toBe(true);
+		// Should have a onTurnStart block hook targeting player '1'
+		const hook = G.action.hooks.find((h) => h.event === 'onTurnStart' && h.targetPlayerId === '1');
+		expect(hook).toBeDefined();
+		expect(hook!.behavior).toBe('block');
+		expect(hook!.oneShot).toBe(true);
+		// Sabotage card should be attached to player '1' for discard on skip
 		expect(G.action.attachedCards.some((a) => a.card.id === sabotage.id && a.targetPlayerId === '1')).toBe(true);
-
-		// Simulate turn begin skip cleanup.
-		G.action.skipNextTurn['1'] = false;
-		G.discard.push(sabotage);
-		G.action.attachedCards = G.action.attachedCards.filter((a) => a.card.id !== sabotage.id);
-
-		expect(G.action.skipNextTurn['1']).toBe(false);
-		expect(G.discard.some((c) => c.id === sabotage.id)).toBe(true);
 	});
 	it('replaces a hex with dead and blocks placement', () => {
 		const G = createState(['0']);

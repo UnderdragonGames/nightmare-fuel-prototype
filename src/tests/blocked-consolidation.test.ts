@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { enumerateActions, type Action, applyMicroAction } from '../game/ai';
 import type { GState } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
+import { initActionState } from '../game/effects';
 import { computeScoresRaw } from '../game/scoring';
 
 const EDGE_COLORS = ['V', 'O', 'Y', 'B', 'R', 'G'] as const;
@@ -117,8 +118,11 @@ const G: GState = {
 	treasure: [{ colors: [] }, { colors: [] }],
 	prefs: { '0': { primary: 'V', secondary: 'G', tertiary: 'O' } },
 	stats: { placements: 0 },
-	meta: { deckExhaustionCycle: null, stashBonus: {} },
+	meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
 	origins: [{ q: 0, r: 0 }],
+	nightmares: {},
+	nightmareState: {},
+	action: initActionState(['0']),
 };
 
 const actionKey = (a: Action): string => {
