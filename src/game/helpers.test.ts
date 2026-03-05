@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { canPlacePath, key } from './helpers';
+import { initActionState } from './effects';
 import type { GState, Rules, Co } from './types';
 import { PATH_RULES, buildColorToDir, BASE_EDGE_COLORS } from './rulesConfig';
 
@@ -21,9 +22,12 @@ const createTestState = (overrides: Partial<GState> = {}): GState => {
 		hands: {},
 		treasure: [],
 		prefs: {},
+		nightmares: {},
+		nightmareState: {},
 		stats: { placements: 0 },
-		meta: { deckExhaustionCycle: null, stashBonus: {} },
+		meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
 		origins: [{ q: 0, r: 0 }],
+		action: initActionState([]),
 		...overrides,
 	};
 };
@@ -31,8 +35,8 @@ const createTestState = (overrides: Partial<GState> = {}): GState => {
 const addLane = (G: GState, from: Co, to: Co, color: 'R' | 'O' | 'Y' | 'G' | 'B' | 'V'): void => {
 	G.lanes.push({ from, to, color });
 	// keep board nodes present for UI parity (not required for rules)
-	G.board[key(from)] ??= { colors: [], rotation: 0 };
-	G.board[key(to)] ??= { colors: [], rotation: 0 };
+	G.board[key(from)] ??= { colors: [], rotation: 0, dead: false };
+	G.board[key(to)] ??= { colors: [], rotation: 0, dead: false };
 };
 
 describe('Path mode: basic connectivity', () => {
@@ -124,4 +128,3 @@ describe('Path mode: CONSOLIDATION gates recoloring an existing edge', () => {
 		expect(canPlacePath(G, { q: 4, r: 0 }, { q: 3, r: 0 }, 'V', rulesWithConsolidation)).toBe(true);
 	});
 });
-

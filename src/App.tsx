@@ -5,7 +5,7 @@ import { Client, type BoardProps as BGIOBoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
 import { Board as HexBoard } from './ui/Board';
-import type { Color, Co, GState } from './game/types';
+import type { Color, Co, GState, PlayerPrefs, Stat } from './game/types';
 import { Hand } from './ui/Hand';
 import { Treasure } from './ui/Treasure';
 import { computeScores } from './game/scoring';
@@ -14,6 +14,8 @@ import { useUIStore } from './ui/useUIStore';
 import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, type BotKind } from './game/bots';
 import { PlayerCard } from './ui/PlayerCard';
 import { StateLab } from './ui/StateLab';
+import { getNightmareByName } from './game/nightmares';
+import { resolveCardActions, resolveCardEffects, type CardActionResolveContext } from './game/cardActions';
 
 // Types
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
@@ -97,6 +99,19 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const setAiPaused = useUIStore((s) => s.setAiPaused);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
+	const [actionTargetPlayer, setActionTargetPlayer] = React.useState<PlayerID | ''>('');
+	const [actionChoiceIndex, setActionChoiceIndex] = React.useState('0');
+	const [actionCoordInput, setActionCoordInput] = React.useState('');
+	const [actionReplaceColor, setActionReplaceColor] = React.useState<Color | ''>('');
+	const [actionMoveFromInput, setActionMoveFromInput] = React.useState('');
+	const [actionMoveToInput, setActionMoveToInput] = React.useState('');
+	const [actionChosenStat, setActionChosenStat] = React.useState<Stat | ''>('');
+	const [actionPrefPrimary, setActionPrefPrimary] = React.useState<Color | ''>('');
+	const [actionPrefSecondary, setActionPrefSecondary] = React.useState<Color | ''>('');
+	const [actionPrefTertiary, setActionPrefTertiary] = React.useState<Color | ''>('');
+	const [actionRevealedPickIndex, setActionRevealedPickIndex] = React.useState('');
+	const [actionDraftPicks, setActionDraftPicks] = React.useState<Record<PlayerID, string>>({});
+	const [actionContextJson, setActionContextJson] = React.useState('');
 
 	const gRef = React.useRef(G);
 	const ctxRef = React.useRef(ctx);
@@ -108,6 +123,33 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const stage = (ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[currentPlayer as PlayerID] : undefined) ?? 'active';
 	const locked = stage !== 'active';
 	const isPathMode = rules.MODE === 'path';
+	const selectedActionCard = selectedCard !== null ? myHand[selectedCard] : null;
+	const selectedActionList = selectedActionCard ? resolveCardActions(selectedActionCard) : [];
+
+	const parseCoord = (value: string): Co | undefined => {
+		const parts = value.split(',').map((p) => p.trim());
+		if (parts.length !== 2) return undefined;
+		const q = Number(parts[0]);
+		const r = Number(parts[1]);
+		if (Number.isNaN(q) || Number.isNaN(r)) return undefined;
+		return { q, r };
+	};
+
+	React.useEffect(() => {
+		setActionTargetPlayer('');
+		setActionChoiceIndex('0');
+		setActionCoordInput('');
+		setActionReplaceColor('');
+		setActionMoveFromInput('');
+		setActionMoveToInput('');
+		setActionChosenStat('');
+		setActionPrefPrimary('');
+		setActionPrefSecondary('');
+		setActionPrefTertiary('');
+		setActionRevealedPickIndex('');
+		setActionDraftPicks({});
+		setActionContextJson('');
+	}, [selectedCard]);
 
 	// Card is selected = board is interactable
 	const boardInteractable = selectedCard !== null;
@@ -196,6 +238,83 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 		return moves;
 	}, [G, isMyTurn, isPathMode, locked, myHand, rules, selectedCard, selectedColor, selectedSourceDot]);
+
+	const actionNeedsTargetPlayer = selectedActionList.some((action) =>
+		['randomStealCard', 'registerSkipTurnHook', 'attachToPlayer', 'moveCardToPlayerHand'].includes(action.type)
+	);
+	const actionNeedsChoice = selectedActionList.some((action) => action.type === 'choice');
+	const actionNeedsCoord = selectedActionList.some((action) => action.type === 'replaceHexWithDead' || action.type === 'replaceHexColor');
+	const actionNeedsMove = selectedActionList.some((action) => action.type === 'moveHex');
+	const actionNeedsReplaceColor = selectedActionList.some((action) => action.type === 'replaceHexColor');
+	const actionNeedsStat = selectedActionList.some((action) =>
+		['chooseStat', 'setAgendaOverride', 'attachTokenToCard', 'registerTrigger'].includes(action.type)
+	);
+	const actionNeedsPrefs = selectedActionList.some((action) => action.type === 'reorderPlayerPrefs');
+	const actionNeedsRevealedPick = selectedActionList.some((action) => action.type === 'pickOneToHand');
+	const actionNeedsDraftPicks = selectedActionList.some((action) => action.type === 'draftInTurnOrder');
+
+	const buildActionContext = (): CardActionResolveContext => {
+		const ctxBase: CardActionResolveContext = {
+			currentPlayerId: currentPlayer,
+			playerOrder: ctx.playOrder as PlayerID[],
+			lastPlacedColor: G.action.lastPlacedColor,
+		};
+		if (actionTargetPlayer) ctxBase.targetPlayerId = actionTargetPlayer;
+		if (actionChoiceIndex !== '') ctxBase.choiceIndex = Number(actionChoiceIndex);
+		const coord = parseCoord(actionCoordInput);
+		if (coord) ctxBase.coord = coord;
+		if (actionReplaceColor) ctxBase.replaceColor = actionReplaceColor;
+		const moveFrom = parseCoord(actionMoveFromInput);
+		if (moveFrom) ctxBase.moveFrom = moveFrom;
+		const moveTo = parseCoord(actionMoveToInput);
+		if (moveTo) ctxBase.moveTo = moveTo;
+		if (actionChosenStat) ctxBase.chosenStat = actionChosenStat;
+		if (actionPrefPrimary && actionPrefSecondary && actionPrefTertiary) {
+			ctxBase.playerPrefs = {
+				primary: actionPrefPrimary,
+				secondary: actionPrefSecondary,
+				tertiary: actionPrefTertiary,
+			} satisfies PlayerPrefs;
+		}
+		if (actionRevealedPickIndex !== '') ctxBase.revealedPickIndex = Number(actionRevealedPickIndex);
+		if (actionNeedsDraftPicks) {
+			const draftPicks: Record<PlayerID, number> = {};
+			for (const pid of ctx.playOrder as PlayerID[]) {
+				const raw = actionDraftPicks[pid];
+				if (raw === undefined || raw === '') continue;
+				const value = Number(raw);
+				if (!Number.isNaN(value)) draftPicks[pid] = value;
+			}
+			if (Object.keys(draftPicks).length > 0) ctxBase.draftPicks = draftPicks;
+		}
+		if (actionContextJson.trim().length > 0) {
+			try {
+				const extra = JSON.parse(actionContextJson) as Partial<CardActionResolveContext>;
+				return { ...ctxBase, ...extra };
+			} catch {
+				return ctxBase;
+			}
+		}
+		return ctxBase;
+	};
+
+	const actionLimitAllows = (() => {
+		if (!isMyTurn || locked || selectedActionCard === null) return false;
+		if (rules.ACTION_CARDS === 'disabled') return false;
+		if (rules.ACTION_CARDS === 'unlimited') return true;
+		const played = G.meta.actionPlaysThisTurn[currentPlayer] ?? 0;
+		const extra = G.action.extraActionPlays[currentPlayer] ?? 0;
+		return played === 0 || extra > 0;
+	})();
+
+	let actionResolveError: string | null = null;
+	if (selectedActionCard && actionLimitAllows) {
+		try {
+			resolveCardEffects(selectedActionCard, buildActionContext());
+		} catch (err) {
+			actionResolveError = err instanceof Error ? err.message : 'Action requires more input.';
+		}
+	}
 
 	const onHexClick = (coord: Co) => {
 		if (!isMyTurn || locked) return;
@@ -438,10 +557,30 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			setSelectedColor(null);
 		}
 	};
+	const onPlayAction = () => {
+		if (selectedCard === null) return;
+		const card = myHand[selectedCard];
+		if (!card || !card.isAction) return;
+		if (!actionLimitAllows) return;
+		try {
+			const effects = resolveCardEffects(card, buildActionContext());
+			moves.playActionCard?.({ handIndex: selectedCard, effects });
+			setSelectedCard(null);
+			setSelectedColor(null);
+			setSelectedSourceDot(null);
+			setPendingRotationTile(null);
+			setRotatable([]);
+		} catch (err) {
+			console.warn('Action card could not resolve:', err);
+		}
+	};
 	const onTakeTreasure = (i: number) => moves.takeFromTreasure && moves.takeFromTreasure({ index: i });
 
 	const scores = computeScores(G);
 	const stashBonus = isMyTurn ? (G.meta.stashBonus[currentPlayer as PlayerID] ?? 0) : 0;
+	const viewerNightmare = getNightmareByName(G.nightmares[viewer]);
+	const viewerNightmareState = G.nightmareState[viewer];
+	const viewerPrefs = G.prefs[viewer];
 
 	return (
 		<div className="game-layout">
@@ -499,6 +638,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							isTurn={pid === currentPlayer}
 							score={scores[pid] ?? 0}
 							goals={G.prefs[pid]!}
+							nightmareName={G.nightmares[pid]}
 							botKind={botByPlayer[pid] ?? 'None'}
 							onBotChange={(bot) => setBotFor(pid, bot)}
 							isViewer={pid === viewer}
@@ -547,6 +687,57 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			{/* FLOATING CARDS */}
 			<div className="floating-hand-wrapper">
 				<div className={`floating-hand ${selectedCard !== null ? 'floating-hand--has-selection' : ''}`}>
+					<div className="floating-hand__nightmare">
+						<div className="hand-nightmare__header">
+							<span className="hand-nightmare__label">Nightmare</span>
+							<span className="hand-nightmare__player">P{viewer}</span>
+						</div>
+						{viewerNightmare ? (
+							<div className="hand-nightmare__body">
+								<div className="hand-nightmare__name">{viewerNightmare.name}</div>
+								<div className="hand-nightmare__row">
+									<span className="hand-nightmare__row-label">Evil Plan</span>
+									<span className="hand-nightmare__row-value">{viewerNightmare.evilPlan}</span>
+								</div>
+								<div className="hand-nightmare__row">
+									<span className="hand-nightmare__row-label">Classes</span>
+									<div className="hand-nightmare__tags">
+										{viewerNightmare.classes.map((tag) => (
+											<span key={tag} className="hand-nightmare__tag">{tag}</span>
+										))}
+									</div>
+								</div>
+								<div className="hand-nightmare__row">
+									<span className="hand-nightmare__row-label">Ability</span>
+									<div className="hand-nightmare__ability">
+										<div className="hand-nightmare__ability-name">{viewerNightmare.ability.name}</div>
+										<div className="hand-nightmare__ability-effect">{viewerNightmare.ability.effect}</div>
+										{viewerNightmareState && (
+											<div className="hand-nightmare__ability-uses">
+												Uses left: {viewerNightmareState.abilityUsesRemaining}
+											</div>
+										)}
+									</div>
+								</div>
+								{viewerPrefs && (
+									<div className="hand-nightmare__row">
+										<span className="hand-nightmare__row-label">Priorities</span>
+										<div className="hand-nightmare__priorities">
+											{([viewerPrefs.primary, viewerPrefs.secondary, viewerPrefs.tertiary] as Color[]).map((col, i) => (
+												<span
+													key={`${col}-${i}`}
+													className="hand-nightmare__priority-dot"
+													style={{ background: asVisibleColor(col), boxShadow: `0 0 ${6 - i * 2}px ${asVisibleColor(col)}` }}
+												/>
+											))}
+										</div>
+									</div>
+								)}
+							</div>
+						) : (
+							<div className="hand-nightmare__empty">Nightmare pending...</div>
+						)}
+					</div>
 					<div className="floating-hand__cards">
 						<Hand
 							rules={rules}
@@ -568,6 +759,234 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							onPickColor={onPickColor}
 						/>
 					</div>
+					{selectedActionCard?.isAction && (
+						<div className="action-panel">
+							<div className="action-panel__header">
+								<span className="action-panel__title">Action</span>
+								<span className="action-panel__card">{selectedActionCard.name}</span>
+							</div>
+							{selectedActionCard.text && (
+								<div className="action-panel__text">{selectedActionCard.text}</div>
+							)}
+							<div className="action-panel__grid">
+								{actionNeedsTargetPlayer && (
+									<label className="action-panel__field">
+										<span className="action-panel__label">Target Player</span>
+										<select
+											className="action-panel__select"
+											value={actionTargetPlayer}
+											onChange={(e) => setActionTargetPlayer(e.target.value as PlayerID)}
+										>
+											<option value="">Select player</option>
+											{ctx.playOrder.map((pid) => (
+												<option key={`ap-${pid}`} value={pid}>
+													P{pid}
+												</option>
+											))}
+										</select>
+									</label>
+								)}
+								{actionNeedsChoice && (
+									<label className="action-panel__field">
+										<span className="action-panel__label">Choice</span>
+										<select
+											className="action-panel__select"
+											value={actionChoiceIndex}
+											onChange={(e) => setActionChoiceIndex(e.target.value)}
+										>
+											{(() => {
+												const choice = selectedActionList.find((action) => action.type === 'choice') as { options?: unknown[] } | undefined;
+												const optionCount = choice?.options?.length ?? 0;
+												return Array.from({ length: optionCount }, (_, i) => (
+													<option key={`choice-${i}`} value={String(i)}>
+														Option {i + 1}
+													</option>
+												));
+											})()}
+										</select>
+									</label>
+								)}
+								{actionNeedsCoord && (
+									<label className="action-panel__field">
+										<span className="action-panel__label">Coord (q,r)</span>
+										<input
+											className="action-panel__input"
+											placeholder="0,0"
+											value={actionCoordInput}
+											onChange={(e) => setActionCoordInput(e.target.value)}
+										/>
+									</label>
+								)}
+								{actionNeedsMove && (
+									<>
+										<label className="action-panel__field">
+											<span className="action-panel__label">Move From (q,r)</span>
+											<input
+												className="action-panel__input"
+												placeholder="0,0"
+												value={actionMoveFromInput}
+												onChange={(e) => setActionMoveFromInput(e.target.value)}
+											/>
+										</label>
+										<label className="action-panel__field">
+											<span className="action-panel__label">Move To (q,r)</span>
+											<input
+												className="action-panel__input"
+												placeholder="1,0"
+												value={actionMoveToInput}
+												onChange={(e) => setActionMoveToInput(e.target.value)}
+											/>
+										</label>
+									</>
+								)}
+								{actionNeedsReplaceColor && (
+									<label className="action-panel__field">
+										<span className="action-panel__label">Replace Color</span>
+										<select
+											className="action-panel__select"
+											value={actionReplaceColor}
+											onChange={(e) => setActionReplaceColor(e.target.value as Color)}
+										>
+											<option value="">Select color</option>
+											{rules.COLORS.map((col) => (
+												<option key={`rc-${col}`} value={col}>
+													{col}
+												</option>
+											))}
+										</select>
+									</label>
+								)}
+								{actionNeedsStat && (
+									<label className="action-panel__field">
+										<span className="action-panel__label">Stat</span>
+										<select
+											className="action-panel__select"
+											value={actionChosenStat}
+											onChange={(e) => setActionChosenStat(e.target.value as Stat)}
+										>
+											<option value="">Select stat</option>
+											{['vitality', 'form', 'freedom', 'sanity', 'will', 'hope'].map((stat) => (
+												<option key={`stat-${stat}`} value={stat}>
+													{stat}
+												</option>
+											))}
+										</select>
+									</label>
+								)}
+								{actionNeedsPrefs && (
+									<>
+										<label className="action-panel__field">
+											<span className="action-panel__label">Primary</span>
+											<select
+												className="action-panel__select"
+												value={actionPrefPrimary}
+												onChange={(e) => setActionPrefPrimary(e.target.value as Color)}
+											>
+												<option value="">Select</option>
+												{rules.COLORS.map((col) => (
+													<option key={`pp-${col}`} value={col}>
+														{col}
+													</option>
+												))}
+											</select>
+										</label>
+										<label className="action-panel__field">
+											<span className="action-panel__label">Secondary</span>
+											<select
+												className="action-panel__select"
+												value={actionPrefSecondary}
+												onChange={(e) => setActionPrefSecondary(e.target.value as Color)}
+											>
+												<option value="">Select</option>
+												{rules.COLORS.map((col) => (
+													<option key={`ps-${col}`} value={col}>
+														{col}
+													</option>
+												))}
+											</select>
+										</label>
+										<label className="action-panel__field">
+											<span className="action-panel__label">Tertiary</span>
+											<select
+												className="action-panel__select"
+												value={actionPrefTertiary}
+												onChange={(e) => setActionPrefTertiary(e.target.value as Color)}
+											>
+												<option value="">Select</option>
+												{rules.COLORS.map((col) => (
+													<option key={`pt-${col}`} value={col}>
+														{col}
+													</option>
+												))}
+											</select>
+										</label>
+									</>
+								)}
+								{actionNeedsRevealedPick && (
+									<label className="action-panel__field">
+										<span className="action-panel__label">Pick Index</span>
+										<input
+											className="action-panel__input"
+											type="number"
+											min="0"
+											value={actionRevealedPickIndex}
+											onChange={(e) => setActionRevealedPickIndex(e.target.value)}
+										/>
+									</label>
+								)}
+								{actionNeedsDraftPicks && (
+									<div className="action-panel__field action-panel__field--full">
+										<span className="action-panel__label">Draft Picks (by player)</span>
+										<div className="action-panel__draft">
+											{ctx.playOrder.map((pid) => (
+												<label key={`dp-${pid}`} className="action-panel__draft-row">
+													<span>P{pid}</span>
+													<input
+														className="action-panel__input action-panel__input--compact"
+														type="number"
+														min="0"
+														value={actionDraftPicks[pid] ?? ''}
+														onChange={(e) =>
+															setActionDraftPicks((prev) => ({ ...prev, [pid]: e.target.value }))
+														}
+													/>
+												</label>
+											))}
+										</div>
+									</div>
+								)}
+								<label className="action-panel__field action-panel__field--full">
+									<span className="action-panel__label">Context JSON (optional)</span>
+									<textarea
+										className="action-panel__textarea"
+										placeholder='{"targetPlayerId":"1","coord":{"q":0,"r":0}}'
+										value={actionContextJson}
+										onChange={(e) => setActionContextJson(e.target.value)}
+									/>
+								</label>
+							</div>
+							<div className="action-panel__footer">
+								<button
+									className="action-panel__button"
+									onClick={onPlayAction}
+									disabled={!actionLimitAllows || actionResolveError !== null}
+									title={
+										!actionLimitAllows
+											? 'Action limit reached'
+											: (actionResolveError ?? 'Play action card')
+									}
+								>
+									Play Action
+								</button>
+								{!actionLimitAllows && (
+									<div className="action-panel__error">Action limit reached.</div>
+								)}
+								{actionResolveError && (
+									<div className="action-panel__error">{actionResolveError}</div>
+								)}
+							</div>
+						</div>
+					)}
 					<div className="floating-hand__actions">
 						{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
 							<button

@@ -9,6 +9,7 @@ type Props = {
 	isTurn: boolean;
 	score: number;
 	goals: { primary: Color; secondary: Color; tertiary: Color };
+	nightmareName?: string | null;
 	botKind: BotKind;
 	onBotChange: (bot: BotKind) => void;
 	isViewer: boolean;
@@ -20,6 +21,7 @@ export const PlayerCard: React.FC<Props> = ({
 	isTurn,
 	score,
 	goals,
+	nightmareName,
 	botKind,
 	onBotChange,
 	isViewer,
@@ -51,6 +53,11 @@ export const PlayerCard: React.FC<Props> = ({
 					))}
 				</div>
 			</div>
+			{nightmareName && (
+				<div className="player-card__nightmare" title="Assigned nightmare">
+					{nightmareName}
+				</div>
+			)}
 			<select
 				value={botKind}
 				onChange={(e) => {

@@ -7,6 +7,9 @@ import { MODE_RULESETS, BASE_DIRECTIONS, buildColorToDir } from '../game/rulesCo
 import { Board } from './Board';
 import { asVisibleColor, key, neighbors } from '../game/helpers';
 import { computeScoresRaw } from '../game/scoring';
+import { makeCard } from '../game/cardFactory';
+import { getNightmareByName } from '../game/nightmares';
+import { initActionState } from '../game/effects';
 
 type EditMode = 'origin' | 'hex' | 'path';
 type HexTool = 'add' | 'remove' | 'clear' | 'rotate';
@@ -410,11 +413,11 @@ const parsePlayLaneKey = (keyValue: string): { handIndex: number; lane: PathLane
 	};
 };
 
-const serializeBoard = (board: Record<string, { colors: Color[]; rotation: number }>): string => {
+const serializeBoard = (board: Record<string, { colors: Color[]; rotation: number; dead?: boolean }>): string => {
 	const entries = Object.entries(board);
 	if (entries.length === 0) return '{}';
 	const lines = entries.map(([k, tile]) =>
-		`\t\t"${k}": { colors: [${tile.colors.map((c) => `'${c}'`).join(', ')}], rotation: ${tile.rotation} }`
+		`\t\t"${k}": { colors: [${tile.colors.map((c) => `'${c}'`).join(', ')}], rotation: ${tile.rotation}, dead: ${tile.dead ?? false} }`
 	);
 	return `{\n${lines.join(',\n')}\n\t}`;
 };
@@ -423,7 +426,7 @@ const serializeCoords = (coords: Co[]): string =>
 	`[${coords.map((c) => `{ q: ${c.q}, r: ${c.r} }`).join(', ')}]`;
 
 const serializeCards = (cards: Card[]): string =>
-	`[${cards.map((c) => `{ colors: [${c.colors.map((col) => `'${col}'`).join(', ')}] }`).join(', ')}]`;
+	`[${cards.map((c) => `makeCard([${c.colors.map((col) => `'${col}'`).join(', ')}])`).join(', ')}]`;
 
 const serializeLanes = (lanes: { from: Co; to: Co; color: Color }[]): string =>
 	`[${lanes.map((l) => `{ from: { q: ${l.from.q}, r: ${l.from.r} }, to: { q: ${l.to.q}, r: ${l.to.r} }, color: '${l.color}' }`).join(', ')}]`;
@@ -527,12 +530,15 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		lanes: [],
 		deck: [],
 		discard: [],
-		hands: { '0': [{ colors: ['B', 'O'] }] },
+		hands: { '0': [makeCard(['B', 'O'])] },
 		treasure: [],
 		prefs: {},
+		nightmares: {},
+		nightmareState: {},
 		stats: { placements: 0 },
-		meta: { deckExhaustionCycle: null, stashBonus: {} },
+		meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
 		origins: [{ q: 0, r: 0 }],
+		action: initActionState(['0']),
 	}));
 
 	React.useEffect(() => {
@@ -636,7 +642,7 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 			if (colors.length === 0) {
 				delete nextBoard[k];
 			} else {
-				nextBoard[k] = { colors, rotation: tile?.rotation ?? 0 };
+				nextBoard[k] = { colors, rotation: tile?.rotation ?? 0, dead: tile?.dead ?? false };
 			}
 
 			return { ...prev, board: nextBoard };
@@ -790,7 +796,11 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		const parsedExpectedScores = expectedScoresMatch ? parseLiteral<Record<string, number>>(expectedScoresMatch) : {};
 		const nextPlayerID = (playerMatch ?? Object.keys(parsedG.hands ?? {})[0] ?? '0') as PlayerID;
 		const nextTitle = titleMatch ?? 'enumerate-actions';
-		const nextPrefs = parsedG.prefs?.[nextPlayerID] ?? { primary: 'R', secondary: 'O', tertiary: 'Y' };
+		const nightmareName = parsedG.nightmares?.[nextPlayerID];
+		const nightmare = getNightmareByName(nightmareName);
+		const nextPrefs = nightmare
+			? { primary: nightmare.priorities.primary, secondary: nightmare.priorities.secondary, tertiary: nightmare.priorities.tertiary }
+			: (parsedG.prefs?.[nextPlayerID] ?? { primary: 'R', secondary: 'O', tertiary: 'Y' });
 
 		setMode(parsedMode);
 		setRadius(parsedRadius);
@@ -803,6 +813,9 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 			rules: nextRules,
 			radius: nextRules.RADIUS,
 			prefs: { ...parsedG.prefs, [nextPlayerID]: nextPrefs },
+			nightmares: parsedG.nightmares ?? {},
+			nightmareState: parsedG.nightmareState ?? {},
+			action: parsedG.action ?? initActionState([nextPlayerID]),
 		});
 		setExpectedScores(parsedExpectedScores);
 		setPendingExpected(parsedExpected);
@@ -898,6 +911,7 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		return `import { describe, it, expect } from 'vitest';
 import { enumerateActions, type Action, applyMicroAction } from '../game/ai';
 import type { GState } from '../game/types';
+import { makeCard } from '../game/cardFactory';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { computeScoresRaw } from '../game/scoring';
 
@@ -921,9 +935,12 @@ const G: GState = {
 \thands: { '${playerID}': ${handLiteral} },
 \ttreasure: ${treasureLiteral},
 \tprefs: { '${playerID}': { primary: '${goalPrefs.primary}', secondary: '${goalPrefs.secondary}', tertiary: '${goalPrefs.tertiary}' } },
+\tnightmares: {},
+\tnightmareState: {},
 \tstats: { placements: 0 },
-\tmeta: { deckExhaustionCycle: null, stashBonus: {} },
+\tmeta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
 \torigins: ${originsLiteral},
+\taction: initActionState(['${playerID}']),
 };
 
 const actionKey = (a: Action): string => {
@@ -1333,7 +1350,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 										value={card.colors.join('')}
 										onChange={(e) => {
 											const next = [...hand];
-											next[i] = { colors: parseColors(e.target.value) };
+											next[i] = makeCard(parseColors(e.target.value));
 											updateHand(next);
 										}}
 									/>
@@ -1355,7 +1372,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 									/>
 								</div>
 							))}
-							<button className="sl-btn sl-btn--sm" onClick={() => updateHand([...hand, { colors: ['B'] }])}>
+							<button className="sl-btn sl-btn--sm" onClick={() => updateHand([...hand, makeCard(['B'])])}>
 								<IconPlus size={11} /> Add Card
 							</button>
 						</div>
@@ -1377,7 +1394,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 										value={card.colors.join('')}
 										onChange={(e) => {
 											const next = [...G.treasure];
-											next[i] = { colors: parseColors(e.target.value) };
+											next[i] = makeCard(parseColors(e.target.value));
 											updateTreasure(next);
 										}}
 									/>
@@ -1392,7 +1409,7 @@ describe('${safeTitle.replace(/'/g, "\\'")}', () => {
 									/>
 								</div>
 							))}
-							<button className="sl-btn sl-btn--sm" onClick={() => updateTreasure([...G.treasure, { colors: ['R'] }])}>
+							<button className="sl-btn sl-btn--sm" onClick={() => updateTreasure([...G.treasure, makeCard(['R'])])}>
 								<IconPlus size={11} /> Add Treasure
 							</button>
 						</div>

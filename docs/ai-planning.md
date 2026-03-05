@@ -15,6 +15,11 @@
    4) **“Random” isn’t random**: current implementation picks first legal placement by iteration order.
    5) **Duplicate enumerators**: `src/game/bots.ts` has `enumerateMoves`, and `src/game/game.ts` has `HexStringsGame.ai.enumerate`.
 
+### 2.1) Action card plans to account for
+1) **Action primitives + effects**: `docs/plan-action-primitives.md`
+2) **CardAction schema + mapping**: `docs/plan-card-actions-schema.md`
+3) **Action card list + required effects**: `docs/action-cards-plan.md`
+
 ### 3) Part 1 — Correctness fixes (make existing bot simulation match real rules)
 
 #### 3.1 Decide + codify stash bonus rule (blocking question)
@@ -132,10 +137,26 @@
    2) performance: decisions are bounded (e.g., < X ms per micro-step on typical boards)
    3) qualitative: bot uses rotate/stash/take intentionally (not never/always), and behavior changes predictably when rules knobs change
 
-### 7) Open questions (need product answers)
+### 7) Action cards in AI planning (new)
+1) **Move enumeration**:
+   1) include `playActionCard` when legal
+   2) respect `rules.ACTION_CARDS` (`'one-per-turn'` vs `'unlimited'`)
+2) **Simulation**:
+   1) resolve `CardAction[]` → `GameEffect[]` (or direct effect application) deterministically
+   2) support choices/targets by generating bounded candidate selections
+3) **Evaluation**:
+   1) include immediate hand/board deltas (draws, discards, hex mutations)
+   2) add value for turn-control effects (extra plays/placements, skip turns)
+4) **Safety / gating**:
+   1) avoid branching explosion by limiting action-card candidates per micro-step
+   2) prioritize actions with direct board impact or clear tempo gain
+5) **Acceptance**:
+   1) planner can play action cards without desyncing game rules
+   2) action cards are chosen in obvious high-value cases
+
+### 8) Open questions (need product answers)
 1) **Stash bonus**: is there an end-turn bonus draw mechanic or not?
 2) **Rotate in path mode**: allowed? If yes, what does rotation mean for path-mode lanes (currently rotation exists on tiles; path constraints use it via `canPlace` directional rule).
 3) **Treasure economy**: should `takeFromTreasure` be common/rare? Any costs/limits intended?
 4) **Overwrite / two-to-rotate**: are these enabled in the “new rules” target? If yes, AI must generate/simulate discard bundles (multi-card costs).
-
 

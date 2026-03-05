@@ -229,6 +229,7 @@ export const canPlace = (G: GState, coord: Co, color: Color, rules: Rules): bool
 				? rules.PLACEMENT.MAX_LANES_PER_PATH
 				: 1);
 	const tile = G.board[k];
+	if (tile?.dead) return false;
 	if (tile && tile.colors.length >= capacity) return false;
 
 	// Global connectivity (always enforced)
@@ -301,6 +302,8 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	// Origins are wild and cannot be occupied / used as destination
 	const destIsOrigin = G.origins.some((o) => o.q === dest.q && o.r === dest.r);
 	if (destIsOrigin) return false;
+	const destTile = G.board[key(dest)];
+	if (destTile?.dead) return false;
 
 	// Must extend from an existing node (or origin)
 	const sourceIsOrigin = G.origins.some((o) => o.q === source.q && o.r === source.r);
