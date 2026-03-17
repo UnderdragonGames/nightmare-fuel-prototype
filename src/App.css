@@ -1025,11 +1025,11 @@
 }
 
 .neural-card__btn--R { background: var(--color-R); color: white; }
-.neural-card__btn--O { background: var(--color-O); color: white; }
+.neural-card__btn--O { background: var(--color-O); color: #111; }
 .neural-card__btn--Y { background: var(--color-Y); color: #111; }
-.neural-card__btn--G { background: var(--color-G); color: #111; }
+.neural-card__btn--G { background: var(--color-G); color: white; }
 .neural-card__btn--B { background: var(--color-B); color: white; }
-.neural-card__btn--V { background: var(--color-V); color: white; }
+.neural-card__btn--V { background: var(--color-V); color: #111; }
 
 /* Treasure card variant */
 .neural-card--treasure {

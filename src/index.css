@@ -28,21 +28,21 @@
   --text-muted: #606070;
   --text-accent: #c4b5fd;
 
-  /* Nightmare Color Palette */
-  --color-R: #ff4444;
-  --color-O: #ff8c22;
-  --color-Y: #ffdd33;
-  --color-G: #33ff88;
-  --color-B: #4499ff;
-  --color-V: #aa66ff;
+  /* Nightmare Color Palette (color-blind-friendly: varies hue + lightness) */
+  --color-R: #dd5566;
+  --color-O: #ffbb33;
+  --color-Y: #ffee55;
+  --color-G: #228866;
+  --color-B: #1155aa;
+  --color-V: #bb88ee;
 
   /* Glow variants */
-  --glow-R: rgba(255, 68, 68, 0.5);
-  --glow-O: rgba(255, 140, 34, 0.5);
-  --glow-Y: rgba(255, 221, 51, 0.5);
-  --glow-G: rgba(51, 255, 136, 0.5);
-  --glow-B: rgba(68, 153, 255, 0.5);
-  --glow-V: rgba(170, 102, 255, 0.5);
+  --glow-R: rgba(221, 85, 102, 0.5);
+  --glow-O: rgba(255, 187, 51, 0.5);
+  --glow-Y: rgba(255, 238, 85, 0.5);
+  --glow-G: rgba(34, 136, 102, 0.5);
+  --glow-B: rgba(17, 85, 170, 0.5);
+  --glow-V: rgba(187, 136, 238, 0.5);
 
   /* UI Accents */
   --accent-primary: #8b5cf6;
