@@ -1,7 +1,7 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
 import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths } from './helpers';
-import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
+import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
 import { drawOne, initActionState, playActionCardFromHand } from './effects';
 import { emitEvent } from './hooks';
 import { enumerateActions } from './ai';
@@ -301,24 +301,75 @@ export const HexStringsGame: Game<GState> = {
 							const tile = G.board[key(args.coord)];
 							if (!tile || tile.colors.length === 0) return;
 							if (rules.PLACEMENT.DISCARD_TO_ROTATE === false) return;
-							const card = hand[args.handIndex];
-							if (!card) return;
-							
+
+							const cost = rules.PLACEMENT.COST_TO_ROTATE;
+							// Validate handIndices count matches cost
+							if (!args.handIndices || args.handIndices.length !== cost) return;
+							// Validate all indices are valid and unique
+							const uniqueIndices = new Set(args.handIndices);
+							if (uniqueIndices.size !== cost) return;
+							for (const idx of args.handIndices) {
+								if (idx < 0 || idx >= hand.length) return;
+							}
+
 							// Validate rotation amount: 1-5, excluding 3 (180°)
 							if (args.rotation < 1 || args.rotation > 5 || args.rotation === 3) return;
-							
-							// match-color mode: card must contain a color from the tile
+
+							// match-color mode: at least one discarded card must contain a color from the tile
 							if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
-								const hasMatchingColor = card.colors.some((c) => tile.colors.includes(c));
+								const hasMatchingColor = args.handIndices.some((idx) => {
+									const card = hand[idx]!;
+									return card.colors.some((c) => tile.colors.includes(c));
+								});
 								if (!hasMatchingColor) return;
 							}
-							
+
 							// Rotate tile by specified amount (rotation 0-5 wraps)
 							tile.rotation = (tile.rotation + args.rotation) % 6;
-							
-							// Discard the card
-							const [used] = hand.splice(args.handIndex, 1);
-							if (used) G.discard.push(used);
+
+							// Discard the cards (remove from highest index first to avoid shifting)
+							const sortedIndices = [...args.handIndices].sort((a, b) => b - a);
+							for (const idx of sortedIndices) {
+								const [used] = hand.splice(idx, 1);
+								if (used) G.discard.push(used);
+							}
+						},
+					},
+					blockTile: {
+						move: (context, args: MoveBlockTileArgs) => {
+							const { G } = context;
+							const rules = G.rules;
+							const pid = context.ctx.currentPlayer;
+							const hand = G.hands[pid]!;
+							const cost = rules.PLACEMENT.COST_TO_BLOCK;
+							if (cost <= 0) return; // blocking disabled
+
+							// Validate handIndices count matches cost
+							if (!args.handIndices || args.handIndices.length !== cost) return;
+							// Validate all indices are valid and unique
+							const uniqueIndices = new Set(args.handIndices);
+							if (uniqueIndices.size !== cost) return;
+							for (const idx of args.handIndices) {
+								if (idx < 0 || idx >= hand.length) return;
+							}
+
+							const k = key(args.coord);
+							const tile = G.board[k];
+							// Must be an existing empty tile (not already occupied or dead)
+							if (!tile || tile.colors.length > 0 || tile.dead) return;
+							// Cannot block an origin tile
+							const isOrigin = G.origins.some((o) => o.q === args.coord.q && o.r === args.coord.r);
+							if (isOrigin) return;
+
+							// Mark tile as dead
+							tile.dead = true;
+
+							// Discard the cards (remove from highest index first to avoid shifting)
+							const sortedIndices = [...args.handIndices].sort((a, b) => b - a);
+							for (const idx of sortedIndices) {
+								const [used] = hand.splice(idx, 1);
+								if (used) G.discard.push(used);
+							}
 						},
 					},
 					stashToTreasure: (context, args: MoveStashArgs) => {

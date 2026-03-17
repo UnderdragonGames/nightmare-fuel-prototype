@@ -448,7 +448,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 	const handleRotation = (rotation: number) => {
 		if (pendingRotationTile === null || selectedCard === null) return;
-		moves.rotateTile({ coord: pendingRotationTile, handIndex: selectedCard, rotation });
+		moves.rotateTile({ coord: pendingRotationTile, handIndices: [selectedCard], rotation });
 		setPendingRotationTile(null);
 		setSelectedCard(null);
 		setSelectedColor(null);
@@ -492,8 +492,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				playCard: (args: { handIndex: number; pick: Color; coord: Co }) => {
 					if (isOwnersTurn(pid)) moves.playCard(args);
 				},
-				rotateTile: (args: { coord: Co; handIndex: number; rotation: number }) => {
+				rotateTile: (args: { coord: Co; handIndices: number[]; rotation: number }) => {
 					if (isOwnersTurn(pid)) moves.rotateTile(args);
+				},
+				blockTile: (args: { coord: Co; handIndices: number[] }) => {
+					if (isOwnersTurn(pid)) moves.blockTile(args);
 				},
 				stashToTreasure: (args: { handIndex: number }) => {
 					if (isOwnersTurn(pid)) moves.stashToTreasure(args);

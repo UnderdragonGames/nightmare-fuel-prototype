@@ -49,6 +49,8 @@ const HEX_PLACEMENT: PlacementRules = {
 	CONSOLIDATION: false,
 	CONSOLIDATION_END: 0,
 	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: false,
+	COST_TO_BLOCK: 2,
+	COST_TO_ROTATE: 1,
 };
 
 const HEX_SCORING: ObjectiveScoringRules = {

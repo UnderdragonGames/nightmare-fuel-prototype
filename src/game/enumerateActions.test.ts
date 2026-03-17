@@ -62,7 +62,9 @@ const actionKey = (a: Action): string => {
 			return `play:${args.handIndex}:${args.pick}:${args.coord.q},${args.coord.r}`;
 		}
 		case 'rotateTile':
-			return `rotate:${a.args.handIndex}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+			return `rotate:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+		case 'blockTile':
+			return `block:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}`;
 		case 'stashToTreasure':
 			return `stash:${a.args.handIndex}`;
 		case 'takeFromTreasure':
@@ -75,8 +77,8 @@ const actionKey = (a: Action): string => {
 const play = (handIndex: number, pick: Card['colors'][number], source: Co, dest: Co): string =>
 	actionKey({ type: 'playCard', args: { handIndex, pick, source, coord: dest } });
 
-const rotate = (handIndex: number, coord: Co, rotation: number): string =>
-	actionKey({ type: 'rotateTile', args: { handIndex, coord, rotation } });
+const rotate = (handIndices: number[], coord: Co, rotation: number): string =>
+	actionKey({ type: 'rotateTile', args: { handIndices, coord, rotation } });
 
 const stash = (handIndex: number): string => actionKey({ type: 'stashToTreasure', args: { handIndex } });
 const end = (): string => actionKey({ type: 'endTurnAndRefill' });
@@ -125,19 +127,19 @@ describe('enumerateActions', () => {
 		setTile(G, co(0, 0), ['B'], 0);
 
 		const allowed = [
-			rotate(1, co(0, 0), 1),
-			rotate(1, co(0, 0), 2),
-			rotate(1, co(0, 0), 4),
-			rotate(1, co(0, 0), 5),
+			rotate([1], co(0, 0), 1),
+			rotate([1], co(0, 0), 2),
+			rotate([1], co(0, 0), 4),
+			rotate([1], co(0, 0), 5),
 			stash(0),
 			stash(1),
 			end(),
 		];
 		const forbidden = [
-			rotate(0, co(0, 0), 1),
-			rotate(0, co(0, 0), 2),
-			rotate(0, co(0, 0), 4),
-			rotate(0, co(0, 0), 5),
+			rotate([0], co(0, 0), 1),
+			rotate([0], co(0, 0), 2),
+			rotate([0], co(0, 0), 4),
+			rotate([0], co(0, 0), 5),
 		];
 
 		const actual = enumerateKeys(G, '0');

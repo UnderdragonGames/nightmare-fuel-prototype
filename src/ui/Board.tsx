@@ -184,13 +184,16 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							<g>
 								{(() => {
 									const neigh = neighbors(c);
-									const arrowConfigs: Array<{ coord: Co; rot: number; cw: boolean }> = [];
-									if (neigh[0]) arrowConfigs.push({ coord: neigh[0]!, rot: 1, cw: true });
-									if (neigh[1]) arrowConfigs.push({ coord: neigh[1]!, rot: 1, cw: true });
-									if (neigh[3]) arrowConfigs.push({ coord: neigh[3]!, rot: 5, cw: false });
-									if (neigh[4]) arrowConfigs.push({ coord: neigh[4]!, rot: 5, cw: false });
-									return arrowConfigs.map(({ coord, rot, cw }) => {
+									// 4 distinct rotations placed on 4 neighbor hexes:
+									// CW 60 (rot=1), CW 120 (rot=2), CCW 120 (rot=4), CCW 60 (rot=5)
+									const arrowConfigs: Array<{ coord: Co; rot: number; cw: boolean; degrees: string }> = [];
+									if (neigh[0]) arrowConfigs.push({ coord: neigh[0]!, rot: 1, cw: true, degrees: '60' });
+									if (neigh[1]) arrowConfigs.push({ coord: neigh[1]!, rot: 2, cw: true, degrees: '120' });
+									if (neigh[3]) arrowConfigs.push({ coord: neigh[3]!, rot: 4, cw: false, degrees: '120' });
+									if (neigh[4]) arrowConfigs.push({ coord: neigh[4]!, rot: 5, cw: false, degrees: '60' });
+									return arrowConfigs.map(({ coord, rot, cw, degrees }) => {
 										const pos = axialToPixel(coord, size);
+										const fillColor = cw ? '#3b82f6' : '#a855f7'; // blue for CW, purple for CCW
 										return (
 											<g
 												key={`arrow-${rot}-${coord.q},${coord.r}`}
@@ -198,10 +201,13 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 												onClick={(e) => { e.stopPropagation(); onRotationSelect(rot); }}
 												style={{ cursor: 'pointer' }}
 											>
-												<circle cx={0} cy={0} r={size * 0.4} fill="#3b82f6" stroke="white" strokeWidth={2} opacity={0.9} />
+												<circle cx={0} cy={0} r={size * 0.45} fill={fillColor} stroke="white" strokeWidth={2} opacity={0.9} />
 												<g transform={`rotate(${cw ? 0 : 180})`} style={{ pointerEvents: 'none' }}>
 													<path d={`M ${-size * 0.15} 0 L ${size * 0.1} ${-size * 0.1} L ${size * 0.05} 0 L ${size * 0.1} ${size * 0.1} Z`} fill="white" />
 												</g>
+												<text x={0} y={size * 0.18} fontSize={size * 0.28} textAnchor="middle" fill="white" style={{ pointerEvents: 'none', userSelect: 'none', fontWeight: 'bold' }}>
+													{degrees}
+												</text>
 											</g>
 										);
 									});

@@ -212,6 +212,10 @@ export type PlacementRules = {
 	CONSOLIDATION_END: number;
 	// If true, consolidation moves can exceed MAX_LANES_PER_PATH (widths 4+ possible)
 	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: boolean;
+	// Number of cards to discard to block an empty tile (mark as dead). 0 = disabled.
+	COST_TO_BLOCK: number;
+	// Number of cards to discard to rotate a tile. Must match DISCARD_TO_ROTATE being enabled.
+	COST_TO_ROTATE: number;
 };
 
 export type Rules = {
@@ -301,4 +305,5 @@ export type MovePlayCardArgs =
 export type MovePlayActionArgs = { handIndex: number; effects?: GameEffect[] };
 export type MoveStashArgs = { handIndex: number };
 export type MoveTakeTreasureArgs = { index: number };
-export type MoveRotateTileArgs = { coord: Co; handIndex: number; rotation: number }; // rotation: 1-5 (60°-300°), excluding 3 (180°)
+export type MoveRotateTileArgs = { coord: Co; handIndices: number[]; rotation: number }; // rotation: 1-5 (60°-300°), excluding 3 (180°); handIndices: cards to discard (length must equal COST_TO_ROTATE)
+export type MoveBlockTileArgs = { coord: Co; handIndices: number[] }; // handIndices: cards to discard (length must equal COST_TO_BLOCK)

@@ -8,7 +8,7 @@
  */
 
 import type { Ctx, PlayerID } from 'boardgame.io';
-import type { GState, Color, Co, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, Card, PlayerPrefs } from './types';
+import type { GState, Color, Co, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, Card, PlayerPrefs } from './types';
 import { emitEvent } from './hooks';
 import { buildAllCoords, canPlace, canPlacePath, countRimToCenterPaths, key, neighbors, ringIndex } from './helpers';
 import { computeScores } from './scoring';
@@ -19,11 +19,12 @@ import { computeScores } from './scoring';
 
 export type BotKind = 'None' | 'Random' | 'Evaluator' | 'EvaluatorPlus';
 
-export type ActionType = 'playCard' | 'rotateTile' | 'stashToTreasure' | 'takeFromTreasure' | 'endTurnAndRefill';
+export type ActionType = 'playCard' | 'rotateTile' | 'blockTile' | 'stashToTreasure' | 'takeFromTreasure' | 'endTurnAndRefill';
 
 export type Action =
 	| { type: 'playCard'; args: MovePlayCardArgs }
 	| { type: 'rotateTile'; args: MoveRotateTileArgs }
+	| { type: 'blockTile'; args: MoveBlockTileArgs }
 	| { type: 'stashToTreasure'; args: MoveStashArgs }
 	| { type: 'takeFromTreasure'; args: MoveTakeTreasureArgs }
 	| { type: 'endTurnAndRefill' };
@@ -33,6 +34,7 @@ type BGIOClient = {
 	moves: {
 		playCard(a: MovePlayCardArgs): void;
 		rotateTile(a: MoveRotateTileArgs): void;
+		blockTile(a: MoveBlockTileArgs): void;
 		stashToTreasure(a: MoveStashArgs): void;
 		takeFromTreasure(a: MoveTakeTreasureArgs): void;
 		endTurnAndRefill(): void;
@@ -50,6 +52,30 @@ const debugCounters = {
 // =============================================================================
 // Part 1.5: Single Source of Truth Enumerator
 // =============================================================================
+
+/**
+ * Generate all combinations of `k` indices from range [0, n).
+ * Returns arrays of indices in ascending order.
+ */
+const generateCombinations = (n: number, k: number): number[][] => {
+	if (k === 0) return [[]];
+	if (k === 1) return Array.from({ length: n }, (_, i) => [i]);
+	const result: number[][] = [];
+	const combo: number[] = [];
+	const recurse = (start: number): void => {
+		if (combo.length === k) {
+			result.push([...combo]);
+			return;
+		}
+		for (let i = start; i < n; i += 1) {
+			combo.push(i);
+			recurse(i + 1);
+			combo.pop();
+		}
+	};
+	recurse(0);
+	return result;
+};
 
 /**
  * Enumerate all legal actions for a player in the current state.
@@ -90,21 +116,47 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 
 	// Enumerate rotateTile moves (Part 1.3)
 	if (rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
-		for (let i = 0; i < hand.length; i += 1) {
-			const card = hand[i]!;
-			for (const co of coords) {
-				const tile = G.board[key(co)];
-				if (!tile || tile.colors.length === 0) continue;
+		const rotateCost = rules.PLACEMENT.COST_TO_ROTATE;
+		if (hand.length >= rotateCost) {
+			// Generate all combinations of rotateCost indices from hand
+			const indexCombos = generateCombinations(hand.length, rotateCost);
+			for (const handIndices of indexCombos) {
+				for (const co of coords) {
+					const tile = G.board[key(co)];
+					if (!tile || tile.colors.length === 0) continue;
 
-				// Check match-color constraint
-				if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
-					const hasMatchingColor = card.colors.some((c) => tile.colors.includes(c));
-					if (!hasMatchingColor) continue;
+					// Check match-color constraint: at least one card must match a tile color
+					if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
+						const hasMatchingColor = handIndices.some((idx) => {
+							const card = hand[idx]!;
+							return card.colors.some((c) => tile.colors.includes(c));
+						});
+						if (!hasMatchingColor) continue;
+					}
+
+					// Valid rotation amounts: 1, 2, 4, 5 (exclude 3 = 180°)
+					for (const rotation of [1, 2, 4, 5]) {
+						actions.push({ type: 'rotateTile', args: { coord: co, handIndices, rotation } });
+					}
 				}
+			}
+		}
+	}
 
-				// Valid rotation amounts: 1, 2, 4, 5 (exclude 3 = 180°)
-				for (const rotation of [1, 2, 4, 5]) {
-					actions.push({ type: 'rotateTile', args: { coord: co, handIndex: i, rotation } });
+	// Enumerate blockTile moves
+	if (rules.PLACEMENT.COST_TO_BLOCK > 0) {
+		const blockCost = rules.PLACEMENT.COST_TO_BLOCK;
+		if (hand.length >= blockCost) {
+			const indexCombos = generateCombinations(hand.length, blockCost);
+			for (const handIndices of indexCombos) {
+				for (const co of coords) {
+					const tile = G.board[key(co)];
+					// Must be an existing empty, non-dead tile
+					if (!tile || tile.colors.length > 0 || tile.dead) continue;
+					// Cannot block an origin tile
+					const isOrigin = G.origins.some((o) => o.q === co.q && o.r === co.r);
+					if (isOrigin) continue;
+					actions.push({ type: 'blockTile', args: { coord: co, handIndices } });
 				}
 			}
 		}
@@ -180,21 +232,58 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			if (!tile || tile.colors.length === 0) return null;
 			if (rules.PLACEMENT.DISCARD_TO_ROTATE === false) return null;
 
-			const card = hand[args.handIndex];
-			if (!card) return null;
+			const cost = rules.PLACEMENT.COST_TO_ROTATE;
+			if (!args.handIndices || args.handIndices.length !== cost) return null;
+			const uniqueIndices = new Set(args.handIndices);
+			if (uniqueIndices.size !== cost) return null;
+			for (const idx of args.handIndices) {
+				if (idx < 0 || idx >= hand.length) return null;
+			}
 
 			// Validate rotation amount
 			if (args.rotation < 1 || args.rotation > 5 || args.rotation === 3) return null;
 
-			// match-color mode
+			// match-color mode: at least one card must match
 			if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
-				const hasMatchingColor = card.colors.some((c) => tile.colors.includes(c));
+				const hasMatchingColor = args.handIndices.some((idx) => {
+					const card = hand[idx]!;
+					return card.colors.some((c) => tile.colors.includes(c));
+				});
 				if (!hasMatchingColor) return null;
 			}
 
 			tile.rotation = (tile.rotation + args.rotation) % 6;
-			const [used] = hand.splice(args.handIndex, 1);
-			if (used) newG.discard.push(used);
+			const sortedIndices = [...args.handIndices].sort((a, b) => b - a);
+			for (const idx of sortedIndices) {
+				const [used] = hand.splice(idx, 1);
+				if (used) newG.discard.push(used);
+			}
+			break;
+		}
+
+		case 'blockTile': {
+			const args = action.args;
+			const cost = rules.PLACEMENT.COST_TO_BLOCK;
+			if (cost <= 0) return null;
+			if (!args.handIndices || args.handIndices.length !== cost) return null;
+			const uniqueIndices = new Set(args.handIndices);
+			if (uniqueIndices.size !== cost) return null;
+			for (const idx of args.handIndices) {
+				if (idx < 0 || idx >= hand.length) return null;
+			}
+
+			const k = key(args.coord);
+			const tile = newG.board[k];
+			if (!tile || tile.colors.length > 0 || tile.dead) return null;
+			const isOrigin = newG.origins.some((o) => o.q === args.coord.q && o.r === args.coord.r);
+			if (isOrigin) return null;
+
+			tile.dead = true;
+			const sortedIndices = [...args.handIndices].sort((a, b) => b - a);
+			for (const idx of sortedIndices) {
+				const [used] = hand.splice(idx, 1);
+				if (used) newG.discard.push(used);
+			}
 			break;
 		}
 
@@ -640,6 +729,11 @@ export const evaluateAction = (
 		value -= 0.5; // Small cost to discourage frivolous rotations
 	}
 
+	if (action.type === 'blockTile') {
+		// Blocking costs cards but the mobility denial captures strategic value
+		value -= 1.0; // Cost to discourage frivolous blocking (it costs 2 cards)
+	}
+
 	return value;
 };
 
@@ -660,6 +754,7 @@ export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Act
 	// Separate actions by type
 	const playActions: Action[] = [];
 	const rotateActions: Action[] = [];
+	const blockActions: Action[] = [];
 	const stashActions: Action[] = [];
 	const takeActions: Action[] = [];
 
@@ -670,6 +765,9 @@ export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Act
 				break;
 			case 'rotateTile':
 				rotateActions.push(action);
+				break;
+			case 'blockTile':
+				blockActions.push(action);
 				break;
 			case 'stashToTreasure':
 				stashActions.push(action);
@@ -718,6 +816,21 @@ export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Act
 	const maxRotateCandidates = Math.min(4, scoredRotateActions.length);
 	for (let i = 0; i < maxRotateCandidates; i += 1) {
 		candidates.push(scoredRotateActions[i]!.action);
+	}
+
+	// Block candidates: prioritize blocking tiles near opponent objective paths
+	if (blockActions.length > 0) {
+		const scoredBlockActions = blockActions.map((action) => {
+			if (action.type !== 'blockTile') return { action, score: 0 };
+			const ring = ringIndex(action.args.coord);
+			// Prefer blocking tiles closer to rim (more strategically valuable)
+			return { action, score: ring };
+		});
+		scoredBlockActions.sort((a, b) => b.score - a.score);
+		const maxBlockCandidates = Math.min(4, scoredBlockActions.length);
+		for (let i = 0; i < maxBlockCandidates; i += 1) {
+			candidates.push(scoredBlockActions[i]!.action);
+		}
 	}
 
 	// Stash candidates: prioritize non-objective cards
@@ -972,6 +1085,9 @@ const executeAction = (client: BGIOClient, action: Action): void => {
 			break;
 		case 'rotateTile':
 			client.moves.rotateTile(action.args);
+			break;
+		case 'blockTile':
+			client.moves.blockTile(action.args);
 			break;
 		case 'stashToTreasure':
 			client.moves.stashToTreasure(action.args);
