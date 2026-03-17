@@ -167,12 +167,12 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							fill={hexFill}
 							splitFills={split ?? undefined}
 							fillOpacity={isHighlight ? 0.35 : (isRotatable && !isPathMode ? 0.7 : 1)}
-							stroke={isRotatable && !isPathMode ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#aa66ff' : '#2a2a3d'))}
+							stroke={isRotatable && !isPathMode ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#bb88ee' : '#2a2a3d'))}
 							strokeWidth={isRotatable && !isPathMode ? 3 : (showMoveStroke ? 2 : (isOrigin ? 2 : 1))}
 							onClick={() => !isPathMode && onHexClick(c)}
 						>
 							{isOrigin && occupants.length === 0 && !isPathMode && (
-								<circle cx={0} cy={0} r={size * 0.3} fill="none" stroke="#aa66ff" strokeWidth={2} strokeDasharray="4,2" />
+								<circle cx={0} cy={0} r={size * 0.3} fill="none" stroke="#bb88ee" strokeWidth={2} strokeDasharray="4,2" />
 							)}
 							{/* Rotation indicator - hide in path mode */}
 							{!isPathMode && isRotatable && !isPendingRotation && (
@@ -359,7 +359,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							cx={center.x}
 							cy={center.y}
 							r={size * 0.15}
-							fill={isSelectedSource ? highlightColor : (isOrigin ? '#aa66ff' : '#3a3a4d')}
+							fill={isSelectedSource ? highlightColor : (isOrigin ? '#bb88ee' : '#3a3a4d')}
 							stroke="#1a1a24"
 							strokeWidth={0.5}
 						/>

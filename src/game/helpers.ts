@@ -536,17 +536,17 @@ export const buildAllCoords = (radius: number): Co[] => {
 export const asVisibleColor = (c: Color): string => {
 	switch (c) {
 		case 'R':
-			return '#ff4444'; // Arterial red
+			return '#dd5566'; // Mid-bright red (L≈128)
 		case 'O':
-			return '#ff8c22'; // Fever orange
+			return '#ffbb33'; // Bright orange (L≈192)
 		case 'Y':
-			return '#ffdd33'; // Electric yellow
+			return '#ffee55'; // Bright yellow (L≈226)
 		case 'G':
-			return '#33ff88'; // Toxic green
+			return '#228866'; // Mid green (L≈102)
 		case 'B':
-			return '#4499ff'; // Spectral blue
+			return '#1155aa'; // Dark blue (L≈74)
 		case 'V':
-			return '#aa66ff'; // Nightmare violet
+			return '#bb88ee'; // Light violet (L≈163)
 	}
 };
 
