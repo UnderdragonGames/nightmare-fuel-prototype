@@ -212,6 +212,8 @@ export type PlacementRules = {
 	CONSOLIDATION_END: number;
 	// If true, consolidation moves can exceed MAX_LANES_PER_PATH (widths 4+ possible)
 	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: boolean;
+	// Minimum ring a consolidation move can reach (0 = center origin, 1 = ring 1 adjacent to origin)
+	CONSOLIDATE_TO_RING: number;
 };
 
 export type Rules = {
