@@ -277,6 +277,51 @@
 	color: var(--text-muted);
 }
 
+.player-card__hand {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	padding: 4px 6px;
+	border-radius: 6px;
+	background: rgba(15, 15, 24, 0.4);
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.player-card__hand:hover {
+	background: rgba(139, 92, 246, 0.15);
+}
+
+.player-card__hand-cards {
+	display: flex;
+	align-items: center;
+}
+
+.player-card__card-back {
+	width: 14px;
+	height: 20px;
+	border-radius: 2px;
+	background: linear-gradient(135deg, #2a2a3a 0%, #1a1a28 100%);
+	border: 1px solid rgba(139, 92, 246, 0.3);
+	position: relative;
+	flex-shrink: 0;
+}
+
+.player-card__card-back::after {
+	content: '';
+	position: absolute;
+	inset: 2px;
+	border-radius: 1px;
+	border: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+.player-card__hand-count {
+	font-size: 0.65rem;
+	font-weight: 700;
+	color: var(--text-muted);
+}
+
 .player-card__bot-select {
 	width: 100%;
 	font-size: 0.7rem;
@@ -2391,5 +2436,559 @@
 	}
 	.state-lab__board {
 		min-height: 420px;
+	}
+}
+
+/* ── MiniCard (collapsed zone preview) ── */
+
+.mini-card {
+	width: 70px;
+	height: 95px;
+	background: linear-gradient(135deg, #1a1a24 0%, #12121a 100%);
+	border: 1.5px solid var(--border-subtle);
+	border-radius: 6px;
+	padding: 8px 6px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	flex-shrink: 0;
+}
+
+.mini-card:hover {
+	border-color: rgba(139, 92, 246, 0.4);
+}
+
+/* Action card variant */
+.mini-card--action {
+	background: linear-gradient(135deg, #1e1428 0%, #14101e 100%);
+	border-color: rgba(139, 92, 246, 0.3);
+	justify-content: center;
+	align-items: center;
+}
+
+/* Selected state */
+.mini-card--selected {
+	border-color: var(--accent-primary);
+	box-shadow: 0 0 0 1.5px var(--accent-primary), 0 0 16px rgba(139, 92, 246, 0.35);
+	transform: translateY(-4px);
+}
+
+/* Dimmed when another card is selected */
+.mini-card--dimmed {
+	opacity: 0.5;
+}
+
+/* Color dots cluster */
+.mini-card__dots {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: flex-start;
+}
+
+.mini-card__dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	display: block;
+	box-shadow: 0 0 4px rgba(255, 255, 255, 0.15);
+}
+
+/* Action card label */
+.mini-card__label {
+	font-size: 9px;
+	font-weight: 600;
+	color: rgba(255, 255, 255, 0.8);
+	text-align: center;
+	line-height: 1.3;
+	word-break: break-word;
+	letter-spacing: 0.02em;
+}
+
+/* ================================================================
+   Coverflow — reusable card carousel (Hand, Treasure, Discard)
+   ================================================================ */
+
+.coverflow {
+	position: relative;
+	width: 100%;
+	user-select: none;
+	-webkit-user-select: none;
+	perspective: 800px;
+}
+
+.coverflow__item {
+	pointer-events: auto;
+	backface-visibility: hidden;
+	-webkit-backface-visibility: hidden;
+}
+
+.coverflow__item > * {
+	width: 100%;
+	height: 100%;
+}
+
+/* ================================================================
+   CardZone — corner-anchored zone shell (Hand, Treasure, Discard)
+   ================================================================ */
+
+.card-zone {
+	position: fixed;
+	z-index: 60;
+	pointer-events: none;
+}
+
+.card-zone > * {
+	pointer-events: auto;
+}
+
+/* ── Corner positioning ── */
+
+.card-zone--bottom-right {
+	bottom: 16px;
+	right: 16px;
+}
+
+.card-zone--top-right {
+	top: 16px;
+	right: 16px;
+}
+
+.card-zone--top-left {
+	top: 16px;
+	left: 220px;
+}
+
+/* ── Unified card container ── */
+
+.card-zone__cards {
+	display: flex;
+	position: relative;
+	cursor: pointer;
+	z-index: 1;
+}
+
+.card-zone__cards--collapsed {
+	align-items: flex-end;
+	gap: 0;
+}
+
+.card-zone__cards--collapsed .card-zone__card-wrapper {
+	margin-left: -18px;
+}
+
+.card-zone__cards--collapsed .card-zone__card-wrapper:first-child {
+	margin-left: 0;
+}
+
+.card-zone__cards--expanded {
+	align-items: center;
+	padding: 32px;
+}
+
+.card-zone--top-right .card-zone__cards--collapsed,
+.card-zone--top-left .card-zone__cards--collapsed {
+	align-items: flex-start;
+}
+
+.card-zone__card-wrapper {
+	position: relative;
+	flex-shrink: 0;
+}
+
+/* ── Badge ── */
+
+.card-zone__badge {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 12px;
+	background: rgba(22, 22, 31, 0.9);
+	backdrop-filter: blur(8px);
+	border: 1px solid var(--border-subtle);
+	border-radius: 999px;
+	position: relative;
+	z-index: 2;
+}
+
+.card-zone__badge-label {
+	font-size: 0.65rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--text-muted);
+}
+
+.card-zone__badge-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 20px;
+	height: 20px;
+	padding: 0 5px;
+	font-size: 0.7rem;
+	font-weight: 700;
+	color: #fff;
+	background: var(--accent-primary, #8b5cf6);
+	border-radius: 999px;
+	line-height: 1;
+}
+
+/* ── Gradient overlay — behind cards ── */
+
+.card-zone__gradient {
+	position: fixed;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+}
+
+/* (z-index on .card-zone__cards is set in the first rule above) */
+
+/* ── Custom expanded content (e.g., Coverflow for discard) ── */
+
+.card-zone__custom-expanded {
+	position: relative;
+	z-index: 1;
+	min-width: 500px;
+	min-height: 400px;
+	padding: 16px;
+}
+
+/* ── Mobile: disable hover, rely on tap ── */
+
+@media (max-width: 768px) {
+	.card-zone--bottom-right {
+		bottom: 8px;
+		right: 8px;
+	}
+
+	.card-zone--top-right {
+		top: 8px;
+		right: 8px;
+	}
+
+	.card-zone--top-left {
+		top: 8px;
+		left: 8px;
+	}
+
+	.card-zone__expanded {
+		padding: 12px;
+	}
+
+	.card-zone__fan {
+		gap: 4px;
+		padding: 8px;
+	}
+}
+
+/* ── Expanded card variants (3x the normal 90×120) ── */
+
+.neural-card--expanded {
+	width: 270px;
+	height: 360px;
+	border-radius: 12px;
+	padding: 20px;
+}
+
+.neural-card--expanded:hover {
+	transform: translateY(-8px);
+}
+
+.neural-card--expanded .neural-card__art {
+	flex: 1;
+	min-height: 0;
+}
+
+.neural-card--expanded .neural-card__actions {
+	gap: 10px;
+	margin-top: 14px;
+}
+
+.neural-card--expanded .neural-card__btn {
+	width: 36px;
+	height: 36px;
+	border-radius: 6px;
+	font-size: 14px;
+}
+
+.neural-card--expanded.neural-card--action {
+	padding: 24px 20px;
+}
+
+.neural-card--expanded .neural-card__name {
+	font-size: 18px;
+	margin-bottom: 10px;
+}
+
+.neural-card--expanded .neural-card__text {
+	font-size: 14px;
+	line-height: 1.4;
+	min-height: 40px;
+}
+
+.neural-card--expanded .neural-card__text--action {
+	font-size: 13px;
+	line-height: 1.5;
+	-webkit-line-clamp: 12;
+}
+
+.neural-card--treasure.neural-card--expanded {
+	border-radius: 12px;
+	padding: 20px;
+}
+
+.neural-card--treasure.neural-card--expanded .action-btn {
+	font-size: 1rem;
+	padding: 8px 18px;
+}
+
+/* ================================================================
+   Action Card Modal — full-screen overlay for action card interaction
+   ================================================================ */
+
+.action-modal__overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.action-modal__content {
+	position: relative;
+	display: flex;
+	flex-direction: row;
+	gap: 32px;
+	max-width: 800px;
+	width: 90vw;
+	padding: 32px;
+	background: rgba(22, 22, 31, 0.95);
+	backdrop-filter: blur(12px);
+	border: 1px solid var(--border-subtle);
+	border-radius: 16px;
+	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.action-modal__close {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	color: var(--text-muted);
+	font-size: 20px;
+	line-height: 1;
+	cursor: pointer;
+	transition: all 0.12s ease;
+	padding: 0;
+}
+
+.action-modal__close:hover {
+	background: rgba(239, 68, 68, 0.2);
+	border-color: rgba(239, 68, 68, 0.3);
+	color: var(--accent-danger);
+}
+
+.action-modal__card {
+	flex: 0 0 auto;
+	width: 270px;
+}
+
+.action-modal__card .neural-card--expanded {
+	cursor: default;
+}
+
+.action-modal__card .neural-card--expanded:hover {
+	transform: none;
+}
+
+.action-modal__form {
+	flex: 1;
+	min-width: 300px;
+}
+
+/* Mobile: stack card above form */
+@media (max-width: 768px) {
+	.action-modal__content {
+		flex-direction: column;
+		max-width: 95vw;
+		padding: 20px;
+		gap: 20px;
+		max-height: 90vh;
+		overflow-y: auto;
+	}
+
+	.action-modal__card {
+		width: 100%;
+		display: flex;
+		justify-content: center;
+	}
+
+	.action-modal__form {
+		min-width: 0;
+	}
+}
+
+/* ── Discard Zone ── */
+
+.discard-zone__coverflow-wrapper {
+	width: 100%;
+	height: 380px;
+	display: flex;
+	align-items: center;
+}
+
+/* Discard card — resembles neural-card at expanded size, but non-interactive by default */
+.discard-card {
+	width: 270px;
+	height: 360px;
+	background: linear-gradient(135deg, #1a1a24 0%, #12121a 100%);
+	border: 2px solid var(--border-subtle);
+	border-radius: 12px;
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	overflow: hidden;
+	user-select: none;
+}
+
+.discard-card::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.3) 100%);
+	pointer-events: none;
+}
+
+/* Focal card gets full brightness */
+.discard-card--focal {
+	border-color: var(--text-muted);
+}
+
+/* Interactive mode — show pointer cursor and highlight on hover */
+.discard-card--interactive {
+	cursor: pointer;
+}
+
+.discard-card--interactive:hover {
+	border-color: var(--accent-primary);
+	box-shadow: 0 0 0 2px var(--accent-primary), 0 0 20px rgba(139, 92, 246, 0.3);
+}
+
+/* Action card variant */
+.discard-card--action {
+	justify-content: center;
+	align-items: center;
+	text-align: center;
+}
+
+.discard-card__name {
+	font-size: 18px;
+	font-weight: 700;
+	color: var(--text-primary);
+	margin-bottom: 10px;
+	position: relative;
+	z-index: 1;
+}
+
+.discard-card__text {
+	font-size: 14px;
+	line-height: 1.4;
+	color: var(--text-secondary);
+	position: relative;
+	z-index: 1;
+}
+
+.discard-card__text--action {
+	font-size: 13px;
+	line-height: 1.5;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 12;
+	overflow: hidden;
+}
+
+.discard-card__art {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	z-index: 1;
+}
+
+.discard-card__pathways {
+	width: 100%;
+	height: 100%;
+}
+
+/* "Select" button shown on focal card in interactive mode */
+.discard-card__select-btn {
+	position: absolute;
+	bottom: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 6px 20px;
+	font-size: 14px;
+	font-weight: 600;
+	color: white;
+	background: var(--accent-primary);
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	z-index: 2;
+	transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.discard-card__select-btn:hover {
+	background: var(--accent-hover, #7c3aed);
+	box-shadow: 0 0 12px rgba(139, 92, 246, 0.5);
+}
+
+/* === SIDEBAR NIGHTMARE PANEL === */
+.game-players__nightmare {
+	padding: 10px 12px;
+	margin: 8px 0;
+	border-radius: 10px;
+	background: rgba(20, 20, 30, 0.6);
+	border: 1px solid var(--border-subtle);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* === FLOATING TOOLBAR (action buttons) === */
+.floating-toolbar {
+	position: fixed;
+	bottom: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: 12px;
+	background: rgba(20, 20, 30, 0.85);
+	border: 1px solid var(--border-subtle);
+	backdrop-filter: blur(10px);
+	z-index: 60;
+}
+
+@media (max-width: 768px) {
+	.floating-toolbar {
+		bottom: 12px;
+		left: 50%;
 	}
 }

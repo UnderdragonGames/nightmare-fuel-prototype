@@ -8,6 +8,8 @@ import { Board as HexBoard } from './ui/Board';
 import type { Color, Co, GState, PlayerPrefs, Stat } from './game/types';
 import { Hand } from './ui/Hand';
 import { Treasure } from './ui/Treasure';
+import { DiscardZone } from './ui/DiscardZone';
+import { ActionCardModal } from './ui/ActionCardModal';
 import { computeScores } from './game/scoring';
 import { buildAllCoords, canPlace, canPlacePath, neighbors, asVisibleColor, key } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
@@ -93,6 +95,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [pendingRotationTile, setPendingRotationTile] = React.useState<Co | null>(null);
 	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null);
 	const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+	const [expandedZone, setExpandedZone] = React.useState<'hand' | 'treasure' | 'discard' | null>(null);
+	const [actionModalOpen, setActionModalOpen] = React.useState(false);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const setBotFor = useUIStore((s) => s.setBotFor);
 	const aiPaused = useUIStore((s) => s.aiPaused);
@@ -125,6 +129,23 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const isPathMode = rules.MODE === 'path';
 	const selectedActionCard = selectedCard !== null ? myHand[selectedCard] : null;
 	const selectedActionList = selectedActionCard ? resolveCardActions(selectedActionCard) : [];
+
+	// Zone mutual exclusion: opening one zone closes others
+	const handleZoneExpand = React.useCallback(
+		(zone: 'hand' | 'treasure' | 'discard') => (expanded: boolean) => {
+			setExpandedZone(expanded ? zone : null);
+		},
+		[],
+	);
+
+	// Open action modal when an action card is selected
+	React.useEffect(() => {
+		if (selectedActionCard?.isAction) {
+			setActionModalOpen(true);
+		} else {
+			setActionModalOpen(false);
+		}
+	}, [selectedActionCard]);
 
 	const parseCoord = (value: string): Co | undefined => {
 		const parts = value.split(',').map((p) => p.trim());
@@ -646,8 +667,60 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								onSetViewer(pid);
 								setMobileMenuOpen(false);
 							}}
+							handSize={(G.hands[pid] ?? []).length}
 						/>
 					))}
+				</div>
+				<div className="game-players__nightmare">
+					<div className="hand-nightmare__header">
+						<span className="hand-nightmare__label">Nightmare</span>
+						<span className="hand-nightmare__player">P{viewer}</span>
+					</div>
+					{viewerNightmare ? (
+						<div className="hand-nightmare__body">
+							<div className="hand-nightmare__name">{viewerNightmare.name}</div>
+							<div className="hand-nightmare__row">
+								<span className="hand-nightmare__row-label">Evil Plan</span>
+								<span className="hand-nightmare__row-value">{viewerNightmare.evilPlan}</span>
+							</div>
+							<div className="hand-nightmare__row">
+								<span className="hand-nightmare__row-label">Classes</span>
+								<div className="hand-nightmare__tags">
+									{viewerNightmare.classes.map((tag) => (
+										<span key={tag} className="hand-nightmare__tag">{tag}</span>
+									))}
+								</div>
+							</div>
+							<div className="hand-nightmare__row">
+								<span className="hand-nightmare__row-label">Ability</span>
+								<div className="hand-nightmare__ability">
+									<div className="hand-nightmare__ability-name">{viewerNightmare.ability.name}</div>
+									<div className="hand-nightmare__ability-effect">{viewerNightmare.ability.effect}</div>
+									{viewerNightmareState && (
+										<div className="hand-nightmare__ability-uses">
+											Uses left: {viewerNightmareState.abilityUsesRemaining}
+										</div>
+									)}
+								</div>
+							</div>
+							{viewerPrefs && (
+								<div className="hand-nightmare__row">
+									<span className="hand-nightmare__row-label">Priorities</span>
+									<div className="hand-nightmare__priorities">
+										{([viewerPrefs.primary, viewerPrefs.secondary, viewerPrefs.tertiary] as Color[]).map((col, i) => (
+											<span
+												key={`${col}-${i}`}
+												className="hand-nightmare__priority-dot"
+												style={{ background: asVisibleColor(col), boxShadow: `0 0 ${6 - i * 2}px ${asVisibleColor(col)}` }}
+											/>
+										))}
+									</div>
+								</div>
+							)}
+						</div>
+					) : (
+						<div className="hand-nightmare__empty">Nightmare pending...</div>
+					)}
 				</div>
 				<div className="game-players__controls">
 					<button
@@ -666,7 +739,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			)}
 
 			{/* RIGHT PANEL - Board */}
-			<main className={`game-board ${boardInteractable ? 'game-board--active' : 'game-board--inactive'}`}>
+			<main
+				className={`game-board ${boardInteractable ? 'game-board--active' : 'game-board--inactive'}`}
+				onMouseEnter={() => setExpandedZone(null)}
+			>
 				<HexBoard
 					rules={rules}
 					board={G.board}
@@ -684,366 +760,323 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				/>
 			</main>
 
-			{/* FLOATING CARDS */}
-			<div className="floating-hand-wrapper">
-				<div className={`floating-hand ${selectedCard !== null ? 'floating-hand--has-selection' : ''}`}>
-					<div className="floating-hand__nightmare">
-						<div className="hand-nightmare__header">
-							<span className="hand-nightmare__label">Nightmare</span>
-							<span className="hand-nightmare__player">P{viewer}</span>
-						</div>
-						{viewerNightmare ? (
-							<div className="hand-nightmare__body">
-								<div className="hand-nightmare__name">{viewerNightmare.name}</div>
-								<div className="hand-nightmare__row">
-									<span className="hand-nightmare__row-label">Evil Plan</span>
-									<span className="hand-nightmare__row-value">{viewerNightmare.evilPlan}</span>
-								</div>
-								<div className="hand-nightmare__row">
-									<span className="hand-nightmare__row-label">Classes</span>
-									<div className="hand-nightmare__tags">
-										{viewerNightmare.classes.map((tag) => (
-											<span key={tag} className="hand-nightmare__tag">{tag}</span>
-										))}
-									</div>
-								</div>
-								<div className="hand-nightmare__row">
-									<span className="hand-nightmare__row-label">Ability</span>
-									<div className="hand-nightmare__ability">
-										<div className="hand-nightmare__ability-name">{viewerNightmare.ability.name}</div>
-										<div className="hand-nightmare__ability-effect">{viewerNightmare.ability.effect}</div>
-										{viewerNightmareState && (
-											<div className="hand-nightmare__ability-uses">
-												Uses left: {viewerNightmareState.abilityUsesRemaining}
-											</div>
-										)}
-									</div>
-								</div>
-								{viewerPrefs && (
-									<div className="hand-nightmare__row">
-										<span className="hand-nightmare__row-label">Priorities</span>
-										<div className="hand-nightmare__priorities">
-											{([viewerPrefs.primary, viewerPrefs.secondary, viewerPrefs.tertiary] as Color[]).map((col, i) => (
-												<span
-													key={`${col}-${i}`}
-													className="hand-nightmare__priority-dot"
-													style={{ background: asVisibleColor(col), boxShadow: `0 0 ${6 - i * 2}px ${asVisibleColor(col)}` }}
-												/>
-											))}
-										</div>
-									</div>
-								)}
-							</div>
-						) : (
-							<div className="hand-nightmare__empty">Nightmare pending...</div>
+			{/* CARD ZONES */}
+			<Hand
+				rules={rules}
+				cards={myHand}
+				selectedIndex={selectedCard}
+				onSelect={(index) => {
+					if (selectedCard === index) {
+						setSelectedCard(null);
+						setSelectedColor(null);
+						setSelectedSourceDot(null);
+						return;
+					}
+					setSelectedCard(index);
+					setSelectedSourceDot(null);
+					const c = myHand[index];
+					if (!c) return;
+					if (isPathMode) setSelectedColor(null);
+				}}
+				onPickColor={onPickColor}
+				isExpanded={expandedZone === 'hand'}
+				onExpandChange={handleZoneExpand('hand')}
+			/>
+
+			<Treasure
+				rules={rules}
+				cards={G.treasure}
+				onTake={onTakeTreasure}
+				isExpanded={expandedZone === 'treasure'}
+				onExpandChange={handleZoneExpand('treasure')}
+			/>
+
+			<DiscardZone
+				rules={rules}
+				cards={G.discard}
+				isExpanded={expandedZone === 'discard'}
+				onExpandChange={handleZoneExpand('discard')}
+			/>
+
+			{/* ACTION CARD MODAL */}
+			{actionModalOpen && selectedActionCard?.isAction && (
+				<ActionCardModal
+					card={selectedActionCard}
+					rules={rules}
+					onClose={() => {
+						setSelectedCard(null);
+						setSelectedColor(null);
+						setActionModalOpen(false);
+					}}
+				>
+					<div className="action-panel__grid">
+						{actionNeedsTargetPlayer && (
+							<label className="action-panel__field">
+								<span className="action-panel__label">Target Player</span>
+								<select
+									className="action-panel__select"
+									value={actionTargetPlayer}
+									onChange={(e) => setActionTargetPlayer(e.target.value as PlayerID)}
+								>
+									<option value="">Select player</option>
+									{ctx.playOrder.map((pid) => (
+										<option key={`ap-${pid}`} value={pid}>
+											P{pid}
+										</option>
+									))}
+								</select>
+							</label>
 						)}
-					</div>
-					<div className="floating-hand__cards">
-						<Hand
-							rules={rules}
-							cards={myHand}
-							selectedIndex={selectedCard}
-							onSelect={(index) => {
-								if (selectedCard === index) {
-									setSelectedCard(null);
-									setSelectedColor(null);
-									setSelectedSourceDot(null);
-									return;
-								}
-								setSelectedCard(index);
-								setSelectedSourceDot(null);
-								const c = myHand[index];
-								if (!c) return;
-								if (isPathMode) setSelectedColor(null);
-							}}
-							onPickColor={onPickColor}
-						/>
-					</div>
-					{selectedActionCard?.isAction && (
-						<div className="action-panel">
-							<div className="action-panel__header">
-								<span className="action-panel__title">Action</span>
-								<span className="action-panel__card">{selectedActionCard.name}</span>
-							</div>
-							{selectedActionCard.text && (
-								<div className="action-panel__text">{selectedActionCard.text}</div>
-							)}
-							<div className="action-panel__grid">
-								{actionNeedsTargetPlayer && (
-									<label className="action-panel__field">
-										<span className="action-panel__label">Target Player</span>
-										<select
-											className="action-panel__select"
-											value={actionTargetPlayer}
-											onChange={(e) => setActionTargetPlayer(e.target.value as PlayerID)}
-										>
-											<option value="">Select player</option>
-											{ctx.playOrder.map((pid) => (
-												<option key={`ap-${pid}`} value={pid}>
-													P{pid}
-												</option>
-											))}
-										</select>
-									</label>
-								)}
-								{actionNeedsChoice && (
-									<label className="action-panel__field">
-										<span className="action-panel__label">Choice</span>
-										<select
-											className="action-panel__select"
-											value={actionChoiceIndex}
-											onChange={(e) => setActionChoiceIndex(e.target.value)}
-										>
-											{(() => {
-												const choice = selectedActionList.find((action) => action.type === 'choice') as { options?: unknown[] } | undefined;
-												const optionCount = choice?.options?.length ?? 0;
-												return Array.from({ length: optionCount }, (_, i) => (
-													<option key={`choice-${i}`} value={String(i)}>
-														Option {i + 1}
-													</option>
-												));
-											})()}
-										</select>
-									</label>
-								)}
-								{actionNeedsCoord && (
-									<label className="action-panel__field">
-										<span className="action-panel__label">Coord (q,r)</span>
-										<input
-											className="action-panel__input"
-											placeholder="0,0"
-											value={actionCoordInput}
-											onChange={(e) => setActionCoordInput(e.target.value)}
-										/>
-									</label>
-								)}
-								{actionNeedsMove && (
-									<>
-										<label className="action-panel__field">
-											<span className="action-panel__label">Move From (q,r)</span>
-											<input
-												className="action-panel__input"
-												placeholder="0,0"
-												value={actionMoveFromInput}
-												onChange={(e) => setActionMoveFromInput(e.target.value)}
-											/>
-										</label>
-										<label className="action-panel__field">
-											<span className="action-panel__label">Move To (q,r)</span>
-											<input
-												className="action-panel__input"
-												placeholder="1,0"
-												value={actionMoveToInput}
-												onChange={(e) => setActionMoveToInput(e.target.value)}
-											/>
-										</label>
-									</>
-								)}
-								{actionNeedsReplaceColor && (
-									<label className="action-panel__field">
-										<span className="action-panel__label">Replace Color</span>
-										<select
-											className="action-panel__select"
-											value={actionReplaceColor}
-											onChange={(e) => setActionReplaceColor(e.target.value as Color)}
-										>
-											<option value="">Select color</option>
-											{rules.COLORS.map((col) => (
-												<option key={`rc-${col}`} value={col}>
-													{col}
-												</option>
-											))}
-										</select>
-									</label>
-								)}
-								{actionNeedsStat && (
-									<label className="action-panel__field">
-										<span className="action-panel__label">Stat</span>
-										<select
-											className="action-panel__select"
-											value={actionChosenStat}
-											onChange={(e) => setActionChosenStat(e.target.value as Stat)}
-										>
-											<option value="">Select stat</option>
-											{['vitality', 'form', 'freedom', 'sanity', 'will', 'hope'].map((stat) => (
-												<option key={`stat-${stat}`} value={stat}>
-													{stat}
-												</option>
-											))}
-										</select>
-									</label>
-								)}
-								{actionNeedsPrefs && (
-									<>
-										<label className="action-panel__field">
-											<span className="action-panel__label">Primary</span>
-											<select
-												className="action-panel__select"
-												value={actionPrefPrimary}
-												onChange={(e) => setActionPrefPrimary(e.target.value as Color)}
-											>
-												<option value="">Select</option>
-												{rules.COLORS.map((col) => (
-													<option key={`pp-${col}`} value={col}>
-														{col}
-													</option>
-												))}
-											</select>
-										</label>
-										<label className="action-panel__field">
-											<span className="action-panel__label">Secondary</span>
-											<select
-												className="action-panel__select"
-												value={actionPrefSecondary}
-												onChange={(e) => setActionPrefSecondary(e.target.value as Color)}
-											>
-												<option value="">Select</option>
-												{rules.COLORS.map((col) => (
-													<option key={`ps-${col}`} value={col}>
-														{col}
-													</option>
-												))}
-											</select>
-										</label>
-										<label className="action-panel__field">
-											<span className="action-panel__label">Tertiary</span>
-											<select
-												className="action-panel__select"
-												value={actionPrefTertiary}
-												onChange={(e) => setActionPrefTertiary(e.target.value as Color)}
-											>
-												<option value="">Select</option>
-												{rules.COLORS.map((col) => (
-													<option key={`pt-${col}`} value={col}>
-														{col}
-													</option>
-												))}
-											</select>
-										</label>
-									</>
-								)}
-								{actionNeedsRevealedPick && (
-									<label className="action-panel__field">
-										<span className="action-panel__label">Pick Index</span>
-										<input
-											className="action-panel__input"
-											type="number"
-											min="0"
-											value={actionRevealedPickIndex}
-											onChange={(e) => setActionRevealedPickIndex(e.target.value)}
-										/>
-									</label>
-								)}
-								{actionNeedsDraftPicks && (
-									<div className="action-panel__field action-panel__field--full">
-										<span className="action-panel__label">Draft Picks (by player)</span>
-										<div className="action-panel__draft">
-											{ctx.playOrder.map((pid) => (
-												<label key={`dp-${pid}`} className="action-panel__draft-row">
-													<span>P{pid}</span>
-													<input
-														className="action-panel__input action-panel__input--compact"
-														type="number"
-														min="0"
-														value={actionDraftPicks[pid] ?? ''}
-														onChange={(e) =>
-															setActionDraftPicks((prev) => ({ ...prev, [pid]: e.target.value }))
-														}
-													/>
-												</label>
-											))}
-										</div>
-									</div>
-								)}
-								<label className="action-panel__field action-panel__field--full">
-									<span className="action-panel__label">Context JSON (optional)</span>
-									<textarea
-										className="action-panel__textarea"
-										placeholder='{"targetPlayerId":"1","coord":{"q":0,"r":0}}'
-										value={actionContextJson}
-										onChange={(e) => setActionContextJson(e.target.value)}
+						{actionNeedsChoice && (
+							<label className="action-panel__field">
+								<span className="action-panel__label">Choice</span>
+								<select
+									className="action-panel__select"
+									value={actionChoiceIndex}
+									onChange={(e) => setActionChoiceIndex(e.target.value)}
+								>
+									{(() => {
+										const choice = selectedActionList.find((action) => action.type === 'choice') as { options?: unknown[] } | undefined;
+										const optionCount = choice?.options?.length ?? 0;
+										return Array.from({ length: optionCount }, (_, i) => (
+											<option key={`choice-${i}`} value={String(i)}>
+												Option {i + 1}
+											</option>
+										));
+									})()}
+								</select>
+							</label>
+						)}
+						{actionNeedsCoord && (
+							<label className="action-panel__field">
+								<span className="action-panel__label">Coord (q,r)</span>
+								<input
+									className="action-panel__input"
+									placeholder="0,0"
+									value={actionCoordInput}
+									onChange={(e) => setActionCoordInput(e.target.value)}
+								/>
+							</label>
+						)}
+						{actionNeedsMove && (
+							<>
+								<label className="action-panel__field">
+									<span className="action-panel__label">Move From (q,r)</span>
+									<input
+										className="action-panel__input"
+										placeholder="0,0"
+										value={actionMoveFromInput}
+										onChange={(e) => setActionMoveFromInput(e.target.value)}
 									/>
 								</label>
-							</div>
-							<div className="action-panel__footer">
-								<button
-									className="action-panel__button"
-									onClick={onPlayAction}
-									disabled={!actionLimitAllows || actionResolveError !== null}
-									title={
-										!actionLimitAllows
-											? 'Action limit reached'
-											: (actionResolveError ?? 'Play action card')
-									}
-								>
-									Play Action
-								</button>
-								{!actionLimitAllows && (
-									<div className="action-panel__error">Action limit reached.</div>
-								)}
-								{actionResolveError && (
-									<div className="action-panel__error">{actionResolveError}</div>
-								)}
-							</div>
-						</div>
-					)}
-					<div className="floating-hand__actions">
-						{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
-							<button
-								className={`floating-action ${rotationMode ? 'floating-action--active' : ''}`}
-								onClick={() => {
-									setRotationMode(!rotationMode);
-									setSelectedCard(null);
-									setSelectedColor(null);
-								}}
-								disabled={!isMyTurn || locked}
-								title="Rotate Mode"
-							>
-								↻
-							</button>
+								<label className="action-panel__field">
+									<span className="action-panel__label">Move To (q,r)</span>
+									<input
+										className="action-panel__input"
+										placeholder="1,0"
+										value={actionMoveToInput}
+										onChange={(e) => setActionMoveToInput(e.target.value)}
+									/>
+								</label>
+							</>
 						)}
-						<button
-							className="floating-action"
-							onClick={() => {
-								undo();
-								setSelectedCard(null);
-								setSelectedColor(null);
-								setPendingRotationTile(null);
-								setRotatable([]);
-								setRotationMode(false);
-							}}
-							disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
-							title="Undo"
-						>
-							⟲
-						</button>
-						<button
-							className="floating-action"
-							onClick={onStash}
-							disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
-							title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
-						>
-							⬇
-						</button>
-						<button
-							className="floating-action floating-action--primary"
-							onClick={onEndTurn}
-							disabled={!isMyTurn}
-							title="End Turn"
-						>
-							✓
-						</button>
+						{actionNeedsReplaceColor && (
+							<label className="action-panel__field">
+								<span className="action-panel__label">Replace Color</span>
+								<select
+									className="action-panel__select"
+									value={actionReplaceColor}
+									onChange={(e) => setActionReplaceColor(e.target.value as Color)}
+								>
+									<option value="">Select color</option>
+									{rules.COLORS.map((col) => (
+										<option key={`rc-${col}`} value={col}>
+											{col}
+										</option>
+									))}
+								</select>
+							</label>
+						)}
+						{actionNeedsStat && (
+							<label className="action-panel__field">
+								<span className="action-panel__label">Stat</span>
+								<select
+									className="action-panel__select"
+									value={actionChosenStat}
+									onChange={(e) => setActionChosenStat(e.target.value as Stat)}
+								>
+									<option value="">Select stat</option>
+									{['vitality', 'form', 'freedom', 'sanity', 'will', 'hope'].map((stat) => (
+										<option key={`stat-${stat}`} value={stat}>
+											{stat}
+										</option>
+									))}
+								</select>
+							</label>
+						)}
+						{actionNeedsPrefs && (
+							<>
+								<label className="action-panel__field">
+									<span className="action-panel__label">Primary</span>
+									<select
+										className="action-panel__select"
+										value={actionPrefPrimary}
+										onChange={(e) => setActionPrefPrimary(e.target.value as Color)}
+									>
+										<option value="">Select</option>
+										{rules.COLORS.map((col) => (
+											<option key={`pp-${col}`} value={col}>
+												{col}
+											</option>
+										))}
+									</select>
+								</label>
+								<label className="action-panel__field">
+									<span className="action-panel__label">Secondary</span>
+									<select
+										className="action-panel__select"
+										value={actionPrefSecondary}
+										onChange={(e) => setActionPrefSecondary(e.target.value as Color)}
+									>
+										<option value="">Select</option>
+										{rules.COLORS.map((col) => (
+											<option key={`ps-${col}`} value={col}>
+												{col}
+											</option>
+										))}
+									</select>
+								</label>
+								<label className="action-panel__field">
+									<span className="action-panel__label">Tertiary</span>
+									<select
+										className="action-panel__select"
+										value={actionPrefTertiary}
+										onChange={(e) => setActionPrefTertiary(e.target.value as Color)}
+									>
+										<option value="">Select</option>
+										{rules.COLORS.map((col) => (
+											<option key={`pt-${col}`} value={col}>
+												{col}
+											</option>
+										))}
+									</select>
+								</label>
+							</>
+						)}
+						{actionNeedsRevealedPick && (
+							<label className="action-panel__field">
+								<span className="action-panel__label">Pick Index</span>
+								<input
+									className="action-panel__input"
+									type="number"
+									min="0"
+									value={actionRevealedPickIndex}
+									onChange={(e) => setActionRevealedPickIndex(e.target.value)}
+								/>
+							</label>
+						)}
+						{actionNeedsDraftPicks && (
+							<div className="action-panel__field action-panel__field--full">
+								<span className="action-panel__label">Draft Picks (by player)</span>
+								<div className="action-panel__draft">
+									{ctx.playOrder.map((pid) => (
+										<label key={`dp-${pid}`} className="action-panel__draft-row">
+											<span>P{pid}</span>
+											<input
+												className="action-panel__input action-panel__input--compact"
+												type="number"
+												min="0"
+												value={actionDraftPicks[pid] ?? ''}
+												onChange={(e) =>
+													setActionDraftPicks((prev) => ({ ...prev, [pid]: e.target.value }))
+												}
+											/>
+										</label>
+									))}
+								</div>
+							</div>
+						)}
+						<label className="action-panel__field action-panel__field--full">
+							<span className="action-panel__label">Context JSON (optional)</span>
+							<textarea
+								className="action-panel__textarea"
+								placeholder='{"targetPlayerId":"1","coord":{"q":0,"r":0}}'
+								value={actionContextJson}
+								onChange={(e) => setActionContextJson(e.target.value)}
+							/>
+						</label>
 					</div>
-				</div>
-			</div>
-
-			{/* FLOATING TREASURE */}
-			{G.treasure.length > 0 && (
-				<div className="floating-treasure">
-					<div className="floating-treasure__label">Treasure</div>
-					<Treasure rules={rules} cards={G.treasure} onTake={onTakeTreasure} />
-				</div>
+					<div className="action-panel__footer">
+						<button
+							className="action-panel__button"
+							onClick={onPlayAction}
+							disabled={!actionLimitAllows || actionResolveError !== null}
+							title={
+								!actionLimitAllows
+									? 'Action limit reached'
+									: (actionResolveError ?? 'Play action card')
+							}
+						>
+							Play Action
+						</button>
+						{!actionLimitAllows && (
+							<div className="action-panel__error">Action limit reached.</div>
+						)}
+						{actionResolveError && (
+							<div className="action-panel__error">{actionResolveError}</div>
+						)}
+					</div>
+				</ActionCardModal>
 			)}
+
+			{/* FLOATING ACTIONS TOOLBAR */}
+			<div className="floating-toolbar">
+				{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
+					<button
+						className={`floating-action ${rotationMode ? 'floating-action--active' : ''}`}
+						onClick={() => {
+							setRotationMode(!rotationMode);
+							setSelectedCard(null);
+							setSelectedColor(null);
+						}}
+						disabled={!isMyTurn || locked}
+						title="Rotate Mode"
+					>
+						↻
+					</button>
+				)}
+				<button
+					className="floating-action"
+					onClick={() => {
+						undo();
+						setSelectedCard(null);
+						setSelectedColor(null);
+						setPendingRotationTile(null);
+						setRotatable([]);
+						setRotationMode(false);
+					}}
+					disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
+					title="Undo"
+				>
+					⟲
+				</button>
+				<button
+					className="floating-action"
+					onClick={onStash}
+					disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
+					title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
+				>
+					⬇
+				</button>
+				<button
+					className="floating-action floating-action--primary"
+					onClick={onEndTurn}
+					disabled={!isMyTurn}
+					title="End Turn"
+				>
+					✓
+				</button>
+			</div>
 
 			{/* Secret export state button */}
 			<button

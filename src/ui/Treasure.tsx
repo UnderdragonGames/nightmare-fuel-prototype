@@ -1,19 +1,15 @@
 import React from 'react';
 import type { Card, Color, Rules } from '../game/types';
 import { serializeCard } from '../game/helpers';
-
-type Props = {
-	rules: Rules;
-	cards: Card[];
-	onTake: (index: number) => void;
-};
+import { CardZone } from './CardZone';
 
 // Treasure card component (similar to NeuralCard but with Take button)
-const TreasureCard: React.FC<{
+export const TreasureCard: React.FC<{
 	card: Card;
 	rules: Rules;
 	onTake: () => void;
-}> = ({ card, rules, onTake }) => {
+	size?: 'normal' | 'expanded';
+}> = ({ card, rules, onTake, size = 'normal' }) => {
 	const sortedColors = [...card.colors].sort(
 		(a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b)
 	);
@@ -32,8 +28,10 @@ const TreasureCard: React.FC<{
 		return { color, endX, endY };
 	});
 
+	const expandedClass = size === 'expanded' ? ' neural-card--expanded' : '';
+
 	return (
-		<div className="neural-card neural-card--treasure" onClick={onTake}>
+		<div className={`neural-card neural-card--treasure${expandedClass}`} onClick={onTake}>
 			<div className="neural-card__art">
 				<svg viewBox="0 0 80 70" className="neural-card__pathways">
 					<circle cx="40" cy="35" r="6" className="neural-card__hub" />
@@ -61,21 +59,34 @@ const TreasureCard: React.FC<{
 	);
 };
 
-export const Treasure: React.FC<Props> = ({ rules, cards, onTake }) => {
-	if (cards.length === 0) {
-		return <span className="treasure-empty">Empty</span>;
-	}
-
+export const Treasure: React.FC<{
+	rules: Rules;
+	cards: Card[];
+	onTake: (index: number) => void;
+	isExpanded: boolean;
+	onExpandChange: (expanded: boolean) => void;
+	isMobile?: boolean;
+}> = ({ rules, cards, onTake, isExpanded, onExpandChange, isMobile }) => {
 	return (
-		<div className="treasure-cards">
+		<CardZone
+			corner="top-right"
+			cards={cards}
+			isExpanded={isExpanded}
+			onExpandChange={onExpandChange}
+			selectedIndex={null}
+			onCardClick={(i) => onTake(i)}
+			label="Treasure"
+			isMobile={isMobile}
+		>
 			{cards.map((card, i) => (
 				<TreasureCard
 					key={`${serializeCard(card)}-${i}`}
 					card={card}
 					rules={rules}
 					onTake={() => onTake(i)}
+					size="expanded"
 				/>
 			))}
-		</div>
+		</CardZone>
 	);
 };

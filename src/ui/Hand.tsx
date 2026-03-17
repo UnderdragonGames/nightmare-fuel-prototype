@@ -1,23 +1,17 @@
 import React from 'react';
 import type { Card, Color, Rules } from '../game/types';
 import { serializeCard } from '../game/helpers';
-
-type Props = {
-	rules: Rules;
-	cards: Card[];
-	selectedIndex: number | null;
-	onSelect: (index: number) => void;
-	onPickColor: (index: number, color: Color) => void;
-};
+import { CardZone } from './CardZone';
 
 // Neural pathway card component
-const NeuralCard: React.FC<{
+export const NeuralCard: React.FC<{
 	card: Card;
 	isSelected: boolean;
 	rules: Rules;
 	onSelect: () => void;
 	onPickColor: (color: Color) => void;
-}> = ({ card, isSelected, rules, onSelect, onPickColor }) => {
+	size?: 'normal' | 'expanded';
+}> = ({ card, isSelected, rules, onSelect, onPickColor, size = 'normal' }) => {
 	const sortedColors = [...card.colors].sort(
 		(a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b)
 	);
@@ -36,10 +30,12 @@ const NeuralCard: React.FC<{
 		return { color, endX, endY };
 	});
 
+	const expandedClass = size === 'expanded' ? ' neural-card--expanded' : '';
+
 	if (card.isAction) {
 		return (
 			<div
-				className={`neural-card neural-card--action ${isSelected ? 'neural-card--selected' : ''}`}
+				className={`neural-card neural-card--action${expandedClass} ${isSelected ? 'neural-card--selected' : ''}`}
 				onClick={onSelect}
 			>
 				<div className="neural-card__name">{card.name}</div>
@@ -54,7 +50,7 @@ const NeuralCard: React.FC<{
 
 	return (
 		<div
-			className={`neural-card ${isSelected ? 'neural-card--selected' : ''}`}
+			className={`neural-card${expandedClass} ${isSelected ? 'neural-card--selected' : ''}`}
 			onClick={onSelect}
 		>
 			<div className="neural-card__art">
@@ -90,9 +86,34 @@ const NeuralCard: React.FC<{
 	);
 };
 
-export const Hand: React.FC<Props> = ({ rules, cards, selectedIndex, onSelect, onPickColor }) => {
+export const Hand: React.FC<{
+	rules: Rules;
+	cards: Card[];
+	selectedIndex: number | null;
+	onSelect: (index: number) => void;
+	onPickColor: (index: number, color: Color) => void;
+	isExpanded: boolean;
+	onExpandChange: (expanded: boolean) => void;
+	isMobile?: boolean;
+	forceOpen?: boolean;
+}> = ({ rules, cards, selectedIndex, onSelect, onPickColor, isExpanded, onExpandChange, isMobile, forceOpen }) => {
+	// TODO: If the hand grows very large (e.g. > 10 cards), wrap expanded content
+	// in a Coverflow component instead of relying on the CardZone fan layout.
+	// For typical hand sizes (3-6 cards), the fan layout works well.
+	// Coverflow integration is planned for the Discard zone first.
+
 	return (
-		<div className="hand-cards">
+		<CardZone
+			corner="bottom-right"
+			cards={cards}
+			isExpanded={isExpanded}
+			onExpandChange={onExpandChange}
+			selectedIndex={selectedIndex}
+			onCardClick={onSelect}
+			label="Hand"
+			isMobile={isMobile}
+			forceOpen={forceOpen}
+		>
 			{cards.map((card, i) => (
 				<NeuralCard
 					key={`${serializeCard(card)}-${i}`}
@@ -101,8 +122,9 @@ export const Hand: React.FC<Props> = ({ rules, cards, selectedIndex, onSelect, o
 					rules={rules}
 					onSelect={() => onSelect(i)}
 					onPickColor={(color) => onPickColor(i, color)}
+					size="expanded"
 				/>
 			))}
-		</div>
+		</CardZone>
 	);
 };

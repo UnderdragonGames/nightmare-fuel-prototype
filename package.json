@@ -16,6 +16,7 @@
     "bgio-postgres": "^1.0.15",
     "boardgame.io": "^0.50.2",
     "classnames": "^2.5.1",
+    "framer-motion": "^12.36.0",
     "koa-static": "^5.0.0",
     "pg": "^8.16.3",
     "react": "^19.1.1",

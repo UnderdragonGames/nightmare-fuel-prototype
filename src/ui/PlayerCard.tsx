@@ -14,6 +14,8 @@ type Props = {
 	onBotChange: (bot: BotKind) => void;
 	isViewer: boolean;
 	onSetViewer: () => void;
+	handSize: number;
+	onHandClick?: () => void;
 };
 
 export const PlayerCard: React.FC<Props> = ({
@@ -26,6 +28,8 @@ export const PlayerCard: React.FC<Props> = ({
 	onBotChange,
 	isViewer,
 	onSetViewer,
+	handSize,
+	onHandClick,
 }) => {
 	const goalColors = [goals.primary, goals.secondary, goals.tertiary];
 
@@ -56,6 +60,27 @@ export const PlayerCard: React.FC<Props> = ({
 			{nightmareName && (
 				<div className="player-card__nightmare" title="Assigned nightmare">
 					{nightmareName}
+				</div>
+			)}
+			{handSize > 0 && (
+				<div
+					className="player-card__hand"
+					onClick={(e) => {
+						e.stopPropagation();
+						onHandClick?.();
+					}}
+					title={`${handSize} card${handSize !== 1 ? 's' : ''} in hand`}
+				>
+					<div className="player-card__hand-cards">
+						{Array.from({ length: handSize }, (_, i) => (
+							<div
+								key={i}
+								className="player-card__card-back"
+								style={{ marginLeft: i > 0 ? -8 : 0, zIndex: i }}
+							/>
+						))}
+					</div>
+					<span className="player-card__hand-count">{handSize}</span>
 				</div>
 			)}
 			<select
