@@ -13,6 +13,7 @@ const baseRules = {
 	RANDOM_CARDINAL_DIRECTIONS: false,
 	EDGE_COLORS,
 	COLOR_TO_DIR: buildColorToDir(EDGE_COLORS),
+	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: 0 },
 };
 
 const createState = (playerIds: PlayerID[]): GState => ({

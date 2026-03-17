@@ -309,6 +309,13 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	const sourceIsOrigin = G.origins.some((o) => o.q === source.q && o.r === source.r);
 	if (!sourceIsOrigin && !nodeHasAnyLane(G, source)) return false;
 
+	// STARTING_RING: reject new branches from rings below the minimum.
+	// Stacking on existing edges (same directed edge already exists) is still allowed.
+	if (rules.PLACEMENT.STARTING_RING > 0 && ringIndex(source) < rules.PLACEMENT.STARTING_RING) {
+		const existingEdge = countUndirectedLanes(G, source, dest) > 0;
+		if (!existingEdge) return false;
+	}
+
 	// Core mechanic: normally, a color implies its direction.
 	const dir = rules.COLOR_TO_DIR[color];
 	const expectedDest: Co = { q: source.q + dir.q, r: source.r + dir.r };

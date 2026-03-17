@@ -49,6 +49,7 @@ const HEX_PLACEMENT: PlacementRules = {
 	CONSOLIDATION: false,
 	CONSOLIDATION_END: 0,
 	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: false,
+	STARTING_RING: 0,
 };
 
 const HEX_SCORING: ObjectiveScoringRules = {
@@ -130,6 +131,8 @@ export const PATH_RULES: Rules = {
 		CONSOLIDATION_END: 3,
 		// Consolidation can exceed normal lane width limits (widths 4+ possible)
 		CONSOLIDATION_EXCEEDS_LANES_PER_PATH: true,
+		// New branches must start from ring 1 or further out (not from center ring 0)
+		STARTING_RING: 1,
 	},
 	SCORING: {
 		...HEX_SCORING,
