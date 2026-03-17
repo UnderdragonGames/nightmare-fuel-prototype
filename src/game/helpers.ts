@@ -300,8 +300,23 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	if (!isNeighbor(source, dest)) return false;
 
 	// Origins are wild and cannot be occupied / used as destination
+	// Exception: consolidation moves can target origins when CONSOLIDATE_TO_RING=0
 	const destIsOrigin = G.origins.some((o) => o.q === dest.q && o.r === dest.r);
-	if (destIsOrigin) return false;
+	if (destIsOrigin) {
+		const destRing = ringIndex(dest);
+		if (destRing < rules.PLACEMENT.CONSOLIDATE_TO_RING || !rules.PLACEMENT.CONSOLIDATION) return false;
+		// Only allow consolidation recolor: edge must already exist with a different color
+		if (countUndirectedLanes(G, source, dest) === 0) return false;
+		if (undirectedHasColor(G, source, dest, color)) return false;
+		if (!isConsolidationMove(G, source, dest, color, rules)) return false;
+		// Must extend from existing segment of this color
+		if (!nodeHasColorLane(G, source, color) && !nodeHasColorLane(G, dest, color)) return false;
+		// Per-directed-segment capacity (consolidation can optionally exceed)
+		const directedCount = countDirectedLanes(G, source, dest);
+		const cap = rules.PLACEMENT.MAX_LANES_PER_PATH;
+		if (directedCount >= cap && !rules.PLACEMENT.CONSOLIDATION_EXCEEDS_LANES_PER_PATH) return false;
+		return true;
+	}
 	const destTile = G.board[key(dest)];
 	if (destTile?.dead) return false;
 

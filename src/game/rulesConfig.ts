@@ -49,8 +49,7 @@ const HEX_PLACEMENT: PlacementRules = {
 	CONSOLIDATION: false,
 	CONSOLIDATION_END: 0,
 	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: false,
-	COST_TO_BLOCK: 2,
-	COST_TO_ROTATE: 1,
+	CONSOLIDATE_TO_RING: 1,
 };
 
 const HEX_SCORING: ObjectiveScoringRules = {
@@ -132,6 +131,8 @@ export const PATH_RULES: Rules = {
 		CONSOLIDATION_END: 3,
 		// Consolidation can exceed normal lane width limits (widths 4+ possible)
 		CONSOLIDATION_EXCEEDS_LANES_PER_PATH: true,
+		// Consolidation can reach center ring (ring 0) for game-ending paths
+		CONSOLIDATE_TO_RING: 0,
 	},
 	SCORING: {
 		...HEX_SCORING,
