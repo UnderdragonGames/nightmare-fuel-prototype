@@ -6,18 +6,21 @@ import { SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
 import { Board as HexBoard } from './ui/Board';
 import type { Color, Co, GState, PlayerPrefs, Stat } from './game/types';
-import { Hand } from './ui/Hand';
-import { Treasure } from './ui/Treasure';
+import { Hand, NeuralCard } from './ui/Hand';
+import { Treasure, TreasureCard } from './ui/Treasure';
 import { DiscardZone } from './ui/DiscardZone';
 import { ActionCardModal } from './ui/ActionCardModal';
+import { PlayerHandModal } from './ui/PlayerHandModal';
 import { computeScores } from './game/scoring';
-import { buildAllCoords, canPlace, canPlacePath, neighbors, asVisibleColor, key } from './game/helpers';
+import { buildAllCoords, canPlace, canPlacePath, neighbors, asVisibleColor, key, serializeCard } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
 import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, type BotKind } from './game/bots';
 import { PlayerCard } from './ui/PlayerCard';
 import { StateLab } from './ui/StateLab';
 import { getNightmareByName } from './game/nightmares';
 import { resolveCardActions, resolveCardEffects, type CardActionResolveContext } from './game/cardActions';
+import { useIsMobile } from './ui/useIsMobile';
+import { ZoneTabBar } from './ui/ZoneTabBar';
 
 // Types
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
@@ -89,6 +92,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	log,
 }) => {
 	const rules = G.rules;
+	const isMobile = useIsMobile();
 	const [selectedCard, setSelectedCard] = React.useState<number | null>(null);
 	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
 	const [rotationMode, setRotationMode] = React.useState(false);
@@ -97,6 +101,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 	const [expandedZone, setExpandedZone] = React.useState<'hand' | 'treasure' | 'discard' | null>(null);
 	const [actionModalOpen, setActionModalOpen] = React.useState(false);
+	const [viewingHandOf, setViewingHandOf] = React.useState<PlayerID | null>(null);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const setBotFor = useUIStore((s) => s.setBotFor);
 	const aiPaused = useUIStore((s) => s.aiPaused);
@@ -617,17 +622,34 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				deckCount={G.deck.length}
 			/>
 
-			{/* MOBILE MENU TOGGLE */}
-			<button
-				className="mobile-menu-toggle"
-				onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-				aria-label="Toggle players menu"
-			>
-				<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-					<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-				</svg>
-				<span className="mobile-menu-toggle__count">{ctx.playOrder.length}</span>
-			</button>
+			{/* MOBILE PLAYER ICONS */}
+			<div className="mobile-player-icons">
+				{(ctx.playOrder as PlayerID[]).map((pid) => {
+					const prefs = G.prefs[pid];
+					const isCurrent = pid === currentPlayer;
+					return (
+						<button
+							key={pid}
+							className={`mobile-player-icon ${isCurrent ? 'mobile-player-icon--active' : ''}`}
+							onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+							aria-label={`P${pid} — open players`}
+						>
+							<span className="mobile-player-icon__id">P{pid}</span>
+							{prefs && (
+								<div className="mobile-player-icon__dots">
+									{([prefs.primary, prefs.secondary, prefs.tertiary] as Color[]).map((col, i) => (
+										<span
+											key={`${col}-${i}`}
+											className="mobile-player-icon__dot"
+											style={{ background: asVisibleColor(col) }}
+										/>
+									))}
+								</div>
+							)}
+						</button>
+					);
+				})}
+			</div>
 
 			{/* LEFT PANEL - Players (desktop + mobile menu) */}
 			<aside className={`game-players ${mobileMenuOpen ? 'game-players--open' : ''}`}>
@@ -668,6 +690,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								setMobileMenuOpen(false);
 							}}
 							handSize={(G.hands[pid] ?? []).length}
+							onHandClick={() => setViewingHandOf(viewingHandOf === pid ? null : pid)}
 						/>
 					))}
 				</div>
@@ -761,42 +784,124 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			</main>
 
 			{/* CARD ZONES */}
-			<Hand
-				rules={rules}
-				cards={myHand}
-				selectedIndex={selectedCard}
-				onSelect={(index) => {
-					if (selectedCard === index) {
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setSelectedSourceDot(null);
-						return;
-					}
-					setSelectedCard(index);
-					setSelectedSourceDot(null);
-					const c = myHand[index];
-					if (!c) return;
-					if (isPathMode) setSelectedColor(null);
-				}}
-				onPickColor={onPickColor}
-				isExpanded={expandedZone === 'hand'}
-				onExpandChange={handleZoneExpand('hand')}
-			/>
+			{/* CARD ZONES — hidden on mobile (tab bar controls them) */}
+			{!isMobile && (
+				<>
+					<Hand
+						rules={rules}
+						cards={myHand}
+						selectedIndex={selectedCard}
+						onSelect={(index) => {
+							if (selectedCard === index) {
+								setSelectedCard(null);
+								setSelectedColor(null);
+								setSelectedSourceDot(null);
+								return;
+							}
+							setSelectedCard(index);
+							setSelectedSourceDot(null);
+							const c = myHand[index];
+							if (!c) return;
+							if (isPathMode) setSelectedColor(null);
+						}}
+						onPickColor={onPickColor}
+						isExpanded={expandedZone === 'hand'}
+						onExpandChange={handleZoneExpand('hand')}
+					/>
 
-			<Treasure
-				rules={rules}
-				cards={G.treasure}
-				onTake={onTakeTreasure}
-				isExpanded={expandedZone === 'treasure'}
-				onExpandChange={handleZoneExpand('treasure')}
-			/>
+					<Treasure
+						rules={rules}
+						cards={G.treasure}
+						onTake={onTakeTreasure}
+						isExpanded={expandedZone === 'treasure'}
+						onExpandChange={handleZoneExpand('treasure')}
+					/>
 
-			<DiscardZone
-				rules={rules}
-				cards={G.discard}
-				isExpanded={expandedZone === 'discard'}
-				onExpandChange={handleZoneExpand('discard')}
-			/>
+					<DiscardZone
+						rules={rules}
+						cards={G.discard}
+						isExpanded={expandedZone === 'discard'}
+						onExpandChange={handleZoneExpand('discard')}
+					/>
+				</>
+			)}
+
+			{/* MOBILE ZONE TAB BAR + EXPANDED CONTENT */}
+			{isMobile && (
+				<>
+					<ZoneTabBar
+						expandedZone={expandedZone}
+						onZoneToggle={(zone) => setExpandedZone(expandedZone === zone ? null : zone)}
+						handCount={myHand.length}
+						treasureCount={G.treasure.length}
+						discardCount={G.discard.length}
+					/>
+					{expandedZone === 'hand' && (
+						<div className="mobile-zone-panel">
+							<div className="mobile-zone-panel__cards">
+								{myHand.map((card, i) => (
+									<NeuralCard
+										key={`${serializeCard(card)}-${i}`}
+										card={card}
+										isSelected={i === selectedCard}
+										rules={rules}
+										onSelect={() => {
+											if (selectedCard === i) {
+												setSelectedCard(null);
+												setSelectedColor(null);
+												setSelectedSourceDot(null);
+												return;
+											}
+											setSelectedCard(i);
+											setSelectedSourceDot(null);
+											const c = myHand[i];
+											if (!c) return;
+											if (isPathMode) setSelectedColor(null);
+										}}
+										onPickColor={(color) => onPickColor(i, color)}
+									/>
+								))}
+							</div>
+						</div>
+					)}
+					{expandedZone === 'treasure' && (
+						<div className="mobile-zone-panel">
+							<div className="mobile-zone-panel__cards">
+								{G.treasure.map((card, i) => (
+									<TreasureCard
+										key={`${serializeCard(card)}-${i}`}
+										card={card}
+										rules={rules}
+										onTake={() => onTakeTreasure(i)}
+									/>
+								))}
+								{G.treasure.length === 0 && (
+									<div className="mobile-zone-panel__empty">No treasure</div>
+								)}
+							</div>
+						</div>
+					)}
+					{expandedZone === 'discard' && (
+						<div className="mobile-zone-panel">
+							<div className="mobile-zone-panel__cards">
+								{G.discard.map((card, i) => (
+									<NeuralCard
+										key={`discard-${card.id}-${i}`}
+										card={card}
+										isSelected={false}
+										rules={rules}
+										onSelect={() => {}}
+										onPickColor={() => {}}
+									/>
+								))}
+								{G.discard.length === 0 && (
+									<div className="mobile-zone-panel__empty">No discards</div>
+								)}
+							</div>
+						</div>
+					)}
+				</>
+			)}
 
 			{/* ACTION CARD MODAL */}
 			{actionModalOpen && selectedActionCard?.isAction && (
@@ -1027,6 +1132,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						)}
 					</div>
 				</ActionCardModal>
+			)}
+
+			{/* PLAYER HAND DISPLAY */}
+			{viewingHandOf !== null && (
+				<PlayerHandModal
+					pid={viewingHandOf}
+					handSize={(G.hands[viewingHandOf] ?? []).length}
+					onClose={() => setViewingHandOf(null)}
+				/>
 			)}
 
 			{/* FLOATING ACTIONS TOOLBAR */}
