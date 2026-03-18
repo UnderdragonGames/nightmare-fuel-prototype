@@ -136,7 +136,9 @@ const actionKey = (a: Action): string => {
 			return `play:${args.handIndex}:${args.pick}:${args.coord.q},${args.coord.r}`;
 		}
 		case 'rotateTile':
-			return `rotate:${a.args.handIndex}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+			return `rotate:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+		case 'blockTile':
+			return `block:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}`;
 		case 'stashToTreasure':
 			return `stash:${a.args.handIndex}`;
 		case 'takeFromTreasure':
@@ -149,6 +151,8 @@ const actionKey = (a: Action): string => {
 describe('blocked-consolidation', () => {
 	it('matches expected actions', () => {
 		const actual = enumerateActions(G, '0').map(actionKey).sort();
+		// Filter out block actions for the exact match (many empty tiles generate many block combos)
+		const actualWithoutBlocks = actual.filter((k) => !k.startsWith('block:'));
 		const expected = [
   "play:0:B:-1,0->-1,1",
   "play:0:B:0,0->0,1",
@@ -170,7 +174,14 @@ describe('blocked-consolidation', () => {
   "end",
   "play:1:V:-1,-3->-2,-2"
 ];
-		expect(actual).toEqual([...expected].sort());
+		expect(actualWithoutBlocks).toEqual([...expected].sort());
+		// Verify block actions exist (2 cards in hand, COST_TO_BLOCK=2, 1 combination [0,1])
+		const blockActions = actual.filter((k) => k.startsWith('block:'));
+		expect(blockActions.length).toBeGreaterThan(0);
+		// All block actions should use the single combo [0,1]
+		for (const k of blockActions) {
+			expect(k).toMatch(/^block:0\+1:/);
+		}
 		const forbidden: string[] = [];
 		for (const key of forbidden) expect(actual).not.toContain(key);
 	});

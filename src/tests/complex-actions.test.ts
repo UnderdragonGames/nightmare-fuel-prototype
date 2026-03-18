@@ -45,7 +45,9 @@ const actionKey = (a: Action): string => {
 			return `play:${args.handIndex}:${args.pick}:${args.coord.q},${args.coord.r}`;
 		}
 		case 'rotateTile':
-			return `rotate:${a.args.handIndex}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+			return `rotate:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+		case 'blockTile':
+			return `block:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}`;
 		case 'stashToTreasure':
 			return `stash:${a.args.handIndex}`;
 		case 'takeFromTreasure':

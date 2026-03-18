@@ -337,7 +337,9 @@ const actionKey = (a: Action): string => {
 			return `play:${args.handIndex}:${args.pick}:${args.coord.q},${args.coord.r}`;
 		}
 		case 'rotateTile':
-			return `rotate:${a.args.handIndex}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+			return `rotate:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+		case 'blockTile':
+			return `block:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}`;
 		case 'stashToTreasure':
 			return `stash:${a.args.handIndex}`;
 		case 'takeFromTreasure':
@@ -878,7 +880,7 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 				if (!coord) return null;
 				return actionKey({
 					type: 'rotateTile',
-					args: { handIndex: form.handIndex, coord, rotation: form.rotation },
+					args: { handIndices: [form.handIndex], coord, rotation: form.rotation },
 				});
 			}
 			case 'stashToTreasure':
@@ -953,7 +955,9 @@ const actionKey = (a: Action): string => {
 \t\t\treturn \`play:\${args.handIndex}:\${args.pick}:\${args.coord.q},\${args.coord.r}\`;
 \t\t}
 \t\tcase 'rotateTile':
-\t\t\treturn \`rotate:\${a.args.handIndex}:\${a.args.coord.q},\${a.args.coord.r}:\${a.args.rotation}\`;
+\t\t\treturn \`rotate:\${a.args.handIndices.join('+')}:\${a.args.coord.q},\${a.args.coord.r}:\${a.args.rotation}\`;
+\t\tcase 'blockTile':
+\t\t\treturn \`block:\${a.args.handIndices.join('+')}:\${a.args.coord.q},\${a.args.coord.r}\`;
 \t\tcase 'stashToTreasure':
 \t\t\treturn \`stash:\${a.args.handIndex}\`;
 \t\tcase 'takeFromTreasure':
