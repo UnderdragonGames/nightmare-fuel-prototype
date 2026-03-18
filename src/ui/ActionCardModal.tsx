@@ -7,24 +7,30 @@ type Props = {
 	rules: Rules;
 	onClose: () => void;
 	children: React.ReactNode;
+	/** When true, the modal is visually hidden but stays mounted (preserves form state). */
+	hidden?: boolean;
 };
 
-export const ActionCardModal: React.FC<Props> = ({ card, onClose, children }) => {
+export const ActionCardModal: React.FC<Props> = ({ card, onClose, children, hidden = false }) => {
 	return (
 		<AnimatePresence>
 			<motion.div
 				className="action-modal__overlay"
 				onClick={onClose}
 				initial={{ opacity: 0 }}
-				animate={{ opacity: 1 }}
+				animate={{ opacity: hidden ? 0 : 1 }}
 				exit={{ opacity: 0 }}
 				transition={{ duration: 0.2 }}
+				style={{
+					pointerEvents: hidden ? 'none' : 'auto',
+					visibility: hidden ? 'hidden' : 'visible',
+				}}
 			>
 				<motion.div
 					className="action-modal__content"
 					onClick={(e) => e.stopPropagation()}
 					initial={{ opacity: 0, scale: 0.95 }}
-					animate={{ opacity: 1, scale: 1 }}
+					animate={{ opacity: hidden ? 0 : 1, scale: hidden ? 0.95 : 1 }}
 					exit={{ opacity: 0, scale: 0.95 }}
 					transition={{ type: 'spring', stiffness: 300, damping: 25 }}
 				>

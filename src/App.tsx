@@ -120,6 +120,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [actionPrefTertiary, setActionPrefTertiary] = React.useState<Color | ''>('');
 	const [actionRevealedPickIndex, setActionRevealedPickIndex] = React.useState('');
 	const [actionDraftPicks, setActionDraftPicks] = React.useState<Record<PlayerID, string>>({});
+	const [actionPickingCoord, setActionPickingCoord] = React.useState<'coord' | 'moveFrom' | 'moveTo' | null>(null);
 	const [actionContextJson, setActionContextJson] = React.useState('');
 
 	const gRef = React.useRef(G);
@@ -343,6 +344,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	}
 
 	const onHexClick = (coord: Co) => {
+		// Action card coordinate picking — intercept before normal logic.
+		if (actionPickingCoord !== null) {
+			const coordStr = `${coord.q},${coord.r}`;
+			if (actionPickingCoord === 'coord') {
+				setActionCoordInput(coordStr);
+				setActionPickingCoord(null);
+			} else if (actionPickingCoord === 'moveFrom') {
+				setActionMoveFromInput(coordStr);
+				setActionPickingCoord('moveTo'); // auto-advance to picking destination
+			} else if (actionPickingCoord === 'moveTo') {
+				setActionMoveToInput(coordStr);
+				setActionPickingCoord(null);
+			}
+			return;
+		}
+
 		if (!isMyTurn || locked) return;
 
 		if (pendingRotationTile !== null) {
@@ -906,7 +923,24 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				</>
 			)}
 
-			{/* ACTION CARD MODAL */}
+			{/* COORD PICKING BANNER — shown when board is active for picking */}
+			{actionPickingCoord !== null && (
+				<div className="coord-pick-banner">
+					<span className="coord-pick-banner__text">
+						{actionPickingCoord === 'coord' && 'Click a hex to select target'}
+						{actionPickingCoord === 'moveFrom' && 'Click a hex to select source'}
+						{actionPickingCoord === 'moveTo' && 'Click a hex to select destination'}
+					</span>
+					<button
+						className="coord-pick-banner__cancel"
+						onClick={() => setActionPickingCoord(null)}
+					>
+						Cancel
+					</button>
+				</div>
+			)}
+
+			{/* ACTION CARD MODAL — hidden (not unmounted) during coord picking */}
 			{actionModalOpen && selectedActionCard?.isAction && (
 				<ActionCardModal
 					card={selectedActionCard}
@@ -915,7 +949,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						setSelectedCard(null);
 						setSelectedColor(null);
 						setActionModalOpen(false);
+						setActionPickingCoord(null);
 					}}
+					hidden={actionPickingCoord !== null}
 				>
 					<div className="action-panel__grid">
 						{actionNeedsTargetPlayer && (
@@ -956,36 +992,79 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							</label>
 						)}
 						{actionNeedsCoord && (
-							<label className="action-panel__field">
-								<span className="action-panel__label">Coord (q,r)</span>
-								<input
-									className="action-panel__input"
-									placeholder="0,0"
-									value={actionCoordInput}
-									onChange={(e) => setActionCoordInput(e.target.value)}
-								/>
-							</label>
+							<div className="action-panel__field">
+								<span className="action-panel__label">Target Hex</span>
+								<div className="action-panel__coord-pick">
+									{actionCoordInput ? (
+										<>
+											<span className="action-panel__coord-value">{actionCoordInput}</span>
+											<button
+												className="action-panel__coord-btn"
+												onClick={() => setActionPickingCoord('coord')}
+											>
+												Re-pick
+											</button>
+										</>
+									) : (
+										<button
+											className="action-panel__coord-btn action-panel__coord-btn--primary"
+											onClick={() => setActionPickingCoord('coord')}
+										>
+											Pick on board
+										</button>
+									)}
+								</div>
+							</div>
 						)}
 						{actionNeedsMove && (
 							<>
-								<label className="action-panel__field">
-									<span className="action-panel__label">Move From (q,r)</span>
-									<input
-										className="action-panel__input"
-										placeholder="0,0"
-										value={actionMoveFromInput}
-										onChange={(e) => setActionMoveFromInput(e.target.value)}
-									/>
-								</label>
-								<label className="action-panel__field">
-									<span className="action-panel__label">Move To (q,r)</span>
-									<input
-										className="action-panel__input"
-										placeholder="1,0"
-										value={actionMoveToInput}
-										onChange={(e) => setActionMoveToInput(e.target.value)}
-									/>
-								</label>
+								<div className="action-panel__field">
+									<span className="action-panel__label">Move From</span>
+									<div className="action-panel__coord-pick">
+										{actionMoveFromInput ? (
+											<>
+												<span className="action-panel__coord-value">{actionMoveFromInput}</span>
+												<button
+													className="action-panel__coord-btn"
+													onClick={() => setActionPickingCoord('moveFrom')}
+												>
+													Re-pick
+												</button>
+											</>
+										) : (
+											<button
+												className="action-panel__coord-btn action-panel__coord-btn--primary"
+												onClick={() => setActionPickingCoord('moveFrom')}
+											>
+												Pick on board
+											</button>
+										)}
+									</div>
+								</div>
+								<div className="action-panel__field">
+									<span className="action-panel__label">Move To</span>
+									<div className="action-panel__coord-pick">
+										{actionMoveToInput ? (
+											<>
+												<span className="action-panel__coord-value">{actionMoveToInput}</span>
+												<button
+													className="action-panel__coord-btn"
+													onClick={() => setActionPickingCoord('moveTo')}
+												>
+													Re-pick
+												</button>
+											</>
+										) : (
+											<button
+												className="action-panel__coord-btn"
+												disabled={!actionMoveFromInput}
+												onClick={() => setActionPickingCoord('moveTo')}
+											>
+												{actionMoveFromInput ? 'Pick on board' : 'Pick "from" first'}
+											</button>
+										)}
+									</div>
+								</div>
 							</>
 						)}
 						{actionNeedsReplaceColor && (

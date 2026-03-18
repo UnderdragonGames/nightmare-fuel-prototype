@@ -141,23 +141,26 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 			{coords.map((c) => {
 				const center = axialToPixel(c, size);
 				const tile = board[key(c)];
+				const isDead = tile?.dead ?? false;
 				const occupants = tile?.colors ?? [];
 				const rotation = tile?.rotation ?? 0;
 				const order = rules.COLORS as Color[];
 				const sortedOccupants = occupants.length > 1 ? [...occupants].sort((a, b) => order.indexOf(a) - order.indexOf(b)) : occupants;
 				const isOrigin = originSet.has(key(c));
 				const isHighlighted = highlightSet.has(key(c));
-				const isHighlight = isHighlighted && occupants.length === 0;
+				const isHighlight = isHighlighted && occupants.length === 0 && !isDead;
 				const isRotatable = highlightIsRotation && isHighlighted && occupants.length > 0;
 				const isPendingRotation = pendingRotationTile !== null && key(pendingRotationTile) === key(c);
 				const showMoveStroke = !highlightIsRotation && isHighlighted && !isPathMode;
-				const split = !isPathMode && sortedOccupants.length >= 2 ? [asVisibleColor(sortedOccupants[0] as Color), asVisibleColor(sortedOccupants[1] as Color)] as [string, string] : null;
-				
+				const split = !isPathMode && !isDead && sortedOccupants.length >= 2 ? [asVisibleColor(sortedOccupants[0] as Color), asVisibleColor(sortedOccupants[1] as Color)] as [string, string] : null;
+
 				// In path mode, hex fill is neutral - lanes show the colors
 				// Dark theme: use dark fills instead of light grays
-				const hexFill = isPathMode
-					? (isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24')
-					: (sortedOccupants[0] ? asVisibleColor(sortedOccupants[0]) : isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24');
+				const hexFill = isDead
+					? '#0a0a0e'
+					: isPathMode
+						? (isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24')
+						: (sortedOccupants[0] ? asVisibleColor(sortedOccupants[0]) : isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24');
 				
 				return (
 					<g key={key(c)}>
@@ -165,13 +168,19 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							center={center}
 							size={size - 0.5}
 							fill={hexFill}
-							splitFills={split ?? undefined}
-							fillOpacity={isHighlight ? 0.35 : (isRotatable && !isPathMode ? 0.7 : 1)}
-							stroke={isRotatable && !isPathMode ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#bb88ee' : '#2a2a3d'))}
-							strokeWidth={isRotatable && !isPathMode ? 3 : (showMoveStroke ? 2 : (isOrigin ? 2 : 1))}
+							splitFills={isDead ? undefined : (split ?? undefined)}
+							fillOpacity={isDead ? 1 : (isHighlight ? 0.35 : (isRotatable && !isPathMode ? 0.7 : 1))}
+							stroke={isDead ? '#1a1020' : (isRotatable && !isPathMode ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#bb88ee' : '#2a2a3d')))}
+							strokeWidth={isDead ? 2 : (isRotatable && !isPathMode ? 3 : (showMoveStroke ? 2 : (isOrigin ? 2 : 1)))}
 							onClick={() => !isPathMode && onHexClick(c)}
 						>
-							{isOrigin && occupants.length === 0 && !isPathMode && (
+							{isDead && (
+								<g style={{ pointerEvents: 'none' }}>
+									<line x1={-size * 0.25} y1={-size * 0.25} x2={size * 0.25} y2={size * 0.25} stroke="#2a1525" strokeWidth={2.5} strokeLinecap="round" />
+									<line x1={size * 0.25} y1={-size * 0.25} x2={-size * 0.25} y2={size * 0.25} stroke="#2a1525" strokeWidth={2.5} strokeLinecap="round" />
+								</g>
+							)}
+							{isOrigin && occupants.length === 0 && !isPathMode && !isDead && (
 								<circle cx={0} cy={0} r={size * 0.3} fill="none" stroke="#bb88ee" strokeWidth={2} strokeDasharray="4,2" />
 							)}
 							{/* Rotation indicator - hide in path mode */}
