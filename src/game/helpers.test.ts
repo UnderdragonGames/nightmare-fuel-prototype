@@ -8,6 +8,7 @@ const TEST_RULES: Rules = {
 	...PATH_RULES,
 	RANDOM_CARDINAL_DIRECTIONS: false,
 	COLOR_TO_DIR: buildColorToDir(BASE_EDGE_COLORS),
+	PLACEMENT: { ...PATH_RULES.PLACEMENT, STARTING_RING: 0 },
 };
 
 const createTestState = (overrides: Partial<GState> = {}): GState => {

@@ -214,6 +214,9 @@ export type PlacementRules = {
 	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: boolean;
 	// Minimum ring a consolidation move can reach (0 = center origin, 1 = ring 1 adjacent to origin)
 	CONSOLIDATE_TO_RING: number;
+	// Minimum ring from which new path branches can originate (0 = center allowed, 1 = must start from ring 1+)
+	// Stacking on existing edges from lower rings is still allowed.
+	STARTING_RING: number;
 };
 
 export type Rules = {

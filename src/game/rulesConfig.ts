@@ -50,6 +50,7 @@ const HEX_PLACEMENT: PlacementRules = {
 	CONSOLIDATION_END: 0,
 	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: false,
 	CONSOLIDATE_TO_RING: 1,
+	STARTING_RING: 0,
 };
 
 const HEX_SCORING: ObjectiveScoringRules = {
@@ -133,6 +134,8 @@ export const PATH_RULES: Rules = {
 		CONSOLIDATION_EXCEEDS_LANES_PER_PATH: true,
 		// Consolidation can reach center ring (ring 0) for game-ending paths
 		CONSOLIDATE_TO_RING: 0,
+		// New branches must start from ring 1 or further out (not from center ring 0)
+		STARTING_RING: 1,
 	},
 	SCORING: {
 		...HEX_SCORING,
