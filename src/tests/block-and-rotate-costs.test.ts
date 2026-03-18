@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { enumerateActions, applyMicroAction, type Action } from '../game/ai';
+import { enumerateActions, applyMicroAction } from '../game/ai';
 import type { Co, GState, Rules } from '../game/types';
 import { HEX_RULES, buildColorToDir, BASE_EDGE_COLORS } from '../game/rulesConfig';
 import { key } from '../game/helpers';
@@ -51,27 +51,6 @@ const setEmptyTile = (G: GState, coord: Co): void => {
 	G.board[key(coord)] = { colors: [], rotation: 0, dead: false };
 };
 
-const actionKey = (a: Action): string => {
-	switch (a.type) {
-		case 'playCard': {
-			const args = a.args;
-			if ('source' in args) {
-				return `play:${args.handIndex}:${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
-			}
-			return `play:${args.handIndex}:${args.pick}:${args.coord.q},${args.coord.r}`;
-		}
-		case 'rotateTile':
-			return `rotate:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
-		case 'blockTile':
-			return `block:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}`;
-		case 'stashToTreasure':
-			return `stash:${a.args.handIndex}`;
-		case 'takeFromTreasure':
-			return `take:${a.args.index}`;
-		case 'endTurnAndRefill':
-			return 'end';
-	}
-};
 
 describe('COST_TO_ROTATE', () => {
 	it('rotateTile discards COST_TO_ROTATE cards', () => {

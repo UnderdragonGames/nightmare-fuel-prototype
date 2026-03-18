@@ -202,6 +202,8 @@ export const CardZone: React.FC<{
 					</>
 				) : (
 					// Per-card layout animation mode (Hand, Treasure):
+					// Layout animation handles repositioning when cards are added/removed.
+					// New cards appear at their final position; remaining cards slide smoothly.
 					<div
 						className={`card-zone__cards ${isExpanded ? 'card-zone__cards--expanded' : 'card-zone__cards--collapsed'}`}
 					>

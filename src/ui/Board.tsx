@@ -1,5 +1,5 @@
 import React from 'react';
-import { axialToPixel, asVisibleColor, buildAllCoords, key, edgeIndexToColor, neighbors } from '../game/helpers';
+import { axialToPixel, asVisibleColor, buildAllCoords, key, edgeIndexToColor, neighbors, ringIndex } from '../game/helpers';
 import { Hex } from './Hex';
 import type { Color, Co, HexTile, Rules, PathLane } from '../game/types';
 
@@ -142,6 +142,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				const center = axialToPixel(c, size);
 				const tile = board[key(c)];
 				const isDead = tile?.dead ?? false;
+				const isInnerRing = rules.PLACEMENT.STARTING_RING > 0 && ringIndex(c) < rules.PLACEMENT.STARTING_RING;
 				const occupants = tile?.colors ?? [];
 				const rotation = tile?.rotation ?? 0;
 				const order = rules.COLORS as Color[];
@@ -156,7 +157,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 
 				// In path mode, hex fill is neutral - lanes show the colors
 				// Dark theme: use dark fills instead of light grays
-				const hexFill = isDead
+				const hexFill = isDead || isInnerRing
 					? '#0a0a0e'
 					: isPathMode
 						? (isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24')

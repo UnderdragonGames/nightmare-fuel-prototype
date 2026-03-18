@@ -55,22 +55,32 @@ const addLane = (G: GState, from: Co, to: Co, color: 'R' | 'O' | 'Y' | 'G' | 'B'
 };
 
 describe('STARTING_RING rule', () => {
-	describe('STARTING_RING=1: blocks new branches from ring 0', () => {
-		it('rejects new branch from origin (ring 0) to ring 1', () => {
+	describe('STARTING_RING=1: ring 0 is blocked, ring 1 nodes are effective origins', () => {
+		it('rejects new branches from ring 0 (including the origin)', () => {
 			const G = createTestState({ rules: rulesStartingRing1 });
-			// B direction: (1, 0), so origin (0,0) -> (1,0) is a new branch from ring 0
+			// Origin at (0,0) is ring 0 — cannot build outward from it
 			expect(canPlacePath(G, { q: 0, r: 0 }, { q: 1, r: 0 }, 'B', rulesStartingRing1)).toBe(false);
+			expect(canPlacePath(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', rulesStartingRing1)).toBe(false);
 		});
 
-		it('rejects all color directions from origin when no existing edges', () => {
+		it('allows new branches from ring 1 nodes (they act as origins)', () => {
 			const G = createTestState({ rules: rulesStartingRing1 });
-			// All 6 directions from origin should be blocked
-			expect(canPlacePath(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', rulesStartingRing1)).toBe(false);
-			expect(canPlacePath(G, { q: 0, r: 0 }, { q: 1, r: -1 }, 'G', rulesStartingRing1)).toBe(false);
-			expect(canPlacePath(G, { q: 0, r: 0 }, { q: 1, r: 0 }, 'B', rulesStartingRing1)).toBe(false);
-			expect(canPlacePath(G, { q: 0, r: 0 }, { q: 0, r: 1 }, 'V', rulesStartingRing1)).toBe(false);
-			expect(canPlacePath(G, { q: 0, r: 0 }, { q: -1, r: 1 }, 'R', rulesStartingRing1)).toBe(false);
-			expect(canPlacePath(G, { q: 0, r: 0 }, { q: -1, r: 0 }, 'O', rulesStartingRing1)).toBe(false);
+			// Ring 1 nodes should be valid starting points even without existing lanes
+			// B direction: (1,0) -> (2,0)
+			expect(canPlacePath(G, { q: 1, r: 0 }, { q: 2, r: 0 }, 'B', rulesStartingRing1)).toBe(true);
+			// Y direction: (0,-1) -> (0,-2)
+			expect(canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: -2 }, 'Y', rulesStartingRing1)).toBe(true);
+		});
+
+		it('blocks building INTO ring 0 tiles except via consolidation', () => {
+			const G = createTestState({ rules: rulesStartingRing1 });
+			// O direction from (0,-1) would go to (-1,-1)... not ring 0.
+			// Let's try a direction that goes toward center: from ring 1 inward
+			// R direction: (-1, 1), so from (1,0) -> (0,1) stays ring 1
+			// We need to test that building toward ring 0 non-origin is blocked
+			addLane(G, { q: 1, r: 0 }, { q: 2, r: 0 }, 'B');
+			// O direction from (1,0): (-1,0) -> dest (0,0) is ring 0 origin — blocked by destIsOrigin unless consolidation
+			expect(canPlacePath(G, { q: 1, r: 0 }, { q: 0, r: 0 }, 'O', rulesStartingRing1)).toBe(false);
 		});
 	});
 

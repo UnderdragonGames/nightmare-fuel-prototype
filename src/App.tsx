@@ -270,9 +270,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		['randomStealCard', 'registerSkipTurnHook', 'attachToPlayer', 'moveCardToPlayerHand'].includes(action.type)
 	);
 	const actionNeedsChoice = selectedActionList.some((action) => action.type === 'choice');
-	const actionNeedsCoord = selectedActionList.some((action) => action.type === 'replaceHexWithDead' || action.type === 'replaceHexColor');
-	const actionNeedsMove = selectedActionList.some((action) => action.type === 'moveHex');
-	const actionNeedsReplaceColor = selectedActionList.some((action) => action.type === 'replaceHexColor');
+	const actionNeedsCoord = selectedActionList.some((action) =>
+		action.type === 'replaceHexWithDead' || (action.type === 'replaceHexColor' && !isPathMode),
+	);
+	const actionNeedsMove = selectedActionList.some((action) =>
+		action.type === 'moveHex' || (action.type === 'replaceHexColor' && isPathMode) || action.type === 'replaceLaneColor',
+	);
+	const actionNeedsReplaceColor = selectedActionList.some((action) =>
+		action.type === 'replaceHexColor' || action.type === 'replaceLaneColor',
+	);
 	const actionNeedsStat = selectedActionList.some((action) =>
 		['chooseStat', 'setAgendaOverride', 'attachTokenToCard', 'registerTrigger'].includes(action.type)
 	);
@@ -285,6 +291,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			currentPlayerId: currentPlayer,
 			playerOrder: ctx.playOrder as PlayerID[],
 			lastPlacedColor: G.action.lastPlacedColor,
+			mode: rules.MODE,
 		};
 		if (actionTargetPlayer) ctxBase.targetPlayerId = actionTargetPlayer;
 		if (actionChoiceIndex !== '') ctxBase.choiceIndex = Number(actionChoiceIndex);
@@ -803,7 +810,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				/>
 			</main>
 
-			{/* CARD ZONES */}
+			{/* BACKGROUND DIM — subtle overlay when a zone is expanded */}
+			{expandedZone !== null && !isMobile && (
+				<div className="zone-backdrop-dim" onClick={() => setExpandedZone(null)} />
+			)}
+
 			{/* CARD ZONES — hidden on mobile (tab bar controls them) */}
 			{!isMobile && (
 				<>

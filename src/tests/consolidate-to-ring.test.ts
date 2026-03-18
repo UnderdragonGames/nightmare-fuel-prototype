@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { canPlacePath, countRimToCenterPaths, key } from '../game/helpers';
+import { canPlacePath, countRimToCenterPaths } from '../game/helpers';
 import type { GState, PathLane, Rules } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { initActionState } from '../game/effects';
-import { enumerateActions, type Action, applyMicroAction } from '../game/ai';
+import { enumerateActions, type Action } from '../game/ai';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
 
@@ -68,7 +68,9 @@ const actionKey = (a: Action): string => {
 			return `play:${args.handIndex}:${args.pick}:${args.coord.q},${args.coord.r}`;
 		}
 		case 'rotateTile':
-			return `rotate:${a.args.handIndex}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+			return `rotate:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
+		case 'blockTile':
+			return `block:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}`;
 		case 'stashToTreasure':
 			return `stash:${a.args.handIndex}`;
 		case 'takeFromTreasure':

@@ -3,6 +3,7 @@ import { enumerateActions, type Action, applyMicroAction } from '../game/ai';
 import type { GState } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { computeScoresRaw } from '../game/scoring';
+import { initActionState } from '../game/effects';
 
 // Test to address strange inconsistencies between consolidation moves and regular moves
 
@@ -116,12 +117,15 @@ const G: GState = {
 	lanes: [{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'R' }, { from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'R' }, { from: { q: 2, r: 0 }, to: { q: 1, r: 1 }, color: 'G' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'O' }, { from: { q: 1, r: -1 }, to: { q: 2, r: -2 }, color: 'O' }, { from: { q: 1, r: 1 }, to: { q: 0, r: 2 }, color: 'G' }, { from: { q: 0, r: 2 }, to: { q: 1, r: 2 }, color: 'R' }, { from: { q: 2, r: -2 }, to: { q: 1, r: -2 }, color: 'Y' }, { from: { q: 1, r: 2 }, to: { q: 1, r: 3 }, color: 'B' }, { from: { q: 1, r: 3 }, to: { q: 2, r: 2 }, color: 'O' }, { from: { q: 2, r: 2 }, to: { q: 2, r: 1 }, color: 'V' }, { from: { q: 1, r: -2 }, to: { q: 1, r: -3 }, color: 'V' }, { from: { q: 1, r: -3 }, to: { q: 0, r: -2 }, color: 'G' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 0 }, color: 'Y' }, { from: { q: 0, r: -2 }, to: { q: 0, r: -1 }, color: 'B' }, { from: { q: -1, r: 0 }, to: { q: -1, r: 1 }, color: 'B' }, { from: { q: -1, r: 1 }, to: { q: -1, r: 2 }, color: 'B' }, { from: { q: -1, r: 2 }, to: { q: 0, r: 1 }, color: 'O' }, { from: { q: 2, r: 1 }, to: { q: 3, r: 1 }, color: 'R' }, { from: { q: 3, r: 1 }, to: { q: 3, r: 0 }, color: 'V' }, { from: { q: 3, r: 0 }, to: { q: 4, r: 0 }, color: 'R' }, { from: { q: 4, r: 0 }, to: { q: 5, r: 0 }, color: 'R' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'O' }, { from: { q: 0, r: -1 }, to: { q: -1, r: -1 }, color: 'Y' }, { from: { q: -1, r: -1 }, to: { q: -2, r: -1 }, color: 'Y' }, { from: { q: -2, r: -1 }, to: { q: -3, r: 0 }, color: 'G' }, { from: { q: -3, r: 0 }, to: { q: -3, r: -1 }, color: 'V' }, { from: { q: -3, r: -1 }, to: { q: -3, r: -2 }, color: 'V' }, { from: { q: 1, r: -1 }, to: { q: 2, r: -2 }, color: 'O' }, { from: { q: 2, r: -2 }, to: { q: 3, r: -2 }, color: 'R' }, { from: { q: 4, r: -3 }, to: { q: 5, r: -3 }, color: 'R' }, { from: { q: 4, r: -3 }, to: { q: 3, r: -2 }, color: 'R' }, { from: { q: 3, r: -2 }, to: { q: 4, r: -3 }, color: 'O' }],
 	deck: [],
 	discard: [],
-	hands: { '0': [{ colors: ['R', 'O', 'Y', 'G', 'B', 'V'] }] },
-	treasure: [{ colors: [] }, { colors: [] }, { colors: [] }, { colors: [] }],
+	hands: { '0': [{ colors: ['R', 'O', 'Y', 'G', 'B', 'V'] } as any] },
+	treasure: [{ colors: [] } as any, { colors: [] } as any, { colors: [] } as any, { colors: [] } as any],
 	prefs: { '0': { primary: 'R', secondary: 'V', tertiary: 'O' } },
+	nightmares: {},
+	nightmareState: {},
 	stats: { placements: 0 },
-	meta: { deckExhaustionCycle: null, stashBonus: {} },
+	meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
 	origins: [{ q: 0, r: 0 }],
+	action: initActionState(['0']),
 };
 
 const actionKey = (a: Action): string => {

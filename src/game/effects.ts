@@ -7,7 +7,6 @@ import type {
 	Co,
 	GameEffect,
 	GState,
-	HookDef,
 	NightmareAction,
 	PlayerID,
 	PlayerPrefs,
@@ -224,6 +223,14 @@ export const replaceHexColor = (G: GState, coord: Co, color: Color): void => {
 	if (tile?.dead) return;
 	const rotation = inferPlacementRotation(G, coord, color);
 	G.board[k] = { colors: [color], rotation, dead: false };
+};
+
+export const replaceLaneColor = (G: GState, from: Co, to: Co, color: Color): void => {
+	const idx = G.lanes.findIndex(
+		(ln) => key(ln.from) === key(from) && key(ln.to) === key(to),
+	);
+	if (idx === -1) return;
+	G.lanes[idx] = { ...G.lanes[idx]!, color };
 };
 
 export const moveHex = (G: GState, from: Co, to: Co): void => {
@@ -478,6 +485,9 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 			break;
 		case 'replaceHexColor':
 			replaceHexColor(G, effect.coord, effect.color);
+			break;
+		case 'replaceLaneColor':
+			replaceLaneColor(G, effect.from, effect.to, effect.color);
 			break;
 		case 'moveHex':
 			moveHex(G, effect.from, effect.to);

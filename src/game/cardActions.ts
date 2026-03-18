@@ -1,4 +1,4 @@
-import type { Card, CardAction, Color, Co, GameEffect, HookDef, PlayerID, PlayerPrefs, Stat } from './types';
+import type { Card, CardAction, CardActionTarget, Color, Co, GameEffect, HookDef, PlayerID, PlayerPrefs, Stat } from './types';
 
 const drawEach = (count: number): CardAction => ({ type: 'drawCards', count, target: 'each' });
 const drawCurrent = (count: number): CardAction => ({ type: 'drawCards', count, target: 'current' });
@@ -64,6 +64,7 @@ export type CardActionResolveContext = {
 	chosenStat?: Stat;
 	playerPrefs?: PlayerPrefs;
 	lastPlacedColor?: Color | null;
+	mode?: 'hex' | 'path';
 };
 
 const requireValue = <T,>(value: T | undefined, message: string): T => {
@@ -71,7 +72,7 @@ const requireValue = <T,>(value: T | undefined, message: string): T => {
 	return value;
 };
 
-const resolveTargetPlayers = (action: CardAction, ctx: CardActionResolveContext): PlayerID[] => {
+const resolveTargetPlayers = (action: { target: CardActionTarget; playerId?: PlayerID }, ctx: CardActionResolveContext): PlayerID[] => {
 	if (action.target === 'current') return [ctx.currentPlayerId];
 	if (action.target === 'each') return [...ctx.playerOrder];
 	const target = requireValue(action.playerId ?? ctx.targetPlayerId, 'Card action requires target playerId.');
@@ -272,9 +273,24 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 				break;
 			}
 			case 'replaceHexColor': {
-				const coord = requireValue(ctx.coord, 'replaceHexColor requires coord.');
 				const color = requireValue(ctx.replaceColor, 'replaceHexColor requires replaceColor.');
-				pushEffect({ type: 'replaceHexColor', coord, color });
+				if (ctx.mode === 'path') {
+					// Path mode: replace a lane's color
+					const from = requireValue(ctx.moveFrom, 'replaceLaneColor requires from coordinate (moveFrom).');
+					const to = requireValue(ctx.moveTo, 'replaceLaneColor requires to coordinate (moveTo).');
+					pushEffect({ type: 'replaceLaneColor', from, to, color });
+				} else {
+					// Hex mode: replace a hex's color
+					const coord = requireValue(ctx.coord, 'replaceHexColor requires coord.');
+					pushEffect({ type: 'replaceHexColor', coord, color });
+				}
+				break;
+			}
+			case 'replaceLaneColor': {
+				const from = requireValue(ctx.moveFrom, 'replaceLaneColor requires from coordinate (moveFrom).');
+				const to = requireValue(ctx.moveTo, 'replaceLaneColor requires to coordinate (moveTo).');
+				const color = requireValue(ctx.replaceColor, 'replaceLaneColor requires replaceColor.');
+				pushEffect({ type: 'replaceLaneColor', from, to, color });
 				break;
 			}
 			case 'grantRevealUnusedVillains': {

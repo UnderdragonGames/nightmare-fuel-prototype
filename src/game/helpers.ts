@@ -320,13 +320,22 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	const destTile = G.board[key(dest)];
 	if (destTile?.dead) return false;
 
-	// Must extend from an existing node (or origin)
+	// Must extend from an existing node, origin, or starting-ring node
 	const sourceIsOrigin = G.origins.some((o) => o.q === source.q && o.r === source.r);
-	if (!sourceIsOrigin && !nodeHasAnyLane(G, source)) return false;
+	const startingRing = rules.PLACEMENT.STARTING_RING;
+	const sourceIsStartingRing = startingRing > 0 && ringIndex(source) === startingRing;
+	const sourceIsValidStart = sourceIsOrigin || sourceIsStartingRing;
+	if (!sourceIsValidStart && !nodeHasAnyLane(G, source)) return false;
 
 	// STARTING_RING: reject new branches from rings below the minimum.
-	// Stacking on existing edges (same directed edge already exists) is still allowed.
-	if (rules.PLACEMENT.STARTING_RING > 0 && ringIndex(source) < rules.PLACEMENT.STARTING_RING) {
+	// Stacking on existing edges is exempt (for consolidation).
+	if (startingRing > 0 && ringIndex(source) < startingRing) {
+		const existingEdge = countUndirectedLanes(G, source, dest) > 0;
+		if (!existingEdge) return false;
+	}
+
+	// Block building INTO inner-ring tiles (below starting ring) unless consolidation
+	if (startingRing > 0 && ringIndex(dest) < startingRing && !destIsOrigin) {
 		const existingEdge = countUndirectedLanes(G, source, dest) > 0;
 		if (!existingEdge) return false;
 	}
@@ -362,7 +371,7 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 			// If already branching from this node, only add a new outward direction when this color is already present.
 			// Exclude inward-going lanes from the outgoing count since they represent
 			// backward/inward flow, not forward branching that consumes capacity.
-			if (!sourceIsOrigin && ringIndex(dest) > ringIndex(source)) {
+			if (!sourceIsValidStart && ringIndex(dest) > ringIndex(source)) {
 				const outgoing = new Set<string>();
 				for (const ln of G.lanes) {
 					if (ln.from.q === source.q && ln.from.r === source.r && !isInwardLane(ln)) {
@@ -408,7 +417,7 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	// Inward-going lanes are excluded from outgoing counts since they represent
 	// backward/inward flow, not forward branching that consumes capacity.
 	if (rules.PLACEMENT.FORK_SUPPORT && (!isConsolidationRecolorMove || !isConsolidationBacktrack)) {
-		if (!sourceIsOrigin) {
+		if (!sourceIsValidStart) {
 			// Total support at source node: incoming lanes PLUS inward outgoing lanes.
 			// Inward outgoing lanes (consolidation backtracks from this node) represent
 			// through-traffic and provide support for forward branching. This ensures
@@ -830,12 +839,25 @@ export const hasRimConnectedPath = (G: GState, color: Color): boolean => {
 		};
 		for (const ln of G.lanes) addAdj(ln.from, ln.to);
 
-		// Origin-connected set
+		// Origin-connected set (includes starting-ring nodes as effective origins)
 		const originConnected = new Set<string>();
 		const q: string[] = [];
 		for (const ok of originKeys) {
 			originConnected.add(ok);
 			q.push(ok);
+		}
+		// When STARTING_RING > 0, starting-ring nodes are effective origins
+		const startingRing = G.rules.PLACEMENT.STARTING_RING;
+		if (startingRing > 0) {
+			for (const coord of buildAllCoords(radius)) {
+				if (ringIndex(coord) === startingRing) {
+					const ck = key(coord);
+					if (!originConnected.has(ck)) {
+						originConnected.add(ck);
+						q.push(ck);
+					}
+				}
+			}
 		}
 		while (q.length) {
 			const cur = q.shift()!;

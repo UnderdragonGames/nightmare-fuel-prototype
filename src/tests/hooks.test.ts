@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { GState, HookDef, GameEvent } from '../game/types';
+import type { GState, HookDef } from '../game/types';
 import { emitEvent, registerHook, removeHooksBySource } from '../game/hooks';
 import { initActionState, applyGameEffects, drawOne, resolveDrawHooksIfReady } from '../game/effects';
 import { resolveCardEffects } from '../game/cardActions';

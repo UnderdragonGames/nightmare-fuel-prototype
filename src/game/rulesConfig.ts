@@ -92,7 +92,7 @@ export const HEX_RULES: Rules = {
 	// If true, game ends only after all players have had equal turns since deck exhaustion
 	EQUAL_TURNS: true,
 	// Action card play rule (env: VITE_ACTION_CARDS=disabled|one-per-turn|unlimited)
-	ACTION_CARDS: (import.meta.env?.VITE_ACTION_CARDS as ActionCardsRule) || 'disabled',
+	ACTION_CARDS: ((import.meta as any).env?.VITE_ACTION_CARDS as ActionCardsRule) || 'disabled',
 	// Scoring configuration
 	SCORING: HEX_SCORING,
 	// Placement configuration

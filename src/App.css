@@ -2771,9 +2771,11 @@
 .card-zone__custom-expanded {
 	position: relative;
 	z-index: 1;
-	min-width: 500px;
-	min-height: 400px;
+	max-width: 50vw;
+	min-width: 400px;
+	min-height: 300px;
 	padding: 16px;
+	overflow: hidden;
 }
 
 /* ── Mobile: disable hover, rely on tap ── */
@@ -3075,6 +3077,16 @@
 .discard-card__select-btn:hover {
 	background: var(--accent-hover, #7c3aed);
 	box-shadow: 0 0 12px rgba(139, 92, 246, 0.5);
+}
+
+/* === ZONE BACKDROP DIM === */
+.zone-backdrop-dim {
+	position: fixed;
+	inset: 0;
+	z-index: 55;
+	background: rgba(0, 0, 0, 0.25);
+	pointer-events: auto;
+	transition: opacity 0.2s ease;
 }
 
 /* === SIDEBAR NIGHTMARE PANEL === */

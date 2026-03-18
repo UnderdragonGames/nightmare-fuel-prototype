@@ -52,6 +52,7 @@ export type CardAction =
 	| { type: 'grantExtraPlacement'; color: CardActionPlacementColor }
 	| { type: 'randomStealCard'; count: number }
 	| { type: 'replaceHexColor' }
+	| { type: 'replaceLaneColor' }
 	| { type: 'grantRevealUnusedVillains'; duration: CardActionDuration }
 	| { type: 'choice'; options: CardAction[][] };
 
@@ -138,7 +139,7 @@ export type PathLane = { from: Co; to: Co; color: Color };
 export type HexTile = {
 	colors: Color[];
 	rotation: number; // 0-5, number of 60-degree clockwise rotations from default orientation
-	dead: boolean;
+	dead?: boolean;
 };
 
 export type GState = {
@@ -295,6 +296,7 @@ export type GameEffect =
 	| { type: 'registerHook'; hook: HookDef }
 	| { type: 'replaceHexWithDead'; coord: Co }
 	| { type: 'replaceHexColor'; coord: Co; color: Color }
+	| { type: 'replaceLaneColor'; from: Co; to: Co; color: Color }
 	| { type: 'moveHex'; from: Co; to: Co }
 	| { type: 'reorderPlayerPrefs'; playerId: PlayerID; order: PlayerPrefs }
 	| { type: 'setAgendaOverride'; playerId: PlayerID; stat: Stat | null }

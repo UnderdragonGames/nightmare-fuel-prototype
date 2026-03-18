@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import type { GState, PlayerID, Card } from '../game/types';
+import type { GState, PlayerID } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { makeCard } from '../game/cardFactory';
-import { applyGameEffects, initActionState, playActionCardFromHand, rotateHands } from '../game/effects';
+import { initActionState, playActionCardFromHand, rotateHands } from '../game/effects';
 import { CARD_ACTIONS_BY_ID, resolveCardEffects } from '../game/cardActions';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
