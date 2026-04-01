@@ -30,6 +30,31 @@ export const TreasureCard: React.FC<{
 
 	const expandedClass = size === 'expanded' ? ' neural-card--expanded' : '';
 
+	if (card.isAction) {
+		return (
+			<div className={`neural-card neural-card--action neural-card--treasure${expandedClass}`} onClick={onTake}>
+				<div className="neural-card__name">{card.name}</div>
+				{card.text && (
+					<div className="neural-card__text neural-card__text--action">
+						{card.text}
+					</div>
+				)}
+				<div className="neural-card__actions">
+					<button
+						className="action-btn action-btn--secondary"
+						onClick={(e) => {
+							e.stopPropagation();
+							onTake();
+						}}
+						style={{ fontSize: '0.7rem', padding: '4px 8px' }}
+					>
+						Take
+					</button>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className={`neural-card neural-card--treasure${expandedClass}`} onClick={onTake}>
 			<div className="neural-card__art">

@@ -3110,6 +3110,126 @@
 	gap: 8px;
 }
 
+/* === ACTION MODE STRIP === */
+
+.action-strip {
+	position: fixed;
+	bottom: 140px;
+	right: 16px;
+	z-index: 65;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 6px;
+	pointer-events: none;
+}
+
+.action-strip > * {
+	pointer-events: auto;
+}
+
+.action-strip__modes {
+	display: flex;
+	gap: 4px;
+	padding: 4px;
+	border-radius: 12px;
+	background: rgba(20, 20, 30, 0.9);
+	border: 1px solid var(--border-subtle);
+	backdrop-filter: blur(10px);
+}
+
+.action-strip__btn {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 0.75rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	white-space: nowrap;
+}
+
+.action-strip__btn:hover:not(:disabled) {
+	background: var(--bg-highlight);
+	color: var(--text-primary, #e2e2e8);
+}
+
+.action-strip__btn--active {
+	background: var(--accent-primary);
+	color: white;
+	border-color: var(--accent-primary);
+	box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+}
+
+.action-strip__btn--active:hover:not(:disabled) {
+	background: #7c3aed;
+	color: white;
+}
+
+.action-strip__btn:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+.action-strip__icon {
+	font-size: 0.9rem;
+	line-height: 1;
+}
+
+.action-strip__label {
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.action-strip__cost {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	font-size: 0.65rem;
+	font-weight: 700;
+	background: rgba(255, 255, 255, 0.1);
+	border-radius: 50%;
+	line-height: 1;
+}
+
+.action-strip__btn--active .action-strip__cost {
+	background: rgba(255, 255, 255, 0.25);
+}
+
+.action-strip__prompt {
+	font-size: 0.7rem;
+	color: var(--text-muted);
+	padding: 4px 10px;
+	background: rgba(20, 20, 30, 0.85);
+	border-radius: 8px;
+	border: 1px solid var(--border-subtle);
+	backdrop-filter: blur(8px);
+}
+
+.action-strip__progress {
+	margin-left: 6px;
+	color: var(--accent-primary);
+	font-weight: 600;
+}
+
+@media (max-width: 768px) {
+	.action-strip {
+		bottom: 120px;
+		right: auto;
+		left: 50%;
+		transform: translateX(-50%);
+		align-items: center;
+	}
+}
+
 /* === FLOATING TOOLBAR (action buttons) === */
 .floating-toolbar {
 	position: fixed;

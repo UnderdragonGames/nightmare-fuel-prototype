@@ -5,7 +5,7 @@ import { Client, type BoardProps as BGIOBoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
 import { Board as HexBoard } from './ui/Board';
-import type { Color, Co, GState, PlayerPrefs, Stat } from './game/types';
+import type { CardAction, Color, Co, GState, PlayerPrefs, Stat } from './game/types';
 import { Hand, NeuralCard } from './ui/Hand';
 import { Treasure, TreasureCard } from './ui/Treasure';
 import { DiscardZone } from './ui/DiscardZone';
@@ -21,6 +21,7 @@ import { getNightmareByName } from './game/nightmares';
 import { resolveCardActions, resolveCardEffects, type CardActionResolveContext } from './game/cardActions';
 import { useIsMobile } from './ui/useIsMobile';
 import { ZoneTabBar } from './ui/ZoneTabBar';
+import { ActionModeStrip, type ActionMode } from './ui/ActionModeStrip';
 
 // Types
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
@@ -95,7 +96,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const isMobile = useIsMobile();
 	const [selectedCard, setSelectedCard] = React.useState<number | null>(null);
 	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
-	const [rotationMode, setRotationMode] = React.useState(false);
+	const [actionMode, setActionMode] = React.useState<ActionMode>('place');
+	const [discardSelection, setDiscardSelection] = React.useState<number[]>([]);
 	const [pendingRotationTile, setPendingRotationTile] = React.useState<Co | null>(null);
 	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null);
 	const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
@@ -188,8 +190,18 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		setActionContextJson('');
 	}, [selectedCard]);
 
-	// Card is selected = board is interactable
-	const boardInteractable = selectedCard !== null;
+	// Derived values for action modes
+	const rotateCost = rules.PLACEMENT.COST_TO_ROTATE;
+	const blockCost = rules.PLACEMENT.COST_TO_BLOCK;
+	const canRotateRule = !isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false;
+	const canBlockRule = blockCost > 0;
+	const discardNeeded = actionMode === 'rotate' ? rotateCost : actionMode === 'block' ? blockCost : 0;
+	const discardReady = discardSelection.length === discardNeeded;
+
+	// Board is interactable: place mode needs a card selected; rotate/block need enough discard cards
+	const boardInteractable = actionMode === 'place'
+		? selectedCard !== null
+		: discardReady;
 
 	// Helper: get direction-color between two adjacent coords (path-mode core mechanic)
 	const getColorForDirection = (source: Co, dest: Co): Color | null => {
@@ -276,6 +288,16 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		return moves;
 	}, [G, isMyTurn, isPathMode, locked, myHand, rules, selectedCard, selectedColor, selectedSourceDot]);
 
+	const blockableCoords = React.useMemo(() => {
+		if (actionMode !== 'block' || !isMyTurn || locked) return [];
+		if (rules.PLACEMENT.COST_TO_BLOCK <= 0) return [];
+		return buildAllCoords(G.radius).filter((c) => {
+			const tile = G.board[key(c)];
+			if (!tile || tile.colors.length > 0 || tile.dead) return false;
+			return !G.origins.some((o) => o.q === c.q && o.r === c.r);
+		});
+	}, [actionMode, G.board, G.radius, G.origins, isMyTurn, locked, rules.PLACEMENT.COST_TO_BLOCK]);
+
 	const actionNeedsTargetPlayer = selectedActionList.some((action) =>
 		['randomStealCard', 'registerSkipTurnHook', 'attachToPlayer', 'moveCardToPlayerHand'].includes(action.type)
 	);
@@ -351,6 +373,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		return played === 0 || extra > 0;
 	})();
 
+	const handleModeChange = (newMode: ActionMode) => {
+		setActionMode(newMode);
+		setDiscardSelection([]);
+		setSelectedCard(null);
+		setSelectedColor(null);
+		setPendingRotationTile(null);
+		setSelectedSourceDot(null);
+	};
+
 	let actionResolveError: string | null = null;
 	if (selectedActionCard && actionLimitAllows) {
 		try {
@@ -386,9 +417,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			return;
 		}
 
-		if (rotationMode && !isPathMode) {
+		// BLOCK MODE — click a blockable hex to execute
+		if (actionMode === 'block') {
+			if (!discardReady) return;
 			const tile = G.board[key(coord)];
-			if (tile && tile.colors.length > 0 && selectedCard !== null && rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
+			if (!tile || tile.colors.length > 0 || tile.dead) return;
+			if (isOriginCoord(coord)) return;
+			moves.blockTile({ coord, handIndices: [...discardSelection] });
+			setDiscardSelection([]);
+			setActionMode('place');
+			return;
+		}
+
+		// ROTATE MODE — click an occupied hex to start rotation
+		if (actionMode === 'rotate' && !isPathMode) {
+			const tile = G.board[key(coord)];
+			if (tile && tile.colors.length > 0 && discardReady && rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
 				setPendingRotationTile(coord);
 				return;
 			}
@@ -475,12 +519,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		const card = myHand[selectedCard];
 		if (!card) return;
 
-		const tile = G.board[key(coord)];
-		if (tile && tile.colors.length > 0 && rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
-			setPendingRotationTile(coord);
-			return;
-		}
-
 		if (selectedColor) {
 			if (canPlace(G, coord, selectedColor, rules)) {
 				moves.playCard({ handIndex: selectedCard, pick: selectedColor, coord });
@@ -507,19 +545,19 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	};
 
 	const handleRotation = (rotation: number) => {
-		if (pendingRotationTile === null || selectedCard === null) return;
-		moves.rotateTile({ coord: pendingRotationTile, handIndices: [selectedCard], rotation });
+		if (pendingRotationTile === null || !discardReady) return;
+		moves.rotateTile({ coord: pendingRotationTile, handIndices: [...discardSelection], rotation });
 		setPendingRotationTile(null);
-		setSelectedCard(null);
-		setSelectedColor(null);
-		setRotatable([]);
+		setDiscardSelection([]);
+		setActionMode('place');
 	};
 
 	React.useEffect(() => {
 		if (locked) {
 			setSelectedCard(null);
 			setSelectedColor(null);
-			setRotationMode(false);
+			setActionMode('place');
+			setDiscardSelection([]);
 			setRotatable([]);
 			setPendingRotationTile(null);
 			setSelectedSourceDot(null);
@@ -527,7 +565,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	}, [locked]);
 
 	React.useEffect(() => {
-		if (rotationMode && isMyTurn && !locked) {
+		if (actionMode === 'rotate' && isMyTurn && !locked) {
 			const coords = buildAllCoords(G.radius);
 			setRotatable(coords.filter((c) => {
 				const tile = G.board[key(c)];
@@ -536,7 +574,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		} else {
 			setRotatable([]);
 		}
-	}, [rotationMode, G.board, G.radius, isMyTurn, locked]);
+	}, [actionMode, G.board, G.radius, isMyTurn, locked]);
 
 	const botPlayOnce = async (pid: PlayerID, botKind: BotKind) => {
 		const isOwnersTurn = (owner: PlayerID) => ctxRef.current.currentPlayer === owner;
@@ -809,13 +847,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					lanes={G.lanes}
 					radius={G.radius}
 					onHexClick={onHexClick}
-					highlightCoords={rotationMode ? rotatable : availableMoveCoords}
-					highlightColor={rotationMode ? '#8b5cf6' : (selectedColor ? asVisibleColor(selectedColor) : '#8b5cf6')}
-					highlightIsRotation={rotationMode}
+					highlightCoords={actionMode === 'rotate' ? rotatable : actionMode === 'block' ? blockableCoords : availableMoveCoords}
+					highlightColor={actionMode === 'rotate' ? '#8b5cf6' : actionMode === 'block' ? '#ef4444' : (selectedColor ? asVisibleColor(selectedColor) : '#8b5cf6')}
+					highlightIsRotation={actionMode === 'rotate'}
 					origins={G.origins}
 					pendingRotationTile={pendingRotationTile}
 					onRotationSelect={handleRotation}
-					selectedColor={rotationMode ? null : selectedColor}
+					selectedColor={actionMode !== 'place' ? null : selectedColor}
 					selectedSourceDot={selectedSourceDot}
 					showCoords={showCoords}
 				/>
@@ -832,8 +870,19 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					<Hand
 						rules={rules}
 						cards={myHand}
-						selectedIndex={selectedCard}
+						selectedIndex={actionMode === 'place' ? selectedCard : null}
+						selectedIndices={actionMode !== 'place' ? discardSelection : undefined}
 						onSelect={(index) => {
+							if (actionMode !== 'place') {
+								// Multi-select for discard cost
+								setDiscardSelection((prev) => {
+									if (prev.includes(index)) return prev.filter((i) => i !== index);
+									if (prev.length >= discardNeeded) return prev;
+									return [...prev, index];
+								});
+								return;
+							}
+							// Place mode: single select
 							if (selectedCard === index) {
 								setSelectedCard(null);
 								setSelectedColor(null);
@@ -846,7 +895,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							if (!c) return;
 							if (isPathMode) setSelectedColor(null);
 						}}
-						onPickColor={onPickColor}
+						onPickColor={(index, color) => {
+							if (actionMode !== 'place') return;
+							onPickColor(index, color);
+						}}
 						isExpanded={expandedZone === 'hand'}
 						onExpandChange={handleZoneExpand('hand')}
 					/>
@@ -885,9 +937,17 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									<NeuralCard
 										key={`${serializeCard(card)}-${i}`}
 										card={card}
-										isSelected={i === selectedCard}
+										isSelected={actionMode !== 'place' ? discardSelection.includes(i) : i === selectedCard}
 										rules={rules}
 										onSelect={() => {
+											if (actionMode !== 'place') {
+												setDiscardSelection((prev) => {
+													if (prev.includes(i)) return prev.filter((idx) => idx !== i);
+													if (prev.length >= discardNeeded) return prev;
+													return [...prev, i];
+												});
+												return;
+											}
 											if (selectedCard === i) {
 												setSelectedCard(null);
 												setSelectedColor(null);
@@ -1002,11 +1062,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									onChange={(e) => setActionChoiceIndex(e.target.value)}
 								>
 									{(() => {
-										const choice = selectedActionList.find((action) => action.type === 'choice') as { options?: unknown[] } | undefined;
-										const optionCount = choice?.options?.length ?? 0;
-										return Array.from({ length: optionCount }, (_, i) => (
+										const choice = selectedActionList.find((action) => action.type === 'choice') as { type: 'choice'; options: CardAction[][] } | undefined;
+										if (!choice) return null;
+										const describeOption = (actions: CardAction[]): string => {
+											return actions.map((a) => {
+												switch (a.type) {
+													case 'grantExtraPlacements': return `+${a.count} hex placements`;
+													case 'grantExtraActionPlays': return `+${a.count} action plays`;
+													case 'grantExtraPlay': return `+${a.count} extra plays`;
+													case 'drawCards': return `Draw ${a.count}`;
+													default: return a.type;
+												}
+											}).join(', ');
+										};
+										return choice.options.map((actions, i) => (
 											<option key={`choice-${i}`} value={String(i)}>
-												Option {i + 1}
+												{describeOption(actions)}
 											</option>
 										));
 									})()}
@@ -1247,22 +1318,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				/>
 			)}
 
+			{/* ACTION MODE STRIP — above hand zone */}
+			<ActionModeStrip
+				mode={actionMode}
+				onModeChange={handleModeChange}
+				canRotate={canRotateRule}
+				canBlock={canBlockRule}
+				rotateCost={rotateCost}
+				blockCost={blockCost}
+				disabled={!isMyTurn || locked}
+				discardCount={discardSelection.length}
+				discardNeeded={discardNeeded}
+				handSize={myHand.length}
+			/>
+
 			{/* FLOATING ACTIONS TOOLBAR */}
 			<div className="floating-toolbar">
-				{!isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false && (
-					<button
-						className={`floating-action ${rotationMode ? 'floating-action--active' : ''}`}
-						onClick={() => {
-							setRotationMode(!rotationMode);
-							setSelectedCard(null);
-							setSelectedColor(null);
-						}}
-						disabled={!isMyTurn || locked}
-						title="Rotate Mode"
-					>
-						↻
-					</button>
-				)}
 				<button
 					className="floating-action"
 					onClick={() => {
@@ -1271,7 +1342,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						setSelectedColor(null);
 						setPendingRotationTile(null);
 						setRotatable([]);
-						setRotationMode(false);
+						setActionMode('place');
+						setDiscardSelection([]);
 					}}
 					disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
 					title="Undo"

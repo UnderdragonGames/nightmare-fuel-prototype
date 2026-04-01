@@ -17,6 +17,8 @@ export const CardZone: React.FC<{
 	isExpanded: boolean;
 	onExpandChange: (expanded: boolean) => void;
 	selectedIndex: number | null;
+	/** When provided, overrides selectedIndex for multi-select (e.g., discard selection). */
+	selectedIndices?: number[];
 	onCardClick: (index: number) => void;
 	label: string;
 	children: React.ReactNode;
@@ -31,6 +33,7 @@ export const CardZone: React.FC<{
 	isExpanded,
 	onExpandChange,
 	selectedIndex,
+	selectedIndices,
 	onCardClick,
 	label,
 	children,
@@ -144,6 +147,12 @@ export const CardZone: React.FC<{
 
 	const childArray = React.Children.toArray(children);
 
+	// Multi-select helpers: selectedIndices overrides selectedIndex when provided
+	const isCardSelected = (i: number): boolean =>
+		selectedIndices ? selectedIndices.includes(i) : i === selectedIndex;
+	const hasAnySelection: boolean =
+		selectedIndices ? selectedIndices.length > 0 : selectedIndex !== null;
+
 	// Whether to use custom expanded rendering (e.g., Coverflow)
 	const useCustomExpanded = !!renderExpanded;
 
@@ -195,8 +204,8 @@ export const CardZone: React.FC<{
 									>
 										<MiniCard
 											card={card}
-											isSelected={i === selectedIndex}
-											hasSelection={selectedIndex !== null}
+											isSelected={isCardSelected(i)}
+											hasSelection={hasAnySelection}
 											onClick={() => onCardClick(i)}
 										/>
 									</div>
@@ -240,7 +249,7 @@ export const CardZone: React.FC<{
 										zIndex: isExpanded
 											? (i === hoveredCardIndex
 												? cards.length + 2
-												: i === selectedIndex
+												: isCardSelected(i)
 													? cards.length + 1
 													: i)
 											: i,
@@ -269,8 +278,8 @@ export const CardZone: React.FC<{
 									) : (
 										<MiniCard
 											card={card}
-											isSelected={i === selectedIndex}
-											hasSelection={selectedIndex !== null}
+											isSelected={isCardSelected(i)}
+											hasSelection={hasAnySelection}
 											onClick={() => onCardClick(i)}
 										/>
 									)}

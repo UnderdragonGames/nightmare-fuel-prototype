@@ -90,13 +90,15 @@ export const Hand: React.FC<{
 	rules: Rules;
 	cards: Card[];
 	selectedIndex: number | null;
+	/** When provided, overrides selectedIndex for multi-select (e.g., discard selection). */
+	selectedIndices?: number[];
 	onSelect: (index: number) => void;
 	onPickColor: (index: number, color: Color) => void;
 	isExpanded: boolean;
 	onExpandChange: (expanded: boolean) => void;
 	isMobile?: boolean;
 	forceOpen?: boolean;
-}> = ({ rules, cards, selectedIndex, onSelect, onPickColor, isExpanded, onExpandChange, isMobile, forceOpen }) => {
+}> = ({ rules, cards, selectedIndex, selectedIndices, onSelect, onPickColor, isExpanded, onExpandChange, isMobile, forceOpen }) => {
 	// TODO: If the hand grows very large (e.g. > 10 cards), wrap expanded content
 	// in a Coverflow component instead of relying on the CardZone fan layout.
 	// For typical hand sizes (3-6 cards), the fan layout works well.
@@ -109,6 +111,7 @@ export const Hand: React.FC<{
 			isExpanded={isExpanded}
 			onExpandChange={onExpandChange}
 			selectedIndex={selectedIndex}
+			selectedIndices={selectedIndices}
 			onCardClick={onSelect}
 			label="Hand"
 			isMobile={isMobile}
@@ -118,7 +121,7 @@ export const Hand: React.FC<{
 				<NeuralCard
 					key={`${serializeCard(card)}-${i}`}
 					card={card}
-					isSelected={i === selectedIndex}
+					isSelected={selectedIndices ? selectedIndices.includes(i) : i === selectedIndex}
 					rules={rules}
 					onSelect={() => onSelect(i)}
 					onPickColor={(color) => onPickColor(i, color)}
