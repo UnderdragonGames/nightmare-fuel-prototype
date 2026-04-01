@@ -44,6 +44,9 @@ export const CardZone: React.FC<{
 	const prevHovered = useRef(false);
 	const prevExpanded = useRef(isExpanded);
 
+	// Track which individual card is hovered (expanded mode only).
+	const [hoveredCardIndex, setHoveredCardIndex] = useState<number | null>(null);
+
 	const clearGrace = useCallback(() => {
 		if (graceTimer.current) {
 			clearTimeout(graceTimer.current);
@@ -79,9 +82,12 @@ export const CardZone: React.FC<{
 
 	// When parent collapses us (mutual exclusion), reset hover
 	useEffect(() => {
-		if (prevExpanded.current && !isExpanded && isHovered) {
-			clearGrace();
-			setIsHovered(false);
+		if (prevExpanded.current && !isExpanded) {
+			if (isHovered) {
+				clearGrace();
+				setIsHovered(false);
+			}
+			setHoveredCardIndex(null);
 		}
 		prevExpanded.current = isExpanded;
 	}, [isExpanded, isHovered, clearGrace]);
@@ -95,18 +101,31 @@ export const CardZone: React.FC<{
 	};
 
 	// Fan offset per card when expanded.
+	// When a card is hovered, neighboring cards are pushed aside to reveal it fully.
 	const getFanOffset = useCallback(
-		(index: number, total: number) => {
+		(index: number, total: number, hovered: number | null) => {
 			const spacing = 90;
 			const position = index - (total - 1) / 2;
 
+			// Extra offset when a card is hovered: push cards on each side apart.
+			// Expanded cards are 270px wide with 90px spacing → 180px overlap.
+			// Push neighbors by 150px to mostly clear the overlap.
+			let hoverPush = 0;
+			if (hovered !== null && index !== hovered) {
+				const pushAmount = 150;
+				// Direction depends on corner's spacing sign.
+				// bottom-right/top-right use negative spacing; top-left uses positive.
+				const pushSign = corner === 'top-left' ? -1 : 1;
+				hoverPush = (index < hovered ? -pushSign : pushSign) * pushAmount;
+			}
+
 			switch (corner) {
 				case 'bottom-right':
-					return { x: position * -spacing, y: position * -14 };
+					return { x: position * -spacing + hoverPush, y: position * -14 };
 				case 'top-right':
-					return { x: position * -spacing, y: position * 14 };
+					return { x: position * -spacing + hoverPush, y: position * 14 };
 				case 'top-left':
-					return { x: position * spacing, y: position * 14 };
+					return { x: position * spacing + hoverPush, y: position * 14 };
 			}
 		},
 		[corner],
@@ -208,7 +227,7 @@ export const CardZone: React.FC<{
 						className={`card-zone__cards ${isExpanded ? 'card-zone__cards--expanded' : 'card-zone__cards--collapsed'}`}
 					>
 						{cards.map((card, i) => {
-							const fan = getFanOffset(i, cards.length);
+							const fan = getFanOffset(i, cards.length, isExpanded ? hoveredCardIndex : null);
 							const rotation = getCardRotation(i);
 
 							return (
@@ -219,7 +238,11 @@ export const CardZone: React.FC<{
 									className="card-zone__card-wrapper"
 									style={{
 										zIndex: isExpanded
-											? (i === selectedIndex ? cards.length + 1 : i)
+											? (i === hoveredCardIndex
+												? cards.length + 2
+												: i === selectedIndex
+													? cards.length + 1
+													: i)
 											: i,
 									}}
 									animate={
@@ -238,6 +261,8 @@ export const CardZone: React.FC<{
 												}
 									}
 									transition={layoutTransition}
+									onMouseEnter={() => { if (isExpanded) setHoveredCardIndex(i); }}
+									onMouseLeave={() => { if (isExpanded) setHoveredCardIndex(null); }}
 								>
 									{isExpanded ? (
 										childArray[i] ?? null

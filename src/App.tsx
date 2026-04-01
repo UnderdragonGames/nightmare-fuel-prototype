@@ -108,6 +108,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const setAiPaused = useUIStore((s) => s.setAiPaused);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
+	const [showCoords, setShowCoords] = React.useState(false);
 	const [actionTargetPlayer, setActionTargetPlayer] = React.useState<PlayerID | ''>('');
 	const [actionChoiceIndex, setActionChoiceIndex] = React.useState('0');
 	const [actionCoordInput, setActionCoordInput] = React.useState('');
@@ -126,6 +127,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const gRef = React.useRef(G);
 	const ctxRef = React.useRef(ctx);
 	React.useEffect(() => { gRef.current = G; ctxRef.current = ctx; }, [G, ctx]);
+
+	// Toggle coordinate display with backtick key
+	React.useEffect(() => {
+		const handler = (e: KeyboardEvent) => {
+			if (e.key === '`') setShowCoords((v) => !v);
+		};
+		window.addEventListener('keydown', handler);
+		return () => window.removeEventListener('keydown', handler);
+	}, []);
 
 	const currentPlayer = ctx.currentPlayer;
 	const isMyTurn = playerID === currentPlayer;
@@ -807,6 +817,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					onRotationSelect={handleRotation}
 					selectedColor={rotationMode ? null : selectedColor}
 					selectedSourceDot={selectedSourceDot}
+					showCoords={showCoords}
 				/>
 			</main>
 

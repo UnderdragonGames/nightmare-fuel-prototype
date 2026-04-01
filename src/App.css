@@ -2702,6 +2702,15 @@
 	margin-left: 0;
 }
 
+/* Discard pile: tight stack instead of a fan */
+.card-zone--top-left .card-zone__cards--collapsed .card-zone__card-wrapper {
+	margin-left: -66px;
+}
+
+.card-zone--top-left .card-zone__cards--collapsed .card-zone__card-wrapper:first-child {
+	margin-left: 0;
+}
+
 .card-zone__cards--expanded {
 	align-items: center;
 	padding: 32px;

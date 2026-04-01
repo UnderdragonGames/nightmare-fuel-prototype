@@ -383,19 +383,22 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				);
 			})}
 			
-			{/* Layer 4: Coordinate labels - render above all overlays */}
+			{/* Layer 4: Coordinate labels - render LAST so they sit above dots/lanes */}
 			{showCoords && (
-				<g className="board__coords">
+				<g>
 					{coords.map((c) => {
 						const center = axialToPixel(c, size);
 						return (
 							<text
 								key={`coord-${key(c)}`}
 								x={center.x}
-								y={center.y + size * 0.55}
-								fontSize={8}
+								y={center.y + size * 0.7}
+								fontSize={size * 0.3}
+								fontFamily="monospace"
 								textAnchor="middle"
-								fill="#9aa0b8"
+								fill="#888"
+								opacity={0.5}
+								style={{ pointerEvents: 'none' }}
 							>
 								{c.q},{c.r}
 							</text>
