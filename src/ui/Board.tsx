@@ -1,5 +1,5 @@
 import React from 'react';
-import { axialToPixel, asVisibleColor, buildAllCoords, key, edgeIndexToColor, neighbors, ringIndex } from '../game/helpers';
+import { axialToPixel, asVisibleColor, buildAllCoords, key, edgeIndexToColor, ringIndex } from '../game/helpers';
 import { Hex } from './Hex';
 import type { Color, Co, HexTile, Rules, PathLane } from '../game/types';
 
