@@ -1,2 +1,2 @@
 [deploy]
-startCommand = "npm run start"
+startCommand = "bun server.ts"
