@@ -152,7 +152,7 @@ describe('blocked-consolidation', () => {
 	it('matches expected actions', () => {
 		const actual = enumerateActions(G, '0').map(actionKey).sort();
 		// Filter out block actions for the exact match (many empty tiles generate many block combos)
-		const actualWithoutBlocks = actual.filter((k) => !k.startsWith('block:'));
+		const actualWithoutBlocks = actual.filter((k) => !k.startsWith('block:') && !k.startsWith('rotate:'));
 		const expected = [
   "play:0:B:-1,0->-1,1",
   "play:0:B:0,0->0,1",
@@ -182,6 +182,9 @@ describe('blocked-consolidation', () => {
 		for (const k of blockActions) {
 			expect(k).toMatch(/^block:0\+1:/);
 		}
+		// Verify rotate actions exist (COST_TO_ROTATE=1, 2 cards → 2 discard combos per node)
+		const rotateActions = actual.filter((k) => k.startsWith('rotate:'));
+		expect(rotateActions.length).toBeGreaterThan(0);
 		const forbidden: string[] = [];
 		for (const key of forbidden) expect(actual).not.toContain(key);
 	});

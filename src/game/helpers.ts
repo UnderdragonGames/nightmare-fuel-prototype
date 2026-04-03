@@ -21,6 +21,35 @@ export const neighbors = (c: Co): Co[] => [
 	{ q: c.q, r: c.r + 1 },
 ];
 
+/** Canonical hex directions in clockwise order from North (matches BASE_DIRECTIONS). */
+const HEX_DIRS: readonly Co[] = [
+	{ q: 0, r: -1 },   // N  (0)
+	{ q: 1, r: -1 },   // NE (1)
+	{ q: 1, r: 0 },    // E  (2)
+	{ q: 0, r: 1 },    // SE (3)
+	{ q: -1, r: 1 },   // SW (4)
+	{ q: -1, r: 0 },   // NW (5)
+];
+
+/** Rotate a neighbor around center by rotation × 60° clockwise. */
+export const rotateNeighbor = (center: Co, neighbor: Co, rotation: number): Co => {
+	const dq = neighbor.q - center.q;
+	const dr = neighbor.r - center.r;
+	const idx = HEX_DIRS.findIndex(d => d.q === dq && d.r === dr);
+	if (idx === -1) return neighbor; // not an adjacent neighbor
+	const newIdx = (idx + rotation) % 6;
+	const newDir = HEX_DIRS[newIdx]!;
+	return { q: center.q + newDir.q, r: center.r + newDir.r };
+};
+
+/** Reverse lookup: direction vector → color for the current rules. */
+export const dirToColor = (rules: Rules, dir: Co): Color | null => {
+	for (const [color, d] of Object.entries(rules.COLOR_TO_DIR)) {
+		if ((d as Co).q === dir.q && (d as Co).r === dir.r) return color as Color;
+	}
+	return null;
+};
+
 export const isNeighbor = (a: Co, b: Co): boolean =>
 	neighbors(a).some((n) => n.q === b.q && n.r === b.r);
 

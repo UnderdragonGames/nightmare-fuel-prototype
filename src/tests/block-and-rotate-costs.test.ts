@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { enumerateActions, applyMicroAction } from '../game/ai';
 import type { Co, GState, Rules } from '../game/types';
-import { HEX_RULES, buildColorToDir, BASE_EDGE_COLORS } from '../game/rulesConfig';
-import { key } from '../game/helpers';
+import { HEX_RULES, PATH_RULES, buildColorToDir, BASE_EDGE_COLORS } from '../game/rulesConfig';
+import { key, buildAllCoords } from '../game/helpers';
 import { makeCard } from '../game/cardFactory';
 import { initActionState } from '../game/effects';
 
@@ -303,6 +303,217 @@ describe('COST_TO_BLOCK', () => {
 
 		// 3 cards choose 2 = 3 combinations, x 2 empty non-origin tiles = 6 block actions
 		expect(blockActions.length).toBe(6);
+	});
+});
+
+describe('path-mode rotateTile', () => {
+	const PATH_TEST_RULES: Rules = {
+		...PATH_RULES,
+		RADIUS: 3,
+		RANDOM_CARDINAL_DIRECTIONS: false,
+		COLOR_TO_DIR: buildColorToDir(BASE_EDGE_COLORS),
+		PLACEMENT: {
+			...PATH_RULES.PLACEMENT,
+			DISCARD_TO_ROTATE: 'any',
+			COST_TO_ROTATE: 1,
+		},
+	};
+
+	const pathState = (overrides: Partial<GState> = {}): GState => {
+		const rules = overrides.rules ?? PATH_TEST_RULES;
+		// Initialize full board so all coords exist (path mode requires board tiles)
+		const board: Record<string, { colors: []; rotation: 0; dead: false }> = {};
+		for (const c of buildAllCoords(rules.RADIUS)) {
+			board[key(c)] = { colors: [], rotation: 0, dead: false };
+		}
+		return createTestState({ rules, board, ...overrides });
+	};
+
+	// With BASE_EDGE_COLORS = YGBVRO → N,NE,E,SE,SW,NW
+	// Y→N(0,-1), G→NE(1,-1), B→E(1,0), V→SE(0,1), R→SW(-1,1), O→NW(-1,0)
+
+	it('rotates outgoing lanes 60° CW and remaps colors', () => {
+		const G = pathState({
+			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			lanes: [
+				{ from: co(0, 0), to: co(0, -1), color: 'Y' }, // N → should become NE (G)
+			],
+		});
+		// Need tiles on board for both old and new destinations
+		setEmptyTile(G, co(0, -1));
+		setEmptyTile(G, co(1, -1));
+
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+
+		expect(result).not.toBeNull();
+		expect(result!.lanes.length).toBe(1);
+		// Lane should now point NE with color G
+		expect(result!.lanes[0]!.to).toEqual(co(1, -1));
+		expect(result!.lanes[0]!.color).toBe('G');
+		// Card discarded
+		expect(result!.hands['0']!.length).toBe(1);
+		expect(result!.discard.length).toBe(1);
+	});
+
+	it('rotates multiple outgoing lanes together', () => {
+		const G = pathState({
+			hands: { '0': [makeCard(['R'])] },
+			lanes: [
+				{ from: co(0, 0), to: co(0, -1), color: 'Y' },  // N
+				{ from: co(0, 0), to: co(1, 0), color: 'B' },   // E
+			],
+		});
+		setEmptyTile(G, co(0, -1));
+		setEmptyTile(G, co(1, -1));
+		setEmptyTile(G, co(1, 0));
+		setEmptyTile(G, co(0, 1));
+
+		// 60° CW: N→NE, E→SE
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+
+		expect(result).not.toBeNull();
+		expect(result!.lanes.length).toBe(2);
+		// Find the two lanes
+		const laneNE = result!.lanes.find(l => l.to.q === 1 && l.to.r === -1);
+		const laneSE = result!.lanes.find(l => l.to.q === 0 && l.to.r === 1);
+		expect(laneNE).toBeDefined();
+		expect(laneNE!.color).toBe('G'); // NE = G
+		expect(laneSE).toBeDefined();
+		expect(laneSE!.color).toBe('V'); // SE = V
+	});
+
+	it('does not rotate incoming lanes', () => {
+		const G = pathState({
+			hands: { '0': [makeCard(['R'])] },
+			lanes: [
+				{ from: co(0, 0), to: co(1, 0), color: 'B' },   // outgoing E from origin
+				{ from: co(1, 0), to: co(0, 0), color: 'O' },   // incoming from (1,0) — should stay
+			],
+		});
+		setEmptyTile(G, co(1, 0));
+		setEmptyTile(G, co(0, 1));
+
+		// Rotate origin 60° CW: outgoing E→SE
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+
+		expect(result).not.toBeNull();
+		// Incoming lane should be unchanged
+		const incoming = result!.lanes.find(l => l.from.q === 1 && l.from.r === 0 && l.to.q === 0 && l.to.r === 0);
+		expect(incoming).toBeDefined();
+		expect(incoming!.color).toBe('O'); // unchanged
+	});
+
+	it('rejects rotation when destination would be off-board', () => {
+		const G = pathState({
+			hands: { '0': [makeCard(['R'])] },
+			lanes: [
+				// Lane pointing to rim edge — rotating further could go off-board
+				{ from: co(0, -2), to: co(0, -3), color: 'Y' }, // N from ring 2 to ring 3 (rim)
+			],
+		});
+		setEmptyTile(G, co(0, -2));
+		setEmptyTile(G, co(0, -3));
+		// (1, -3) is at ring 3 = rim, should exist
+		setEmptyTile(G, co(1, -3));
+
+		// 60° CW: N(0,-3) → NE(1,-3) — on board if radius=3
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, -2), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+		// (1,-3) is at ring 3, radius is 3, so it's valid
+		expect(result).not.toBeNull();
+	});
+
+	it('rejects rotation when destination is a dead tile', () => {
+		const G = pathState({
+			hands: { '0': [makeCard(['R'])] },
+			lanes: [
+				{ from: co(0, 0), to: co(0, -1), color: 'Y' }, // N
+			],
+		});
+		setEmptyTile(G, co(0, -1));
+		G.board[key(co(1, -1))] = { colors: [], rotation: 0, dead: true }; // NE is dead
+
+		// 60° CW: N→NE, but NE is dead
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+		expect(result).toBeNull();
+	});
+
+	it('rejects rotation when destination is an origin', () => {
+		const G = pathState({
+			hands: { '0': [makeCard(['R'])] },
+			origins: [co(0, 0), co(1, -1)], // two origins
+			lanes: [
+				{ from: co(0, 0), to: co(0, -1), color: 'Y' }, // N
+			],
+		});
+		setEmptyTile(G, co(0, -1));
+		setEmptyTile(G, co(1, -1));
+
+		// 60° CW: N→NE(1,-1), but that's an origin
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+		expect(result).toBeNull();
+	});
+
+	it('rejects rotation when node has no outgoing lanes', () => {
+		const G = pathState({
+			hands: { '0': [makeCard(['R'])] },
+			lanes: [
+				{ from: co(1, 0), to: co(0, 0), color: 'O' }, // incoming only
+			],
+		});
+		setEmptyTile(G, co(1, 0));
+
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+		expect(result).toBeNull();
+	});
+
+	it('120° CW rotation works correctly', () => {
+		const G = pathState({
+			hands: { '0': [makeCard(['R'])] },
+			lanes: [
+				{ from: co(0, 0), to: co(0, -1), color: 'Y' }, // N
+			],
+		});
+		setEmptyTile(G, co(0, -1));
+		setEmptyTile(G, co(1, 0)); // E
+
+		// 120° CW (rot=2): N→E
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 2 } },
+			'0'
+		);
+
+		expect(result).not.toBeNull();
+		expect(result!.lanes[0]!.to).toEqual(co(1, 0));
+		expect(result!.lanes[0]!.color).toBe('B'); // E = B
 	});
 });
 

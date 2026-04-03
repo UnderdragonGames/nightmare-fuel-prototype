@@ -10,7 +10,7 @@
 import type { Ctx, PlayerID } from 'boardgame.io';
 import type { GState, Color, Co, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, Card, PlayerPrefs } from './types';
 import { emitEvent } from './hooks';
-import { buildAllCoords, canPlace, canPlacePath, countRimToCenterPaths, key, neighbors, ringIndex } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, countRimToCenterPaths, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
 import { computeScores } from './scoring';
 
 // =============================================================================
@@ -120,23 +120,51 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 		if (hand.length >= rotateCost) {
 			// Generate all combinations of rotateCost indices from hand
 			const indexCombos = generateCombinations(hand.length, rotateCost);
-			for (const handIndices of indexCombos) {
-				for (const co of coords) {
-					const tile = G.board[key(co)];
-					if (!tile || tile.colors.length === 0) continue;
 
-					// Check match-color constraint: at least one card must match a tile color
-					if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
-						const hasMatchingColor = handIndices.some((idx) => {
-							const card = hand[idx]!;
-							return card.colors.some((c) => tile.colors.includes(c));
-						});
-						if (!hasMatchingColor) continue;
+			if (rules.MODE === 'path') {
+				// Path mode: nodes with outgoing lanes are rotatable
+				const outgoingKeys = new Set(G.lanes.map(l => key(l.from)));
+				for (const handIndices of indexCombos) {
+					for (const co of coords) {
+						if (!outgoingKeys.has(key(co))) continue;
+						for (const rotation of [1, 2, 4, 5]) {
+							// Validate rotated destinations are valid
+							const outgoing = G.lanes.filter(l => key(l.from) === key(co));
+							const valid = outgoing.every(lane => {
+								const newTo = rotateNeighbor(co, lane.to, rotation);
+								const newColor = dirToColor(rules, { q: newTo.q - co.q, r: newTo.r - co.r });
+								if (!newColor) return false;
+								const k = key(newTo);
+								if (!G.board[k] || G.board[k]!.dead) return false;
+								if (G.origins.some(o => o.q === newTo.q && o.r === newTo.r)) return false;
+								return true;
+							});
+							if (valid) {
+								actions.push({ type: 'rotateTile', args: { coord: co, handIndices, rotation } });
+							}
+						}
 					}
+				}
+			} else {
+				// Hex mode: occupied tiles are rotatable
+				for (const handIndices of indexCombos) {
+					for (const co of coords) {
+						const tile = G.board[key(co)];
+						if (!tile || tile.colors.length === 0) continue;
 
-					// Valid rotation amounts: 1, 2, 4, 5 (exclude 3 = 180°)
-					for (const rotation of [1, 2, 4, 5]) {
-						actions.push({ type: 'rotateTile', args: { coord: co, handIndices, rotation } });
+						// Check match-color constraint: at least one card must match a tile color
+						if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
+							const hasMatchingColor = handIndices.some((idx) => {
+								const card = hand[idx]!;
+								return card.colors.some((c) => tile.colors.includes(c));
+							});
+							if (!hasMatchingColor) continue;
+						}
+
+						// Valid rotation amounts: 1, 2, 4, 5 (exclude 3 = 180°)
+						for (const rotation of [1, 2, 4, 5]) {
+							actions.push({ type: 'rotateTile', args: { coord: co, handIndices, rotation } });
+						}
 					}
 				}
 			}
@@ -228,8 +256,6 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 
 		case 'rotateTile': {
 			const args = action.args;
-			const tile = newG.board[key(args.coord)];
-			if (!tile || tile.colors.length === 0) return null;
 			if (rules.PLACEMENT.DISCARD_TO_ROTATE === false) return null;
 
 			const cost = rules.PLACEMENT.COST_TO_ROTATE;
@@ -243,16 +269,48 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			// Validate rotation amount
 			if (args.rotation < 1 || args.rotation > 5 || args.rotation === 3) return null;
 
-			// match-color mode: at least one card must match
-			if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
-				const hasMatchingColor = args.handIndices.some((idx) => {
-					const card = hand[idx]!;
-					return card.colors.some((c) => tile.colors.includes(c));
+			if (rules.MODE === 'path') {
+				// PATH MODE: rotate outgoing lanes at coord
+				const coordKey = key(args.coord);
+				const outgoing = newG.lanes.filter(l => key(l.from) === coordKey);
+				if (outgoing.length === 0) return null;
+
+				const rotated = outgoing.map(lane => {
+					const newTo = rotateNeighbor(args.coord, lane.to, args.rotation);
+					const dq = newTo.q - args.coord.q;
+					const dr = newTo.r - args.coord.r;
+					const newColor = dirToColor(rules, { q: dq, r: dr });
+					return { lane, newTo, newColor };
 				});
-				if (!hasMatchingColor) return null;
+
+				for (const { newTo, newColor } of rotated) {
+					if (!newColor) return null;
+					const k = key(newTo);
+					if (!newG.board[k]) return null;
+					if (newG.board[k]!.dead) return null;
+					if (newG.origins.some(o => o.q === newTo.q && o.r === newTo.r)) return null;
+				}
+
+				for (const { lane, newTo, newColor } of rotated) {
+					lane.to = newTo;
+					lane.color = newColor!;
+				}
+			} else {
+				// HEX MODE: rotate tile orientation
+				const tile = newG.board[key(args.coord)];
+				if (!tile || tile.colors.length === 0) return null;
+
+				if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
+					const hasMatchingColor = args.handIndices.some((idx) => {
+						const card = hand[idx]!;
+						return card.colors.some((c) => tile.colors.includes(c));
+					});
+					if (!hasMatchingColor) return null;
+				}
+
+				tile.rotation = (tile.rotation + args.rotation) % 6;
 			}
 
-			tile.rotation = (tile.rotation + args.rotation) % 6;
 			const sortedIndices = [...args.handIndices].sort((a, b) => b - a);
 			for (const idx of sortedIndices) {
 				const [used] = hand.splice(idx, 1);

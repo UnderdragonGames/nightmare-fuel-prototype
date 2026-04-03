@@ -140,8 +140,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	}, []);
 
 	const currentPlayer = ctx.currentPlayer;
-	const isMyTurn = playerID === currentPlayer;
-	const myHand = G.hands[playerID ?? currentPlayer] ?? [];
+	// The human's seat: the first non-bot player (stable across turns, even when viewer switches to watch bots)
+	const humanSeat = React.useMemo(() => {
+		const first = (ctx.playOrder as PlayerID[]).find((pid) => (botByPlayer[pid] ?? 'None') === 'None');
+		return first ?? (playerID as PlayerID);
+	}, [ctx.playOrder, botByPlayer, playerID]);
+	const isMyTurn = humanSeat === currentPlayer;
+	const myHand = G.hands[humanSeat] ?? [];
 	const stage = (ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[currentPlayer as PlayerID] : undefined) ?? 'active';
 	const locked = stage !== 'active';
 	const isPathMode = rules.MODE === 'path';
@@ -193,7 +198,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// Derived values for action modes
 	const rotateCost = rules.PLACEMENT.COST_TO_ROTATE;
 	const blockCost = rules.PLACEMENT.COST_TO_BLOCK;
-	const canRotateRule = !isPathMode && rules.PLACEMENT.DISCARD_TO_ROTATE !== false;
+	const canRotateRule = rules.PLACEMENT.DISCARD_TO_ROTATE !== false;
 	const canBlockRule = blockCost > 0;
 	const discardNeeded = actionMode === 'rotate' ? rotateCost : actionMode === 'block' ? blockCost : 0;
 	const discardReady = discardSelection.length === discardNeeded;
@@ -429,12 +434,23 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			return;
 		}
 
-		// ROTATE MODE — click an occupied hex to start rotation
-		if (actionMode === 'rotate' && !isPathMode) {
-			const tile = G.board[key(coord)];
-			if (tile && tile.colors.length > 0 && discardReady && rules.PLACEMENT.DISCARD_TO_ROTATE !== false) {
-				setPendingRotationTile(coord);
-				return;
+		// ROTATE MODE — click a rotatable node/tile to start rotation
+		if (actionMode === 'rotate') {
+			if (!discardReady || rules.PLACEMENT.DISCARD_TO_ROTATE === false) return;
+			if (isPathMode) {
+				// Path mode: node must have outgoing lanes
+				const hasOutgoing = G.lanes.some(l => key(l.from) === key(coord));
+				if (hasOutgoing) {
+					setPendingRotationTile(coord);
+					return;
+				}
+			} else {
+				// Hex mode: tile must have colors
+				const tile = G.board[key(coord)];
+				if (tile && tile.colors.length > 0) {
+					setPendingRotationTile(coord);
+					return;
+				}
 			}
 			return;
 		}
@@ -567,14 +583,21 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	React.useEffect(() => {
 		if (actionMode === 'rotate' && isMyTurn && !locked) {
 			const coords = buildAllCoords(G.radius);
-			setRotatable(coords.filter((c) => {
-				const tile = G.board[key(c)];
-				return tile && tile.colors.length > 0;
-			}));
+			if (isPathMode) {
+				// Path mode: nodes with outgoing lanes
+				const outgoingKeys = new Set(G.lanes.map(l => key(l.from)));
+				setRotatable(coords.filter(c => outgoingKeys.has(key(c))));
+			} else {
+				// Hex mode: occupied tiles
+				setRotatable(coords.filter((c) => {
+					const tile = G.board[key(c)];
+					return tile && tile.colors.length > 0;
+				}));
+			}
 		} else {
 			setRotatable([]);
 		}
-	}, [actionMode, G.board, G.radius, isMyTurn, locked]);
+	}, [actionMode, G.board, G.lanes, G.radius, isMyTurn, isPathMode, locked]);
 
 	const botPlayOnce = async (pid: PlayerID, botKind: BotKind) => {
 		const isOwnersTurn = (owner: PlayerID) => ctxRef.current.currentPlayer === owner;
@@ -640,13 +663,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 	React.useEffect(() => {
 		const owner = ctx.currentPlayer as PlayerID;
-		const botKind = botByPlayer[owner] ?? 'None';
-		const isBot = botKind !== 'None';
-		if (isBot) return;
-		if (playerID !== owner) {
-			onSetViewer(owner);
+		const ownerBotKind = botByPlayer[owner] ?? 'None';
+		const isOwnerBot = ownerBotKind !== 'None';
+		if (isOwnerBot) return; // Bot turns handled by the auto-play effect above
+		const allHuman = (ctx.playOrder as PlayerID[]).every((pid) => (botByPlayer[pid] ?? 'None') === 'None');
+		if (allHuman) {
+			// Hot-seat mode (all human): auto-switch viewer to whoever's turn it is
+			if (playerID !== owner) {
+				onSetViewer(owner);
+			}
+		} else {
+			// Human vs bots: switch viewer back to the current (human) player's seat
+			if (playerID !== owner) {
+				onSetViewer(owner);
+			}
 		}
-	}, [ctx.currentPlayer, playerID, botByPlayer, onSetViewer]);
+	}, [ctx.currentPlayer, ctx.playOrder, playerID, botByPlayer, onSetViewer]);
 
 	const onEndTurn = () => {
 		if (moves.endTurnAndRefill) moves.endTurnAndRefill();
@@ -678,10 +710,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const onTakeTreasure = (i: number) => moves.takeFromTreasure && moves.takeFromTreasure({ index: i });
 
 	const scores = computeScores(G);
-	const stashBonus = isMyTurn ? (G.meta.stashBonus[currentPlayer as PlayerID] ?? 0) : 0;
-	const viewerNightmare = getNightmareByName(G.nightmares[viewer]);
-	const viewerNightmareState = G.nightmareState[viewer];
-	const viewerPrefs = G.prefs[viewer];
+	const stashBonus = isMyTurn ? (G.meta.stashBonus[humanSeat] ?? 0) : 0;
+	const viewerNightmare = getNightmareByName(G.nightmares[humanSeat]);
+	const viewerNightmareState = G.nightmareState[humanSeat];
+	const viewerPrefs = G.prefs[humanSeat];
 
 	return (
 		<div className="game-layout">
@@ -690,9 +722,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				currentPlayer={currentPlayer as PlayerID}
 				currentPlayerScore={scores[currentPlayer as PlayerID] ?? 0}
 				currentPlayerGoals={G.prefs[currentPlayer as PlayerID]!}
-				viewer={viewer}
-				viewerScore={scores[viewer] ?? 0}
-				viewerGoals={G.prefs[viewer]!}
+				viewer={humanSeat}
+				viewerScore={scores[humanSeat] ?? 0}
+				viewerGoals={G.prefs[humanSeat]!}
 				isViewerTurn={isMyTurn}
 				deckCount={G.deck.length}
 			/>
@@ -759,7 +791,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							nightmareName={G.nightmares[pid]}
 							botKind={botByPlayer[pid] ?? 'None'}
 							onBotChange={(bot) => setBotFor(pid, bot)}
-							isViewer={pid === viewer}
+							isViewer={pid === humanSeat}
 							onSetViewer={() => {
 								onSetViewer(pid);
 								setMobileMenuOpen(false);
@@ -772,7 +804,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="game-players__nightmare">
 					<div className="hand-nightmare__header">
 						<span className="hand-nightmare__label">Nightmare</span>
-						<span className="hand-nightmare__player">P{viewer}</span>
+						<span className="hand-nightmare__player">P{humanSeat}</span>
 					</div>
 					{viewerNightmare ? (
 						<div className="hand-nightmare__body">

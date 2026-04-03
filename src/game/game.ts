@@ -1,6 +1,6 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
-import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
 import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, PlayerPrefs, HexTile, Co, Rules } from './types';
 import { drawOne, initActionState, playActionCardFromHand } from './effects';
 import { emitEvent } from './hooks';
@@ -298,8 +298,6 @@ export const HexStringsGame: Game<GState> = {
 							const rules = G.rules;
 							const pid = context.ctx.currentPlayer;
 							const hand = G.hands[pid]!;
-							const tile = G.board[key(args.coord)];
-							if (!tile || tile.colors.length === 0) return;
 							if (rules.PLACEMENT.DISCARD_TO_ROTATE === false) return;
 
 							const cost = rules.PLACEMENT.COST_TO_ROTATE;
@@ -315,17 +313,52 @@ export const HexStringsGame: Game<GState> = {
 							// Validate rotation amount: 1-5, excluding 3 (180°)
 							if (args.rotation < 1 || args.rotation > 5 || args.rotation === 3) return;
 
-							// match-color mode: at least one discarded card must contain a color from the tile
-							if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
-								const hasMatchingColor = args.handIndices.some((idx) => {
-									const card = hand[idx]!;
-									return card.colors.some((c) => tile.colors.includes(c));
-								});
-								if (!hasMatchingColor) return;
-							}
+							if (rules.MODE === 'path') {
+								// PATH MODE: rotate all outgoing lanes at this coord
+								const coord = args.coord;
+								const coordKey = key(coord);
+								const outgoing = G.lanes.filter(l => key(l.from) === coordKey);
+								if (outgoing.length === 0) return;
 
-							// Rotate tile by specified amount (rotation 0-5 wraps)
-							tile.rotation = (tile.rotation + args.rotation) % 6;
+								// Compute rotated destinations and new colors
+								const rotated = outgoing.map(lane => {
+									const newTo = rotateNeighbor(coord, lane.to, args.rotation);
+									const dq = newTo.q - coord.q;
+									const dr = newTo.r - coord.r;
+									const newColor = dirToColor(rules, { q: dq, r: dr });
+									return { lane, newTo, newColor };
+								});
+
+								// Validate all rotated destinations
+								for (const { newTo, newColor } of rotated) {
+									if (!newColor) return; // invalid direction
+									const k = key(newTo);
+									if (!G.board[k]) return; // off board
+									if (G.board[k]!.dead) return; // dead tile
+									if (G.origins.some(o => o.q === newTo.q && o.r === newTo.r)) return; // can't point at origin
+								}
+
+								// Apply rotation
+								for (const { lane, newTo, newColor } of rotated) {
+									lane.to = newTo;
+									lane.color = newColor!;
+								}
+							} else {
+								// HEX MODE: rotate tile orientation
+								const tile = G.board[key(args.coord)];
+								if (!tile || tile.colors.length === 0) return;
+
+								// match-color mode: at least one discarded card must contain a color from the tile
+								if (rules.PLACEMENT.DISCARD_TO_ROTATE === 'match-color') {
+									const hasMatchingColor = args.handIndices.some((idx) => {
+										const card = hand[idx]!;
+										return card.colors.some((c) => tile.colors.includes(c));
+									});
+									if (!hasMatchingColor) return;
+								}
+
+								tile.rotation = (tile.rotation + args.rotation) % 6;
+							}
 
 							// Discard the cards (remove from highest index first to avoid shifting)
 							const sortedIndices = [...args.handIndices].sort((a, b) => b - a);

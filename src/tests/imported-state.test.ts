@@ -153,6 +153,8 @@ const actionKey = (a: Action): string => {
 describe('imported-state', () => {
 	it('matches expected actions', () => {
 		const actual = enumerateActions(G, '0').map(actionKey).sort();
+		// Filter out rotate actions (many nodes with outgoing lanes generate many combos)
+		const actualWithoutRotates = actual.filter((k) => !k.startsWith('rotate:'));
 		const expected = [
   "play:0:B:-1,2->-1,3",
   "play:0:B:0,-2->0,-1",
@@ -198,7 +200,14 @@ describe('imported-state', () => {
   "take:3",
   "end",
 ];
-		expect(actual).toEqual([...expected].sort());
+		expect(actualWithoutRotates).toEqual([...expected].sort());
+		// Verify rotation actions exist (COST_TO_ROTATE=1, 1 card in hand → 1 discard combo)
+		const rotateActions = actual.filter((k) => k.startsWith('rotate:'));
+		expect(rotateActions.length).toBeGreaterThan(0);
+		// All rotate actions should use handIndex 0 (only card)
+		for (const k of rotateActions) {
+			expect(k).toMatch(/^rotate:0:/);
+		}
 	});
 	it('matches expected score deltas', () => {
 		const baseScores = computeScoresRaw(G);

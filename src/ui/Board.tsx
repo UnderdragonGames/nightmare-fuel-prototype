@@ -150,7 +150,8 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				const isOrigin = originSet.has(key(c));
 				const isHighlighted = highlightSet.has(key(c));
 				const isHighlight = isHighlighted && occupants.length === 0 && !isDead;
-				const isRotatable = highlightIsRotation && isHighlighted && occupants.length > 0;
+				const hasOutgoingLanes = isPathMode && lanes.some(l => key(l.from) === key(c));
+				const isRotatable = highlightIsRotation && isHighlighted && (occupants.length > 0 || hasOutgoingLanes);
 				const isPendingRotation = pendingRotationTile !== null && key(pendingRotationTile) === key(c);
 				const showMoveStroke = !highlightIsRotation && isHighlighted && !isPathMode;
 				const split = !isPathMode && !isDead && sortedOccupants.length >= 2 ? [asVisibleColor(sortedOccupants[0] as Color), asVisibleColor(sortedOccupants[1] as Color)] as [string, string] : null;
@@ -170,9 +171,9 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							size={size - 0.5}
 							fill={hexFill}
 							splitFills={isDead ? undefined : (split ?? undefined)}
-							fillOpacity={isDead ? 1 : (isHighlight ? 0.35 : (isRotatable && !isPathMode ? 0.7 : 1))}
-							stroke={isDead ? '#1a1020' : (isRotatable && !isPathMode ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#bb88ee' : '#2a2a3d')))}
-							strokeWidth={isDead ? 2 : (isRotatable && !isPathMode ? 3 : (showMoveStroke ? 2 : (isOrigin ? 2 : 1)))}
+							fillOpacity={isDead ? 1 : (isHighlight ? 0.35 : (isRotatable ? 0.7 : 1))}
+							stroke={isDead ? '#1a1020' : (isRotatable ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#bb88ee' : '#2a2a3d')))}
+							strokeWidth={isDead ? 2 : (isRotatable ? 3 : (showMoveStroke ? 2 : (isOrigin ? 2 : 1)))}
 							onClick={() => !isPathMode && onHexClick(c)}
 						>
 							{isDead && (
@@ -184,46 +185,11 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							{isOrigin && occupants.length === 0 && !isPathMode && !isDead && (
 								<circle cx={0} cy={0} r={size * 0.3} fill="none" stroke="#bb88ee" strokeWidth={2} strokeDasharray="4,2" />
 							)}
-							{/* Rotation indicator - hide in path mode */}
+							{/* Hex mode: rotation indicator (clean arrow symbol instead of emoji) */}
 							{!isPathMode && isRotatable && !isPendingRotation && (
-								<text x={0} y={-size * 0.4} fontSize={size * 0.6} textAnchor="middle" fill={highlightColor} style={{ pointerEvents: 'none', userSelect: 'none' }}>🔄</text>
+								<text x={0} y={size * 0.15} fontSize={size * 0.55} textAnchor="middle" fill={highlightColor} style={{ pointerEvents: 'none', userSelect: 'none' }}>↻</text>
 							)}
 						</Hex>
-						{/* Rotation arrows - show when tile is pending rotation - hide in path mode */}
-						{!isPathMode && isPendingRotation && onRotationSelect && (
-							<g>
-								{(() => {
-									const neigh = neighbors(c);
-									// 4 distinct rotations placed on 4 neighbor hexes:
-									// CW 60 (rot=1), CW 120 (rot=2), CCW 120 (rot=4), CCW 60 (rot=5)
-									const arrowConfigs: Array<{ coord: Co; rot: number; cw: boolean; degrees: string }> = [];
-									if (neigh[0]) arrowConfigs.push({ coord: neigh[0]!, rot: 1, cw: true, degrees: '60' });
-									if (neigh[1]) arrowConfigs.push({ coord: neigh[1]!, rot: 2, cw: true, degrees: '120' });
-									if (neigh[3]) arrowConfigs.push({ coord: neigh[3]!, rot: 4, cw: false, degrees: '120' });
-									if (neigh[4]) arrowConfigs.push({ coord: neigh[4]!, rot: 5, cw: false, degrees: '60' });
-									return arrowConfigs.map(({ coord, rot, cw, degrees }) => {
-										const pos = axialToPixel(coord, size);
-										const fillColor = cw ? '#3b82f6' : '#a855f7'; // blue for CW, purple for CCW
-										return (
-											<g
-												key={`arrow-${rot}-${coord.q},${coord.r}`}
-												transform={`translate(${pos.x}, ${pos.y})`}
-												onClick={(e) => { e.stopPropagation(); onRotationSelect(rot); }}
-												style={{ cursor: 'pointer' }}
-											>
-												<circle cx={0} cy={0} r={size * 0.45} fill={fillColor} stroke="white" strokeWidth={2} opacity={0.9} />
-												<g transform={`rotate(${cw ? 0 : 180})`} style={{ pointerEvents: 'none' }}>
-													<path d={`M ${-size * 0.15} 0 L ${size * 0.1} ${-size * 0.1} L ${size * 0.05} 0 L ${size * 0.1} ${size * 0.1} Z`} fill="white" />
-												</g>
-												<text x={0} y={size * 0.18} fontSize={size * 0.28} textAnchor="middle" fill="white" style={{ pointerEvents: 'none', userSelect: 'none', fontWeight: 'bold' }}>
-													{degrees}
-												</text>
-											</g>
-										);
-									});
-								})()}
-							</g>
-						)}
 						{/* Hex mode: Colored edge markers - hide in path mode */}
 						{!isPathMode && (occupants.length > 0 || isOrigin) && (() => {
 							const edgeRadius = size * 0.65;
@@ -342,11 +308,25 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				const isOrigin = originSet.has(key(c));
 				const isHighlighted = highlightSet.has(key(c));
 				const isSelectedSource = selectedSourceDot !== null && key(selectedSourceDot) === key(c);
-				
+				const hasOutgoing = lanes.some(l => key(l.from) === key(c));
+				const dotRotatable = highlightIsRotation && highlightSet.has(key(c)) && hasOutgoing;
+				const dotPending = pendingRotationTile !== null && key(pendingRotationTile) === key(c);
+
 				return (
 					<g key={`dot-${key(c)}`} onClick={() => onHexClick(c)} style={{ cursor: 'pointer' }}>
 						{/* Invisible hit area for dot */}
 						<circle cx={center.x} cy={center.y} r={size * 0.4} fill="transparent" />
+						{/* Rotatable indicator — outer ring + arrow symbol */}
+						{dotRotatable && !dotPending && (
+							<>
+								<circle cx={center.x} cy={center.y} r={size * 0.32} fill="none" stroke={highlightColor} strokeWidth={1.5} strokeDasharray="3,2" opacity={0.8} />
+								<text x={center.x} y={center.y - size * 0.35} fontSize={size * 0.4} textAnchor="middle" fill={highlightColor} style={{ pointerEvents: 'none', userSelect: 'none' }}>↻</text>
+							</>
+						)}
+						{/* Pending rotation indicator — solid bright ring */}
+						{dotPending && (
+							<circle cx={center.x} cy={center.y} r={size * 0.35} fill="none" stroke="#f59e0b" strokeWidth={2.5} opacity={0.9} />
+						)}
 						{/* Selection ring for source dot */}
 						{isSelectedSource && (
 							<circle
@@ -359,7 +339,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							/>
 						)}
 						{/* Highlight ring for valid destinations */}
-						{isHighlighted && !isSelectedSource && (
+						{isHighlighted && !isSelectedSource && !dotRotatable && (
 							<circle
 								cx={center.x}
 								cy={center.y}
@@ -374,8 +354,8 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 						<circle
 							cx={center.x}
 							cy={center.y}
-							r={size * 0.15}
-							fill={isSelectedSource ? highlightColor : (isOrigin ? '#bb88ee' : '#3a3a4d')}
+							r={dotRotatable || dotPending ? size * 0.18 : size * 0.15}
+							fill={isSelectedSource ? highlightColor : (dotPending ? '#f59e0b' : (dotRotatable ? highlightColor : (isOrigin ? '#bb88ee' : '#3a3a4d')))}
 							stroke="#1a1a24"
 							strokeWidth={0.5}
 						/>
@@ -383,7 +363,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				);
 			})}
 			
-			{/* Layer 4: Coordinate labels - render LAST so they sit above dots/lanes */}
+			{/* Layer 4: Coordinate labels */}
 			{showCoords && (
 				<g>
 					{coords.map((c) => {
@@ -406,6 +386,70 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 					})}
 				</g>
 			)}
+
+			{/* Layer 5: Rotation picker — topmost layer, above dots/lanes/everything */}
+			{pendingRotationTile && onRotationSelect && (() => {
+				const c = pendingRotationTile;
+				const center = axialToPixel(c, size);
+				const ringR = size * 1.4;
+				const btnR = size * 0.48;
+				// 5 rotation amounts: CW right side, CCW left side, 180° bottom
+				const options: Array<{ rot: number; label: string; symbol: string; angleDeg: number; color: string }> = [
+					{ rot: 5, label: '60°',  symbol: '↺', angleDeg: -144, color: '#a855f7' },  // CCW 60° — upper-left
+					{ rot: 1, label: '60°',  symbol: '↻', angleDeg: -36,  color: '#3b82f6' },  // CW 60°  — upper-right
+					{ rot: 2, label: '120°', symbol: '↻', angleDeg: 18,   color: '#3b82f6' },  // CW 120° — right
+					{ rot: 3, label: '180°', symbol: '↔', angleDeg: 90,   color: '#6b7280' },  // 180°    — bottom
+					{ rot: 4, label: '120°', symbol: '↺', angleDeg: 162,  color: '#a855f7' },  // CCW 120° — left
+				];
+				return (
+					<g>
+						{/* Subtle ring connecting buttons */}
+						<circle cx={center.x} cy={center.y} r={ringR} fill="none" stroke="#ffffff" strokeWidth={0.5} opacity={0.12} />
+						{/* Highlight the selected node */}
+						<circle cx={center.x} cy={center.y} r={size * 0.4} fill="#f59e0b" opacity={0.25} />
+						{options.map(({ rot, label, symbol, angleDeg, color }) => {
+							const rad = (angleDeg * Math.PI) / 180;
+							const bx = center.x + ringR * Math.cos(rad);
+							const by = center.y + ringR * Math.sin(rad);
+							return (
+								<g
+									key={`rot-pick-${rot}`}
+									onClick={(e) => { e.stopPropagation(); onRotationSelect(rot); }}
+									style={{ cursor: 'pointer' }}
+								>
+									{/* Button background */}
+									<circle cx={bx} cy={by} r={btnR} fill={color} stroke="white" strokeWidth={1.5} opacity={0.92} />
+									{/* Direction symbol */}
+									<text
+										x={bx}
+										y={by - btnR * 0.1}
+										fontSize={btnR * 1.1}
+										textAnchor="middle"
+										dominantBaseline="central"
+										fill="white"
+										fontWeight="bold"
+										style={{ pointerEvents: 'none', userSelect: 'none' }}
+									>
+										{symbol}
+									</text>
+									{/* Degree label */}
+									<text
+										x={bx}
+										y={by + btnR * 0.65}
+										fontSize={btnR * 0.52}
+										textAnchor="middle"
+										fill="white"
+										fontWeight="bold"
+										style={{ pointerEvents: 'none', userSelect: 'none' }}
+									>
+										{label}
+									</text>
+								</g>
+							);
+						})}
+					</g>
+				);
+			})()}
 		</svg>
 	);
 };
