@@ -5,6 +5,7 @@ import { makeCard } from '../game/cardFactory';
 import { CARDS } from '../game/cards';
 import { resolveCardEffects } from '../game/cardActions';
 import { initActionState, playActionCardFromHand } from '../game/effects';
+import { buildPlayers } from './testHelpers';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
 
@@ -22,24 +23,25 @@ const findCard = (id: number): Card => {
 	return { ...card };
 };
 
-const makeTestState = (playerIds: string[], overrides: Partial<GState> = {}): GState => ({
-	rules,
-	radius: rules.RADIUS,
-	board: {},
-	lanes: [],
-	deck: [],
-	discard: [],
-	hands: {},
-	treasure: [],
-	prefs: { '0': { primary: 'R', secondary: 'O', tertiary: 'Y' } },
-	nightmares: {},
-	nightmareState: {},
-	stats: { placements: 0 },
-	meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
-	origins: [{ q: 0, r: 0 }],
-	action: initActionState(playerIds as PlayerID[]),
-	...overrides,
-});
+const makeTestState = (playerIds: string[], overrides: Partial<GState> = {}): GState => {
+	const hands: Record<string, any[]> = {};
+	for (const pid of playerIds) hands[pid] = [];
+	return {
+		rules,
+		radius: rules.RADIUS,
+		board: {},
+		lanes: [],
+		discard: [],
+		treasure: [],
+		stats: { placements: 0 },
+		meta: { deckExhaustionCycle: null },
+		origins: [{ q: 0, r: 0 }],
+		action: initActionState(playerIds as PlayerID[]),
+		players: buildPlayers(hands, { prefs: { primary: 'R', secondary: 'O', tertiary: 'Y' } }),
+		secret: { deck: [] },
+		...overrides,
+	} as GState;
+};
 
 /** Play an action card from hand index 0, resolving effects with the given context. */
 const playResolved = (
@@ -48,7 +50,7 @@ const playResolved = (
 	handIndex: number,
 	context: Parameters<typeof resolveCardEffects>[1],
 ) => {
-	const card = G.hands[playerId]?.[handIndex];
+	const card = G.players[playerId]?.hand[handIndex];
 	if (!card) throw new Error('Missing card to play.');
 	const effects = resolveCardEffects(card, context);
 	playActionCardFromHand(G, undefined, playerId, handIndex, effects);
@@ -69,7 +71,7 @@ describe('Card #4 "Alter Fate"', () => {
 			makeCard(['B'], { id: 105 }),
 			makeCard(['V'], { id: 106 }),
 		];
-		G.deck = [...deckCards];
+		G.secret.deck = [...deckCards];
 
 		const alterFate = makeCard([], {
 			id: 4,
@@ -77,7 +79,7 @@ describe('Card #4 "Alter Fate"', () => {
 			text: 'Look at the top 5 cards of the deck, take one card, then discard the rest.',
 			isAction: true,
 		});
-		G.hands['0'] = [alterFate];
+		G.players['0']!.hand = [alterFate];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -87,17 +89,17 @@ describe('Card #4 "Alter Fate"', () => {
 		});
 
 		// Player should have exactly 1 card in hand (the picked one).
-		expect(G.hands['0'].length).toBe(1);
+		expect(G.players['0']!.hand.length).toBe(1);
 		// 4 remaining revealed cards + the played action card = 5 in discard.
 		expect(G.discard.length).toBe(5);
 		// 1 card should remain in the deck (the 6th one that wasn't revealed).
-		expect(G.deck.length).toBe(1);
-		expect(G.deck[0]!.id).toBe(101);
+		expect(G.secret.deck.length).toBe(1);
+		expect(G.secret.deck[0]!.id).toBe(101);
 	});
 
 	it('handles deck with fewer than 5 cards gracefully', () => {
 		const G = makeTestState(['0']);
-		G.deck = [makeCard(['R'], { id: 201 }), makeCard(['G'], { id: 202 }), makeCard(['B'], { id: 203 })];
+		G.secret.deck = [makeCard(['R'], { id: 201 }), makeCard(['G'], { id: 202 }), makeCard(['B'], { id: 203 })];
 
 		const alterFate = makeCard([], {
 			id: 4,
@@ -105,7 +107,7 @@ describe('Card #4 "Alter Fate"', () => {
 			text: 'Look at the top 5 cards of the deck, take one card, then discard the rest.',
 			isAction: true,
 		});
-		G.hands['0'] = [alterFate];
+		G.players['0']!.hand = [alterFate];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -115,9 +117,9 @@ describe('Card #4 "Alter Fate"', () => {
 		});
 
 		// Picked 1, discarded the other 2 revealed + action card = 3 in discard.
-		expect(G.hands['0'].length).toBe(1);
+		expect(G.players['0']!.hand.length).toBe(1);
 		expect(G.discard.length).toBe(3);
-		expect(G.deck.length).toBe(0);
+		expect(G.secret.deck.length).toBe(0);
 	});
 });
 
@@ -133,7 +135,7 @@ describe('Card #19 "Combo"', () => {
 			text: 'Place 2 or play 2 actions.',
 			isAction: true,
 		});
-		G.hands['0'] = [combo];
+		G.players['0']!.hand = [combo];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -155,7 +157,7 @@ describe('Card #19 "Combo"', () => {
 			text: 'Place 2 or play 2 actions.',
 			isAction: true,
 		});
-		G.hands['0'] = [combo];
+		G.players['0']!.hand = [combo];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -185,7 +187,7 @@ describe('replaceHexWithDead cards', () => {
 			text: 'Destroy a hex tile.',
 			isAction: true,
 		});
-		G.hands['0'] = [malfunction];
+		G.players['0']!.hand = [malfunction];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -209,7 +211,7 @@ describe('replaceHexWithDead cards', () => {
 			text: 'Destroy a hex tile.',
 			isAction: true,
 		});
-		G.hands['0'] = [placebo];
+		G.players['0']!.hand = [placebo];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -231,7 +233,7 @@ describe('replaceHexWithDead cards', () => {
 			text: 'Destroy a hex tile.',
 			isAction: true,
 		});
-		G.hands['0'] = [malfunction];
+		G.players['0']!.hand = [malfunction];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -251,12 +253,12 @@ describe('Steal cards (#82 and #100)', () => {
 	it('Card #82 steals 1 card from target player', () => {
 		const G = makeTestState(['0', '1']);
 		const targetCards = [makeCard(['R'], { id: 301 }), makeCard(['G'], { id: 302 }), makeCard(['B'], { id: 303 })];
-		G.hands['0'] = [
+		G.players['0']!.hand = [
 			makeCard([], { id: 82, name: 'Steal', text: 'Take 1 card.', isAction: true }),
 		];
-		G.hands['1'] = [...targetCards];
+		G.players['1']!.hand = [...targetCards];
 
-		const initialTargetSize = G.hands['1'].length;
+		const initialTargetSize = G.players['1']!.hand.length;
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -266,20 +268,20 @@ describe('Steal cards (#82 and #100)', () => {
 		});
 
 		// Player 0 should have gained 1 card (stolen).
-		expect(G.hands['0'].length).toBe(1);
+		expect(G.players['0']!.hand.length).toBe(1);
 		// Player 1 should have lost 1 card.
-		expect(G.hands['1'].length).toBe(initialTargetSize - 1);
+		expect(G.players['1']!.hand.length).toBe(initialTargetSize - 1);
 		// The stolen card should be one of the original target cards.
-		const stolenCard = G.hands['0'][0]!;
+		const stolenCard = G.players['0']!.hand[0]!;
 		expect(targetCards.some((c) => c.id === stolenCard.id)).toBe(true);
 	});
 
 	it('Card #100 steals 1 card from target player', () => {
 		const G = makeTestState(['0', '1']);
-		G.hands['0'] = [
+		G.players['0']!.hand = [
 			makeCard([], { id: 100, name: 'Steal', text: 'Take 1 card.', isAction: true }),
 		];
-		G.hands['1'] = [makeCard(['O'], { id: 401 }), makeCard(['V'], { id: 402 })];
+		G.players['1']!.hand = [makeCard(['O'], { id: 401 }), makeCard(['V'], { id: 402 })];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -288,17 +290,17 @@ describe('Steal cards (#82 and #100)', () => {
 			lastPlacedColor: null,
 		});
 
-		expect(G.hands['0'].length).toBe(1);
-		expect(G.hands['1'].length).toBe(1);
+		expect(G.players['0']!.hand.length).toBe(1);
+		expect(G.players['1']!.hand.length).toBe(1);
 	});
 
 	it('stealing from a player with 1 card leaves them empty', () => {
 		const G = makeTestState(['0', '1']);
 		const singleCard = makeCard(['Y'], { id: 501 });
-		G.hands['0'] = [
+		G.players['0']!.hand = [
 			makeCard([], { id: 82, name: 'Steal', text: 'Take 1 card.', isAction: true }),
 		];
-		G.hands['1'] = [singleCard];
+		G.players['1']!.hand = [singleCard];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -307,17 +309,17 @@ describe('Steal cards (#82 and #100)', () => {
 			lastPlacedColor: null,
 		});
 
-		expect(G.hands['0'].length).toBe(1);
-		expect(G.hands['0'][0]!.id).toBe(singleCard.id);
-		expect(G.hands['1'].length).toBe(0);
+		expect(G.players['0']!.hand.length).toBe(1);
+		expect(G.players['0']!.hand[0]!.id).toBe(singleCard.id);
+		expect(G.players['1']!.hand.length).toBe(0);
 	});
 
 	it('stealing from a player with 0 cards does nothing', () => {
 		const G = makeTestState(['0', '1']);
-		G.hands['0'] = [
+		G.players['0']!.hand = [
 			makeCard([], { id: 100, name: 'Steal', text: 'Take 1 card.', isAction: true }),
 		];
-		G.hands['1'] = [];
+		G.players['1']!.hand = [];
 
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
@@ -326,8 +328,8 @@ describe('Steal cards (#82 and #100)', () => {
 			lastPlacedColor: null,
 		});
 
-		expect(G.hands['0'].length).toBe(0);
-		expect(G.hands['1'].length).toBe(0);
+		expect(G.players['0']!.hand.length).toBe(0);
+		expect(G.players['1']!.hand.length).toBe(0);
 	});
 });
 
@@ -343,7 +345,7 @@ describe('Card #91 "Seize the Opportunity"', () => {
 			text: 'Place one more tile of the color you just placed.',
 			isAction: true,
 		});
-		G.hands['0'] = [seize];
+		G.players['0']!.hand = [seize];
 		// Simulate that the player last placed blue.
 		G.action.lastPlacedColor = 'B';
 
@@ -365,7 +367,7 @@ describe('Card #91 "Seize the Opportunity"', () => {
 			text: 'Place one more tile of the color you just placed.',
 			isAction: true,
 		});
-		G.hands['0'] = [seize];
+		G.players['0']!.hand = [seize];
 		G.action.lastPlacedColor = 'R';
 
 		playResolved(G, '0', 0, {
@@ -386,7 +388,7 @@ describe('Card #91 "Seize the Opportunity"', () => {
 			text: 'Place one more tile of the color you just placed.',
 			isAction: true,
 		});
-		G.hands['0'] = [seize];
+		G.players['0']!.hand = [seize];
 
 		expect(() => {
 			playResolved(G, '0', 0, {

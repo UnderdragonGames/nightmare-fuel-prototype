@@ -41,8 +41,7 @@ const ensurePlayerPlacements = (record: Record<PlayerID, { count: number; color?
 };
 
 const ensureHand = (G: GState, playerId: PlayerID): Card[] => {
-	if (!G.hands[playerId]) G.hands[playerId] = [];
-	return G.hands[playerId]!;
+	return G.players[playerId]!.hand;
 };
 
 export const initActionState = (playerIDs: PlayerID[] = []): ActionState => {
@@ -72,7 +71,7 @@ export const initActionState = (playerIDs: PlayerID[] = []): ActionState => {
 	};
 };
 
-export const allHandsEmpty = (G: GState): boolean => Object.values(G.hands).every((hand) => hand.length === 0);
+export const allHandsEmpty = (G: GState): boolean => Object.values(G.players).every((p) => p.hand.length === 0);
 
 /** Check if all onDraw block hooks should be cleared (Barren Wasteland condition: all hands empty). */
 export const resolveDrawHooksIfReady = (G: GState): void => {
@@ -103,7 +102,7 @@ export const drawOne = (G: GState, playerId?: PlayerID): Card | null => {
 		const { blocked } = emitEvent(G, { type: 'onDraw', playerId });
 		if (blocked) return null;
 	}
-	const card = G.deck.pop() ?? null;
+	const card = G.secret.deck.pop() ?? null;
 	return card;
 };
 
@@ -143,7 +142,7 @@ export const randomDiscard = (G: GState, playerId: PlayerID, count: number, rng:
 export const revealTop = (G: GState, count: number): Card[] => {
 	const revealed: Card[] = [];
 	for (let i = 0; i < count; i += 1) {
-		const card = G.deck.pop();
+		const card = G.secret.deck.pop();
 		if (!card) break;
 		revealed.push(card);
 	}
@@ -249,7 +248,7 @@ export const moveHex = (G: GState, from: Co, to: Co): void => {
 };
 
 export const reorderPlayerPrefs = (G: GState, playerId: PlayerID, order: PlayerPrefs): void => {
-	G.prefs[playerId] = order;
+	G.players[playerId]!.prefs = order;
 };
 
 export const setAgendaOverride = (G: GState, playerId: PlayerID, stat: Stat | null): void => {
@@ -337,30 +336,30 @@ export const rotateHands = (G: GState, playerOrder: PlayerID[], direction: 'cloc
 	if (playerOrder.length < 2) return;
 	const saved: Record<PlayerID, Card[]> = {};
 	for (const pid of playerOrder) {
-		saved[pid] = [...(G.hands[pid] ?? [])];
+		saved[pid] = [...G.players[pid]!.hand];
 	}
 	for (let i = 0; i < playerOrder.length; i++) {
 		const sourceIndex = direction === 'clockwise'
 			? (i - 1 + playerOrder.length) % playerOrder.length
 			: (i + 1) % playerOrder.length;
-		G.hands[playerOrder[i]!] = saved[playerOrder[sourceIndex]!]!;
+		G.players[playerOrder[i]!]!.hand = saved[playerOrder[sourceIndex]!]!;
 	}
 };
 
 export const swapPrefsSecondaryTertiary = (G: GState, playerId: PlayerID): void => {
-	const prefs = G.prefs[playerId];
-	if (!prefs) return;
-	G.prefs[playerId] = {
-		primary: prefs.primary,
-		secondary: prefs.tertiary,
-		tertiary: prefs.secondary,
+	const p = G.players[playerId];
+	if (!p) return;
+	p.prefs = {
+		primary: p.prefs.primary,
+		secondary: p.prefs.tertiary,
+		tertiary: p.prefs.secondary,
 	};
 };
 
 export const increaseHandSize = (G: GState, playerId: PlayerID, amount: number): void => {
-	const state = G.nightmareState[playerId];
-	if (!state) return;
-	state.handSizeBonus += amount;
+	const p = G.players[playerId];
+	if (!p) return;
+	p.nightmareState.handSizeBonus += amount;
 };
 
 export type NightmareActionContext = {

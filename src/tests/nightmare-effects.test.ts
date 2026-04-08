@@ -4,6 +4,7 @@ import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { initActionState } from '../game/effects';
 import { applyNightmareActions } from '../game/effects';
 import { makeCard } from '../game/cardFactory';
+import { buildPlayers } from './testHelpers';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
 
@@ -16,23 +17,24 @@ const baseRules = {
 	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: 0 },
 };
 
-const createState = (playerIds: PlayerID[]): GState => ({
-	rules: { ...baseRules },
-	radius: baseRules.RADIUS,
-	board: {},
-	lanes: [],
-	deck: [],
-	discard: [],
-	hands: {},
-	treasure: [],
-	prefs: {},
-	nightmares: {},
-	nightmareState: {},
-	stats: { placements: 0 },
-	meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
-	origins: [{ q: 0, r: 0 }],
-	action: initActionState(playerIds),
-});
+const createState = (playerIds: PlayerID[]): GState => {
+	const hands: Record<string, any[]> = {};
+	for (const pid of playerIds) hands[pid] = [];
+	return {
+		rules: { ...baseRules },
+		radius: baseRules.RADIUS,
+		board: {},
+		lanes: [],
+		discard: [],
+		treasure: [],
+		stats: { placements: 0 },
+		meta: { deckExhaustionCycle: null },
+		origins: [{ q: 0, r: 0 }],
+		action: initActionState(playerIds),
+		players: buildPlayers(hands),
+		secret: { deck: [] },
+	} as GState;
+};
 
 describe('nightmare effects', () => {
 	it('randomizes color directions deterministically with rng', () => {
@@ -49,10 +51,10 @@ describe('nightmare effects', () => {
 		const G = createState(['0']);
 		G.rules.TREASURE_MAX = 3;
 		G.treasure = [makeCard(['R'])];
-		G.deck = [makeCard(['G']), makeCard(['B']), makeCard(['O'])];
+		G.secret.deck = [makeCard(['G']), makeCard(['B']), makeCard(['O'])];
 		applyNightmareActions(G, [{ type: 'fillTreasureToMax' }], { currentPlayer: '0' });
 		expect(G.treasure.length).toBe(3);
-		expect(G.deck.length).toBe(1);
+		expect(G.secret.deck.length).toBe(1);
 	});
 
 	it('destroys a connected path component', () => {
@@ -91,15 +93,15 @@ describe('nightmare effects', () => {
 
 	it('swaps secondary and tertiary prefs', () => {
 		const G = createState(['0']);
-		G.prefs['0'] = { primary: 'R', secondary: 'G', tertiary: 'B' };
+		G.players['0']!.prefs = { primary: 'R', secondary: 'G', tertiary: 'B' };
 		applyNightmareActions(G, [{ type: 'swapPrefsSecondaryTertiary' }], { currentPlayer: '0' });
-		expect(G.prefs['0']).toEqual({ primary: 'R', secondary: 'B', tertiary: 'G' });
+		expect(G.players['0']!.prefs).toEqual({ primary: 'R', secondary: 'B', tertiary: 'G' });
 	});
 
 	it('increases hand size bonus', () => {
 		const G = createState(['0']);
-		G.nightmareState['0'] = { abilityUsesRemaining: 1, handSizeBonus: 0 };
+		G.players['0']!.nightmareState = { abilityUsesRemaining: 1, handSizeBonus: 0 };
 		applyNightmareActions(G, [{ type: 'increaseHandSize', amount: 1 }], { currentPlayer: '0' });
-		expect(G.nightmareState['0']?.handSizeBonus).toBe(1);
+		expect(G.players['0']!.nightmareState.handSizeBonus).toBe(1);
 	});
 });

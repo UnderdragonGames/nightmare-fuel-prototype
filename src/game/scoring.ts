@@ -474,9 +474,9 @@ export const computeScores = (G: GState): Record<string, number> => {
 	const intersectionCountByColor = computeIntersectionCountByColor(G);
 	const scores: Record<string, number> = {};
 	const [primaryWeight, secondaryWeight, tertiaryWeight] = rules.SCORING.COLOR_POINTS;
-	for (const pid of Object.keys(G.prefs)) {
+	for (const [pid, p] of Object.entries(G.players)) {
 		scores[pid] = 0;
-		const { primary, secondary, tertiary } = G.prefs[pid]!;
+		const { primary, secondary, tertiary } = p.prefs;
 		scores[pid] += primaryWeight * intersectionCountByColor[primary];
 		scores[pid] += secondaryWeight * intersectionCountByColor[secondary];
 		scores[pid] += tertiaryWeight * intersectionCountByColor[tertiary];
@@ -487,9 +487,9 @@ export const computeScores = (G: GState): Record<string, number> => {
 export const computeScoresRaw = (G: GState): Record<string, number> => {
 	const intersectionCountByColor = computeIntersectionCountByColor(G);
 	const scores: Record<string, number> = {};
-	for (const pid of Object.keys(G.prefs)) {
+	for (const [pid, p] of Object.entries(G.players)) {
 		scores[pid] = 0;
-		const { primary, secondary, tertiary } = G.prefs[pid]!;
+		const { primary, secondary, tertiary } = p.prefs;
 		scores[pid] += intersectionCountByColor[primary];
 		scores[pid] += intersectionCountByColor[secondary];
 		scores[pid] += intersectionCountByColor[tertiary];

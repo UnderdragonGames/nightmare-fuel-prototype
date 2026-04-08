@@ -142,27 +142,51 @@ export type HexTile = {
 	dead?: boolean;
 };
 
+/** Per-player private state (filtered by playerView for opponents). */
+export type PlayerState = {
+	hand: Card[];
+	prefs: PlayerPrefs;
+	nightmare: NightmareId;
+	nightmareState: NightmareState;
+	stashBonus: number;
+	actionPlaysThisTurn: number;
+	/** Present only in client-side filtered state (opponent view). */
+	handSize?: number;
+};
+
+/** Filtered opponent state (what you see for other players after playerView). */
+export type FilteredPlayerState = {
+	handSize: number;
+	prefs?: PlayerPrefs;
+	nightmare?: NightmareId;
+	nightmareState?: NightmareState;
+};
+
+/** Server-only state, stripped from all clients by playerView. */
+export type SecretState = {
+	deck: Card[];
+};
+
 export type GState = {
 	rules: Rules;
 	radius: number;
 	board: Record<string, HexTile>;
 	// Path-mode only: explicit lane segments (independent of COLOR_TO_DIR)
 	lanes: PathLane[];
-	deck: Card[];
 	discard: Card[];
-	hands: Record<PlayerID, Card[]>;
 	treasure: Card[];
-	prefs: Record<PlayerID, PlayerPrefs>;
-	nightmares: Record<PlayerID, NightmareId>;
-	nightmareState: Record<PlayerID, NightmareState>;
 	stats: { placements: number };
 	meta: {
 		deckExhaustionCycle: number | null; // cycle index when deck was first exhausted
-		stashBonus: Record<PlayerID, number>; // bonus draws earned this turn (paid out at endTurnAndRefill, then reset)
-		actionPlaysThisTurn: Record<PlayerID, number>;
 	};
 	origins: Co[]; // starting places for scoring (center or random)
 	action: ActionState;
+	// Per-player state (filtered by playerView for opponents)
+	players: Record<PlayerID, PlayerState>;
+	// Server-only state (stripped from all clients)
+	secret: SecretState;
+	// Computed by playerView — only present on client-side filtered state
+	deckSize?: number;
 };
 
 export type OutwardRule = 'none' | 'outwardOnly' | 'dirOnly' | 'dirOrOutward';

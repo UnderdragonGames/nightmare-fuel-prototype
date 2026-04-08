@@ -4,38 +4,28 @@ import { emitEvent, registerHook, removeHooksBySource } from '../game/hooks';
 import { initActionState, applyGameEffects, drawOne, resolveDrawHooksIfReady } from '../game/effects';
 import { resolveCardEffects } from '../game/cardActions';
 import { CARDS } from '../game/cards';
+import { buildPlayers } from './testHelpers';
 
 const makeMinimalG = (playerIds: string[] = ['0', '1']): GState => {
 	const hands: Record<string, any[]> = {};
-	const prefs: Record<string, any> = {};
-	const nightmares: Record<string, string> = {};
-	const nightmareState: Record<string, any> = {};
 	for (const pid of playerIds) {
 		hands[pid] = [];
-		prefs[pid] = { primary: 'R', secondary: 'G', tertiary: 'B' };
-		nightmares[pid] = 'test';
-		nightmareState[pid] = { abilityUsesRemaining: 0, handSizeBonus: 0 };
 	}
 	return {
 		rules: {} as any,
 		radius: 3,
 		board: {},
 		lanes: [],
-		deck: [],
 		discard: [],
-		hands,
 		treasure: [],
-		prefs,
-		nightmares,
-		nightmareState,
 		stats: { placements: 0 },
 		meta: {
 			deckExhaustionCycle: null,
-			stashBonus: {},
-			actionPlaysThisTurn: {},
 		},
 		origins: [{ q: 0, r: 0 }],
 		action: initActionState(playerIds),
+		players: buildPlayers(hands, { prefs: { primary: 'R', secondary: 'G', tertiary: 'B' }, nightmare: 'test' }),
+		secret: { deck: [] },
 	} as GState;
 };
 
@@ -176,7 +166,7 @@ describe('hook system', () => {
 		it('registers hook → onTurnStart blocks → hook removed', () => {
 			const G = makeMinimalG();
 			const sabotage = CARDS.find((c) => c.id === 89)!;
-			G.hands['0'] = [sabotage];
+			G.players['0']!.hand = [sabotage];
 
 			const effects = resolveCardEffects(sabotage, {
 				currentPlayerId: '0',
@@ -218,8 +208,8 @@ describe('hook system', () => {
 		it('registers hook → draws blocked → hands empty → hook removed', () => {
 			const G = makeMinimalG();
 			const barren = CARDS.find((c) => c.id === 10)!;
-			G.hands['0'] = [barren];
-			G.deck = [
+			G.players['0']!.hand = [barren];
+			G.secret.deck = [
 				{ id: 200, name: 'A', colors: ['R'], stats: {}, text: null, isAction: false, synergies: [], synergyCount: 0, flags: { needsNewPrint: false, needsDuplicate: false } },
 				{ id: 201, name: 'B', colors: ['G'], stats: {}, text: null, isAction: false, synergies: [], synergyCount: 0, flags: { needsNewPrint: false, needsDuplicate: false } },
 			];
@@ -247,11 +237,11 @@ describe('hook system', () => {
 			// Draws should be blocked
 			const drawn = drawOne(G, '0');
 			expect(drawn).toBeNull();
-			expect(G.deck).toHaveLength(2); // Deck unchanged
+			expect(G.secret.deck).toHaveLength(2); // Deck unchanged
 
 			// Make all hands empty
-			G.hands['0'] = [];
-			G.hands['1'] = [];
+			G.players['0']!.hand = [];
+			G.players['1']!.hand = [];
 
 			// Now resolveDrawHooksIfReady should clear the hook
 			resolveDrawHooksIfReady(G);

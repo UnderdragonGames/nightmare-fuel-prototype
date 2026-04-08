@@ -3,6 +3,7 @@ import { canPlacePath, key } from '../game/helpers';
 import { initActionState } from '../game/effects';
 import type { GState, Rules, Co } from '../game/types';
 import { PATH_RULES, buildColorToDir, BASE_EDGE_COLORS } from '../game/rulesConfig';
+import { buildPlayers } from './testHelpers';
 
 // Direction mapping (BASE_EDGE_COLORS = YGBVRO -> BASE_DIRECTIONS):
 // Y -> N:  (0, -1)
@@ -33,15 +34,12 @@ const createTestState = (overrides: Partial<GState> = {}): GState => {
 		radius: rules.RADIUS,
 		board: {},
 		lanes: [],
-		deck: [],
+		secret: { deck: [] },
 		discard: [],
-		hands: {},
+		players: buildPlayers({}),
 		treasure: [],
-		prefs: {},
-		nightmares: {},
-		nightmareState: {},
 		stats: { placements: 0 },
-		meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+		meta: { deckExhaustionCycle: null },
 		origins: [{ q: 0, r: 0 }],
 		action: initActionState([]),
 		...overrides,

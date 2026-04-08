@@ -2,8 +2,9 @@ import React from 'react';
 import './App.css';
 import type { PlayerID } from 'boardgame.io';
 import { Client, type BoardProps as BGIOBoardProps } from 'boardgame.io/react';
-import { SocketIO } from 'boardgame.io/multiplayer';
+import { Local, SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
+import { useBotClients } from './useBotClients';
 import { Board as HexBoard } from './ui/Board';
 import type { CardAction, Color, Co, GState, PlayerPrefs, Stat } from './game/types';
 import { Hand, NeuralCard } from './ui/Hand';
@@ -14,7 +15,6 @@ import { PlayerHandModal } from './ui/PlayerHandModal';
 import { computeScores } from './game/scoring';
 import { buildAllCoords, canPlace, canPlacePath, neighbors, asVisibleColor, key, serializeCard } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
-import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, type BotKind } from './game/bots';
 import { PlayerCard } from './ui/PlayerCard';
 import { StateLab } from './ui/StateLab';
 import { getNightmareByName } from './game/nightmares';
@@ -126,10 +126,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [actionPickingCoord, setActionPickingCoord] = React.useState<'coord' | 'moveFrom' | 'moveTo' | null>(null);
 	const [actionContextJson, setActionContextJson] = React.useState('');
 
-	const gRef = React.useRef(G);
-	const ctxRef = React.useRef(ctx);
-	React.useEffect(() => { gRef.current = G; ctxRef.current = ctx; }, [G, ctx]);
-
 	// Toggle coordinate display with backtick key
 	React.useEffect(() => {
 		const handler = (e: KeyboardEvent) => {
@@ -140,13 +136,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	}, []);
 
 	const currentPlayer = ctx.currentPlayer;
-	// The human's seat: the first non-bot player (stable across turns, even when viewer switches to watch bots)
-	const humanSeat = React.useMemo(() => {
-		const first = (ctx.playOrder as PlayerID[]).find((pid) => (botByPlayer[pid] ?? 'None') === 'None');
-		return first ?? (playerID as PlayerID);
-	}, [ctx.playOrder, botByPlayer, playerID]);
-	const isMyTurn = humanSeat === currentPlayer;
-	const myHand = G.hands[humanSeat] ?? [];
+	const myID = playerID as PlayerID;
+	const isMyTurn = myID === currentPlayer;
+	const myHand = G.players[myID]?.hand ?? [];
 	const stage = (ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[currentPlayer as PlayerID] : undefined) ?? 'active';
 	const locked = stage !== 'active';
 	const isPathMode = rules.MODE === 'path';
@@ -373,7 +365,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (!isMyTurn || locked || selectedActionCard === null) return false;
 		if (rules.ACTION_CARDS === 'disabled') return false;
 		if (rules.ACTION_CARDS === 'unlimited') return true;
-		const played = G.meta.actionPlaysThisTurn[currentPlayer] ?? 0;
+		const played = G.players[currentPlayer]?.actionPlaysThisTurn ?? 0;
 		const extra = G.action.extraActionPlays[currentPlayer] ?? 0;
 		return played === 0 || extra > 0;
 	})();
@@ -599,86 +591,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		}
 	}, [actionMode, G.board, G.lanes, G.radius, isMyTurn, isPathMode, locked]);
 
-	const botPlayOnce = async (pid: PlayerID, botKind: BotKind) => {
-		const isOwnersTurn = (owner: PlayerID) => ctxRef.current.currentPlayer === owner;
-		if (!isOwnersTurn(pid)) return;
-
-		const client = {
-			getState: () => {
-				const g = gRef.current;
-				const c = ctxRef.current;
-				return g && c ? { G: g, ctx: c, playerID: pid } : undefined;
-			},
-			moves: {
-				playCard: (args: { handIndex: number; pick: Color; coord: Co }) => {
-					if (isOwnersTurn(pid)) moves.playCard(args);
-				},
-				rotateTile: (args: { coord: Co; handIndices: number[]; rotation: number }) => {
-					if (isOwnersTurn(pid)) moves.rotateTile(args);
-				},
-				blockTile: (args: { coord: Co; handIndices: number[] }) => {
-					if (isOwnersTurn(pid)) moves.blockTile(args);
-				},
-				stashToTreasure: (args: { handIndex: number }) => {
-					if (isOwnersTurn(pid)) moves.stashToTreasure(args);
-				},
-				takeFromTreasure: (args: { index: number }) => {
-					if (isOwnersTurn(pid)) moves.takeFromTreasure(args);
-				},
-				endTurnAndRefill: () => {
-					if (isOwnersTurn(pid)) moves.endTurnAndRefill();
-				},
-			},
-		};
-
-		if (botKind === 'Random') {
-			await playOneRandom(client, pid);
-		} else if (botKind === 'Evaluator') {
-			await playOneEvaluator(client, pid);
-		} else if (botKind === 'EvaluatorPlus') {
-			await playOneEvaluatorPlus(client, pid);
-		}
-	};
-
-	const autoPlayingRef = React.useRef(false);
-	React.useEffect(() => {
-		const owner = ctx.currentPlayer as PlayerID;
-		const botKind = botByPlayer[owner] ?? 'None';
-		const isBot = botKind !== 'None';
-		if (!isBot) return;
-		if (aiPaused) return;
-		if (playerID !== owner) {
-			onSetViewer(owner);
-			return;
-		}
-		if (autoPlayingRef.current) return;
-		autoPlayingRef.current = true;
-		(void (async () => {
-			if (ctxRef.current.currentPlayer !== owner) { autoPlayingRef.current = false; return; }
-			await botPlayOnce(owner, botKind);
-			autoPlayingRef.current = false;
-		})());
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [ctx.currentPlayer, playerID, viewer, botByPlayer, aiPaused]);
-
-	React.useEffect(() => {
-		const owner = ctx.currentPlayer as PlayerID;
-		const ownerBotKind = botByPlayer[owner] ?? 'None';
-		const isOwnerBot = ownerBotKind !== 'None';
-		if (isOwnerBot) return; // Bot turns handled by the auto-play effect above
-		const allHuman = (ctx.playOrder as PlayerID[]).every((pid) => (botByPlayer[pid] ?? 'None') === 'None');
-		if (allHuman) {
-			// Hot-seat mode (all human): auto-switch viewer to whoever's turn it is
-			if (playerID !== owner) {
-				onSetViewer(owner);
-			}
-		} else {
-			// Human vs bots: switch viewer back to the current (human) player's seat
-			if (playerID !== owner) {
-				onSetViewer(owner);
-			}
-		}
-	}, [ctx.currentPlayer, ctx.playOrder, playerID, botByPlayer, onSetViewer]);
+	// Bot play is handled by useBotClients hook at the App level — no more viewer-switching.
 
 	const onEndTurn = () => {
 		if (moves.endTurnAndRefill) moves.endTurnAndRefill();
@@ -710,10 +623,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const onTakeTreasure = (i: number) => moves.takeFromTreasure && moves.takeFromTreasure({ index: i });
 
 	const scores = computeScores(G);
-	const stashBonus = isMyTurn ? (G.meta.stashBonus[humanSeat] ?? 0) : 0;
-	const viewerNightmare = getNightmareByName(G.nightmares[humanSeat]);
-	const viewerNightmareState = G.nightmareState[humanSeat];
-	const viewerPrefs = G.prefs[humanSeat];
+	const viewerPlayer = G.players[myID];
+	const stashBonus = isMyTurn ? (viewerPlayer?.stashBonus ?? 0) : 0;
+	const viewerNightmare = getNightmareByName(viewerPlayer?.nightmare);
+	const viewerNightmareState = viewerPlayer?.nightmareState;
+	const viewerPrefs = viewerPlayer?.prefs;
 
 	return (
 		<div className="game-layout">
@@ -721,18 +635,18 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			<MobileStatusBar
 				currentPlayer={currentPlayer as PlayerID}
 				currentPlayerScore={scores[currentPlayer as PlayerID] ?? 0}
-				currentPlayerGoals={G.prefs[currentPlayer as PlayerID]!}
-				viewer={humanSeat}
-				viewerScore={scores[humanSeat] ?? 0}
-				viewerGoals={G.prefs[humanSeat]!}
+				currentPlayerGoals={G.players[currentPlayer as PlayerID]!.prefs}
+				viewer={myID}
+				viewerScore={scores[myID] ?? 0}
+				viewerGoals={viewerPlayer!.prefs}
 				isViewerTurn={isMyTurn}
-				deckCount={G.deck.length}
+				deckCount={G.deckSize ?? G.secret.deck.length}
 			/>
 
 			{/* MOBILE PLAYER ICONS */}
 			<div className="mobile-player-icons">
 				{(ctx.playOrder as PlayerID[]).map((pid) => {
-					const prefs = G.prefs[pid];
+					const prefs = G.players[pid]?.prefs;
 					const isCurrent = pid === currentPlayer;
 					return (
 						<button
@@ -765,7 +679,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					<div className="game-players__info">
 						<span className="deck-count">
 							<span className="deck-count__icon">◆</span>
-							{G.deck.length}
+							{G.deckSize ?? G.secret.deck.length}
 						</span>
 						<span className="deck-count deck-count--discard">
 							<span className="deck-count__icon">◇</span>
@@ -787,16 +701,16 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							pid={pid}
 							isTurn={pid === currentPlayer}
 							score={scores[pid] ?? 0}
-							goals={G.prefs[pid]!}
-							nightmareName={G.nightmares[pid]}
+							goals={G.players[pid]!.prefs}
+							nightmareName={G.players[pid]?.nightmare}
 							botKind={botByPlayer[pid] ?? 'None'}
 							onBotChange={(bot) => setBotFor(pid, bot)}
-							isViewer={pid === humanSeat}
+							isViewer={pid === myID}
 							onSetViewer={() => {
 								onSetViewer(pid);
 								setMobileMenuOpen(false);
 							}}
-							handSize={(G.hands[pid] ?? []).length}
+							handSize={G.players[pid]?.handSize ?? G.players[pid]?.hand.length ?? 0}
 							onHandClick={() => setViewingHandOf(viewingHandOf === pid ? null : pid)}
 						/>
 					))}
@@ -804,7 +718,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="game-players__nightmare">
 					<div className="hand-nightmare__header">
 						<span className="hand-nightmare__label">Nightmare</span>
-						<span className="hand-nightmare__player">P{humanSeat}</span>
+						<span className="hand-nightmare__player">P{myID}</span>
 					</div>
 					{viewerNightmare ? (
 						<div className="hand-nightmare__body">
@@ -1345,7 +1259,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			{viewingHandOf !== null && (
 				<PlayerHandModal
 					pid={viewingHandOf}
-					handSize={(G.hands[viewingHandOf] ?? []).length}
+					handSize={G.players[viewingHandOf]?.handSize ?? G.players[viewingHandOf]?.hand.length ?? 0}
 					onClose={() => setViewingHandOf(null)}
 				/>
 			)}
@@ -1569,23 +1483,30 @@ const App: React.FC = () => {
 	const numPlayers = useUIStore((s) => s.numPlayers);
 	const setNumPlayers = useUIStore((s) => s.setNumPlayers);
 	const resetBotsForCount = useUIStore((s) => s.resetBotsForCount);
-	const viewer = useUIStore((s) => s.viewer);
-	const setViewer = useUIStore((s) => s.setViewer);
+	const botByPlayer = useUIStore((s) => s.botByPlayer);
+	const aiPaused = useUIStore((s) => s.aiPaused);
 	const matchID = useUIStore((s) => s.matchID);
 	const setMatchID = useUIStore((s) => s.setMatchID);
 	const serverURL = import.meta.env.VITE_SERVER_URL || (import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin);
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 	const [isLabRoute, setIsLabRoute] = React.useState(false);
 
+	// Human is always player "0". Bot clients are headless — managed by useBotClients.
+	const humanPlayerID = '0' as PlayerID;
+
 	const ClientComp = React.useMemo(
 		() => Client<GState, AppBoardProps>({
 			game: HexStringsGame,
 			numPlayers,
 			board: GameBoard,
-			multiplayer: matchID ? SocketIO({ server: serverURL }) : undefined,
+			multiplayer: matchID ? SocketIO({ server: serverURL }) : Local(),
 		}),
 		[numPlayers, matchID, serverURL]
 	);
+
+	// Create headless bot clients that auto-play when it's their turn
+	useBotClients(HexStringsGame, numPlayers, botByPlayer, aiPaused);
+
 	React.useEffect(() => {
 		const update = () => {
 			const path = window.location.pathname;
@@ -1600,9 +1521,6 @@ const App: React.FC = () => {
 			window.removeEventListener('hashchange', update);
 		};
 	}, []);
-	React.useEffect(() => {
-		if (Number(viewer) >= numPlayers) setViewer(String(numPlayers - 1) as PlayerID);
-	}, [numPlayers, viewer, setViewer]);
 
 	return (
 		<div className="app-root">
@@ -1622,7 +1540,7 @@ const App: React.FC = () => {
 						resetBotsForCount(next);
 						if (matchID) setMatchID(`match-${Date.now()}`);
 					}} disabled={numPlayers <= 2}>−</button>
-					<button 
+					<button
 						className={`setup-controls__network ${matchID ? 'setup-controls__network--connected' : ''}`}
 						onClick={() => setNetworkModalOpen(true)}
 						title={matchID ? 'Connected to network game' : 'Network game'}
@@ -1635,7 +1553,7 @@ const App: React.FC = () => {
 			)}
 			{isLabRoute
 				? <StateLab onExit={() => window.location.assign('/')} />
-				: <ClientComp playerID={viewer} matchID={matchID || undefined} viewer={viewer} onSetViewer={setViewer} />
+				: <ClientComp playerID={humanPlayerID} matchID={matchID || undefined} viewer={humanPlayerID} onSetViewer={() => {}} />
 			}
 			{!isLabRoute && (
 				<NetworkModal

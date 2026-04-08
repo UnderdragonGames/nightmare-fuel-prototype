@@ -85,7 +85,7 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 	const actions: Action[] = [];
 	const rules = G.rules;
 	const coords = buildAllCoords(G.radius);
-	const hand = G.hands[playerID] ?? [];
+	const hand = G.players[playerID]?.hand ?? [];
 
 	// Enumerate playCard moves
 	if (rules.MODE === 'path') {
@@ -221,7 +221,7 @@ const deepClone = <T,>(obj: T): T => JSON.parse(JSON.stringify(obj));
 export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID): GState | null => {
 	const newG = deepClone(G);
 	const rules = newG.rules;
-	const hand = newG.hands[playerID]!;
+	const hand = newG.players[playerID]!.hand;
 
 	switch (action.type) {
 		case 'playCard': {
@@ -354,7 +354,7 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			newG.treasure.push(card);
 			hand.splice(args.handIndex, 1);
 			// No immediate draw — bonus draws happen at end of turn
-			newG.meta.stashBonus[playerID] = (newG.meta.stashBonus[playerID] ?? 0) + 1;
+			newG.players[playerID]!.stashBonus += 1;
 			break;
 		}
 
@@ -386,23 +386,23 @@ export const applyEndTurn = (G: GState, ctx: Ctx, playerID: PlayerID): { G: GSta
 	const rules = newG.rules;
 
 	// First refill to hand size
-	while (newG.hands[playerID]!.length < rules.HAND_SIZE) {
-		const c = newG.deck.pop() ?? null;
+	const p = newG.players[playerID]!;
+	while (p.hand.length < rules.HAND_SIZE) {
+		const c = newG.secret.deck.pop() ?? null;
 		if (!c) break;
-		newG.hands[playerID]!.push(c);
+		p.hand.push(c);
 	}
 
 	// Then pay out stash bonus draws ON TOP of normal hand
-	const bonus = newG.meta.stashBonus[playerID] ?? 0;
-	for (let i = 0; i < bonus; i += 1) {
-		const c = newG.deck.pop() ?? null;
+	for (let i = 0; i < p.stashBonus; i += 1) {
+		const c = newG.secret.deck.pop() ?? null;
 		if (!c) break;
-		newG.hands[playerID]!.push(c);
+		p.hand.push(c);
 	}
-	newG.meta.stashBonus[playerID] = 0;
+	p.stashBonus = 0;
 
 	// Mark deck exhaustion if needed
-	if (rules.END_ON_DECK_EXHAUST && newG.deck.length === 0 && newG.meta.deckExhaustionCycle === null) {
+	if (rules.END_ON_DECK_EXHAUST && newG.secret.deck.length === 0 && newG.meta.deckExhaustionCycle === null) {
 		newG.meta.deckExhaustionCycle = ctx.turn;
 	}
 
@@ -499,7 +499,7 @@ const getRivalryScore = (
  * Used to measure mobility denial.
  */
 const countObjectivePlacements = (G: GState, playerID: PlayerID): number => {
-	const prefs = G.prefs[playerID];
+	const prefs = G.players[playerID]?.prefs;
 	if (!prefs) return 0;
 	
 	const coords = buildAllCoords(G.radius);
@@ -531,8 +531,8 @@ const countObjectivePlacements = (G: GState, playerID: PlayerID): number => {
  * Count legal placements for objective colors.
  */
 const countMobility = (G: GState, playerID: PlayerID): number => {
-	const hand = G.hands[playerID] ?? [];
-	const prefs = G.prefs[playerID];
+	const hand = G.players[playerID]?.hand ?? [];
+	const prefs = G.players[playerID]?.prefs;
 	if (!prefs) return 0;
 
 	const coords = buildAllCoords(G.radius);
@@ -565,7 +565,7 @@ const countMobility = (G: GState, playerID: PlayerID): number => {
  * Returns a value based on how close objective-colored tiles are to the rim.
  */
 const estimateRimProgress = (G: GState, playerID: PlayerID): number => {
-	const prefs = G.prefs[playerID];
+	const prefs = G.players[playerID]?.prefs;
 	if (!prefs) return 0;
 
 	const radius = G.radius;
@@ -630,7 +630,7 @@ const computeFeatures = (
 	playerID: PlayerID,
 	ctx: Ctx
 ): EvalFeatures => {
-	const prefs = gBefore.prefs[playerID]!;
+	const prefs = gBefore.players[playerID]!.prefs;
 
 	// Score calculations
 	const scoresBefore = computeScores(gBefore);
@@ -667,7 +667,7 @@ const computeFeatures = (
 	let opponentMobilityDenial = 0;
 	for (const pid of ctx.playOrder) {
 		if (pid === playerID) continue;
-		const oppPrefs = gBefore.prefs[pid];
+		const oppPrefs = gBefore.players[pid]?.prefs;
 		if (!oppPrefs) continue;
 
 		const oppMobilityBefore = countObjectivePlacements(gBefore, pid);
@@ -690,7 +690,7 @@ const computeFeatures = (
 	const opponentImmediateWinThreat = hasImmediateOpponentWin(gAfter, ctx, playerID) ? 1 : 0;
 
 	// Hand quality
-	const handAfter = gAfter.hands[playerID] ?? [];
+	const handAfter = gAfter.players[playerID]?.hand ?? [];
 	const handQuality = evaluateHandQuality(handAfter, prefs);
 
 	// Treasure control
@@ -729,7 +729,7 @@ export const evaluateAction = (
 ): number => {
 	const features = computeFeatures(gBefore, gAfter, playerID, ctx);
 	const rules = gBefore.rules;
-	const prefs = gBefore.prefs[playerID]!;
+	const prefs = gBefore.players[playerID]!.prefs;
 
 	// Mode-specific weights
 	const isPathMode = rules.MODE === 'path';
@@ -765,7 +765,7 @@ export const evaluateAction = (
 
 	// Action-specific bonuses/penalties
 	if (action.type === 'stashToTreasure') {
-		const hand = gBefore.hands[playerID] ?? [];
+		const hand = gBefore.players[playerID]?.hand ?? [];
 		const card = hand[action.args.handIndex];
 		if (card) {
 			if (isObjectiveCard(card, prefs)) {
@@ -805,7 +805,7 @@ export const evaluateAction = (
  */
 export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Action[] => {
 	const allActions = enumerateActions(G, playerID);
-	const prefs = G.prefs[playerID]!;
+	const prefs = G.players[playerID]?.prefs!;
 	const rules = G.rules;
 	const consolidationThreat = hasImmediateOpponentWin(G, ctx, playerID);
 
@@ -894,7 +894,7 @@ export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Act
 	// Stash candidates: prioritize non-objective cards
 	const scoredStashActions = stashActions.map((action) => {
 		if (action.type !== 'stashToTreasure') return { action, score: 0 };
-		const hand = G.hands[playerID] ?? [];
+		const hand = G.players[playerID]?.hand ?? [];
 		const card = hand[action.args.handIndex];
 		if (!card) return { action, score: -100 };
 		const isObjective = isObjectiveCard(card, prefs);
@@ -971,7 +971,7 @@ export const selectBestAction = (G: GState, ctx: Ctx, playerID: PlayerID): Actio
  * Check if the current state is "volatile" and warrants deeper search.
  */
 const isVolatileState = (G: GState, playerID: PlayerID, ctx: Ctx): boolean => {
-	const prefs = G.prefs[playerID];
+	const prefs = G.players[playerID]?.prefs;
 	if (!prefs) return false;
 
 	// Check for imminent scoring completions
@@ -985,7 +985,7 @@ const isVolatileState = (G: GState, playerID: PlayerID, ctx: Ctx): boolean => {
 	if (hasImmediateOpponentWin(G, ctx, playerID)) return true;
 
 	// Check for rim-adjacent objective placements
-	const hand = G.hands[playerID] ?? [];
+	const hand = G.players[playerID]?.hand ?? [];
 	const coords = buildAllCoords(G.radius);
 
 	for (const card of hand) {
@@ -1105,9 +1105,9 @@ export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Pro
 
 		const stateBefore = {
 			placements: G.stats.placements,
-			handSize: G.hands[playerID]?.length ?? 0,
+			handSize: G.players[playerID]?.hand.length ?? 0,
 			treasureSize: G.treasure.length,
-			deckSize: G.deck.length,
+			deckSize: G.deckSize ?? G.secret.deck.length,
 		};
 
 		executeAction(client, action);
@@ -1120,9 +1120,9 @@ export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Pro
 
 		const stateChanged =
 			stateAfter.G.stats.placements !== stateBefore.placements ||
-			stateAfter.G.hands[playerID]?.length !== stateBefore.handSize ||
+			stateAfter.G.players[playerID]?.hand.length !== stateBefore.handSize ||
 			stateAfter.G.treasure.length !== stateBefore.treasureSize ||
-			stateAfter.G.deck.length !== stateBefore.deckSize;
+			(stateAfter.G.deckSize ?? stateAfter.G.secret.deck.length) !== stateBefore.deckSize;
 
 		if (!stateChanged) {
 			if (DEBUG) debugCounters.noOpMoves += 1;
@@ -1184,9 +1184,9 @@ export const playOneEvaluator = async (client: BGIOClient, playerID: PlayerID): 
 
 		const stateBefore = {
 			placements: G.stats.placements,
-			handSize: G.hands[playerID]?.length ?? 0,
+			handSize: G.players[playerID]?.hand.length ?? 0,
 			treasureSize: G.treasure.length,
-			deckSize: G.deck.length,
+			deckSize: G.deckSize ?? G.secret.deck.length,
 		};
 
 		executeAction(client, action);
@@ -1199,9 +1199,9 @@ export const playOneEvaluator = async (client: BGIOClient, playerID: PlayerID): 
 
 		const stateChanged =
 			stateAfter.G.stats.placements !== stateBefore.placements ||
-			stateAfter.G.hands[playerID]?.length !== stateBefore.handSize ||
+			stateAfter.G.players[playerID]?.hand.length !== stateBefore.handSize ||
 			stateAfter.G.treasure.length !== stateBefore.treasureSize ||
-			stateAfter.G.deck.length !== stateBefore.deckSize;
+			(stateAfter.G.deckSize ?? stateAfter.G.secret.deck.length) !== stateBefore.deckSize;
 
 		if (!stateChanged) {
 			if (DEBUG) debugCounters.noOpMoves += 1;
@@ -1239,9 +1239,9 @@ export const playOneEvaluatorPlus = async (client: BGIOClient, playerID: PlayerI
 
 		const stateBefore = {
 			placements: G.stats.placements,
-			handSize: G.hands[playerID]?.length ?? 0,
+			handSize: G.players[playerID]?.hand.length ?? 0,
 			treasureSize: G.treasure.length,
-			deckSize: G.deck.length,
+			deckSize: G.deckSize ?? G.secret.deck.length,
 		};
 
 		executeAction(client, action);
@@ -1254,9 +1254,9 @@ export const playOneEvaluatorPlus = async (client: BGIOClient, playerID: PlayerI
 
 		const stateChanged =
 			stateAfter.G.stats.placements !== stateBefore.placements ||
-			stateAfter.G.hands[playerID]?.length !== stateBefore.handSize ||
+			stateAfter.G.players[playerID]?.hand.length !== stateBefore.handSize ||
 			stateAfter.G.treasure.length !== stateBefore.treasureSize ||
-			stateAfter.G.deck.length !== stateBefore.deckSize;
+			(stateAfter.G.deckSize ?? stateAfter.G.secret.deck.length) !== stateBefore.deckSize;
 
 		if (!stateChanged) {
 			if (DEBUG) debugCounters.noOpMoves += 1;
@@ -1307,11 +1307,11 @@ export const verifySimulatorMatch = (
 		return false;
 	}
 
-	if (simulated.hands[playerID]?.length !== gAfter.hands[playerID]?.length) {
+	if (simulated.players[playerID]?.hand.length !== gAfter.players[playerID]?.hand.length) {
 		debugCounters.simulatorMismatches += 1;
 		console.warn('[AI] Hand size mismatch:', {
-			simulated: simulated.hands[playerID]?.length,
-			actual: gAfter.hands[playerID]?.length,
+			simulated: simulated.players[playerID]?.hand.length,
+			actual: gAfter.players[playerID]?.hand.length,
 		});
 		return false;
 	}

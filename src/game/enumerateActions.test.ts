@@ -5,6 +5,7 @@ import { PATH_RULES, HEX_RULES, buildColorToDir, BASE_EDGE_COLORS } from './rule
 import { key } from './helpers';
 import { makeCard } from './cardFactory';
 import { initActionState } from './effects';
+import { buildPlayers } from '../tests/testHelpers';
 
 const TEST_PATH_RULES: Rules = {
 	...PATH_RULES,
@@ -25,25 +26,23 @@ const TEST_HEX_RULES: Rules = {
 	},
 };
 
-const createTestState = (overrides: Partial<GState> = {}): GState => {
+const createTestState = (overrides: Partial<GState> & { hands?: Record<PlayerID, Card[]> } = {}): GState => {
 	const rules = overrides.rules ?? TEST_PATH_RULES;
+	const { hands, ...rest } = overrides;
 	return {
 		rules,
 		radius: rules.RADIUS,
 		board: {},
 		lanes: [],
-		deck: [],
+		secret: { deck: [] },
 		discard: [],
-		hands: {},
+		players: hands ? buildPlayers(hands) : {},
 		treasure: [],
-		prefs: {},
-		nightmares: {},
-		nightmareState: {},
 		stats: { placements: 0 },
-		meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+		meta: { deckExhaustionCycle: null },
 		origins: [{ q: 0, r: 0 }],
 		action: initActionState([]),
-		...overrides,
+		...rest,
 	};
 };
 

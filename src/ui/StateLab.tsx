@@ -530,17 +530,23 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		radius: rules.RADIUS,
 		board: {},
 		lanes: [],
-		deck: [],
 		discard: [],
-		hands: { '0': [makeCard(['B', 'O'])] },
 		treasure: [],
-		prefs: {},
-		nightmares: {},
-		nightmareState: {},
 		stats: { placements: 0 },
-		meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+		meta: { deckExhaustionCycle: null },
 		origins: [{ q: 0, r: 0 }],
 		action: initActionState(['0']),
+		players: {
+			'0': {
+				hand: [makeCard(['B', 'O'])],
+				prefs: { primary: 'R', secondary: 'O', tertiary: 'Y' },
+				nightmare: '',
+				nightmareState: { abilityUsesRemaining: 0, handSizeBonus: 0 },
+				stashBonus: 0,
+				actionPlaysThisTurn: 0,
+			},
+		},
+		secret: { deck: [] },
 	}));
 
 	React.useEffect(() => {
@@ -554,7 +560,10 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 	React.useEffect(() => {
 		setG((prev) => ({
 			...prev,
-			prefs: { ...prev.prefs, [playerID]: goalPrefs },
+			players: {
+				...prev.players,
+				[playerID]: { ...prev.players[playerID]!, prefs: goalPrefs },
+			},
 		}));
 	}, [goalPrefs, playerID]);
 
@@ -567,7 +576,7 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		setEdgeColors((MODE_RULESETS[mode].EDGE_COLORS as Color[]).join(''));
 	}, [mode]);
 
-	const hand = G.hands[playerID] ?? [];
+	const hand = G.players[playerID]?.hand ?? [];
 
 	React.useEffect(() => {
 		if (showMovesHandIndex !== null && showMovesHandIndex >= hand.length) {
@@ -594,7 +603,10 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 	const updateHand = (next: Card[]) => {
 		setG((prev) => ({
 			...prev,
-			hands: { ...prev.hands, [playerID]: next },
+			players: {
+				...prev.players,
+				[playerID]: { ...prev.players[playerID]!, hand: next },
+			},
 		}));
 	};
 
@@ -796,13 +808,14 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		const parsedExpected = expectedMatch ? parseLiteral<string[]>(expectedMatch) : [];
 		const parsedForbidden = forbiddenMatch ? parseLiteral<string[]>(forbiddenMatch) : [];
 		const parsedExpectedScores = expectedScoresMatch ? parseLiteral<Record<string, number>>(expectedScoresMatch) : {};
-		const nextPlayerID = (playerMatch ?? Object.keys(parsedG.hands ?? {})[0] ?? '0') as PlayerID;
+		const nextPlayerID = (playerMatch ?? Object.keys(parsedG.players ?? {})[0] ?? '0') as PlayerID;
 		const nextTitle = titleMatch ?? 'enumerate-actions';
-		const nightmareName = parsedG.nightmares?.[nextPlayerID];
+		const playerState = parsedG.players?.[nextPlayerID];
+		const nightmareName = playerState?.nightmare;
 		const nightmare = getNightmareByName(nightmareName);
 		const nextPrefs = nightmare
 			? { primary: nightmare.priorities.primary, secondary: nightmare.priorities.secondary, tertiary: nightmare.priorities.tertiary }
-			: (parsedG.prefs?.[nextPlayerID] ?? { primary: 'R', secondary: 'O', tertiary: 'Y' });
+			: (playerState?.prefs ?? { primary: 'R', secondary: 'O', tertiary: 'Y' });
 
 		setMode(parsedMode);
 		setRadius(parsedRadius);
@@ -814,9 +827,14 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 			...parsedG,
 			rules: nextRules,
 			radius: nextRules.RADIUS,
-			prefs: { ...parsedG.prefs, [nextPlayerID]: nextPrefs },
-			nightmares: parsedG.nightmares ?? {},
-			nightmareState: parsedG.nightmareState ?? {},
+			players: {
+				...parsedG.players,
+				[nextPlayerID]: {
+					...(playerState ?? { hand: [], nightmare: '', nightmareState: { abilityUsesRemaining: 0, handSizeBonus: 0 }, stashBonus: 0, actionPlaysThisTurn: 0 }),
+					prefs: nextPrefs,
+				},
+			},
+			secret: parsedG.secret ?? { deck: [] },
 			action: parsedG.action ?? initActionState([nextPlayerID]),
 		});
 		setExpectedScores(parsedExpectedScores);
@@ -835,8 +853,8 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 		const parsedRadius = parsed.rules.RADIUS;
 		const parsedEdge = (parsed.rules.EDGE_COLORS as Color[]).join('');
 		const nextRules = buildRules(parsedMode, parsedRadius, parsedEdge);
-		const nextPlayerID = (Object.keys(parsed.hands ?? {})[0] ?? '0') as PlayerID;
-		const nextPrefs = parsed.prefs?.[nextPlayerID] ?? { primary: 'R', secondary: 'O', tertiary: 'Y' };
+		const nextPlayerID = (Object.keys(parsed.players ?? {})[0] ?? '0') as PlayerID;
+		const nextPrefs = parsed.players?.[nextPlayerID]?.prefs ?? { primary: 'R', secondary: 'O', tertiary: 'Y' };
 
 		setMode(parsedMode);
 		setRadius(parsedRadius);
@@ -848,7 +866,10 @@ export const StateLab: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 			...parsed,
 			rules: nextRules,
 			radius: nextRules.RADIUS,
-			prefs: { ...parsed.prefs, [nextPlayerID]: nextPrefs },
+			players: {
+				...parsed.players,
+				[nextPlayerID]: { ...parsed.players[nextPlayerID]!, prefs: nextPrefs },
+			},
 		});
 		setExpectedScores({});
 		setPendingExpected(null);
@@ -932,17 +953,23 @@ const G: GState = {
 \tradius: rules.RADIUS,
 \tboard: ${boardLiteral},
 \tlanes: ${lanesLiteral},
-\tdeck: [],
 \tdiscard: [],
-\thands: { '${playerID}': ${handLiteral} },
 \ttreasure: ${treasureLiteral},
-\tprefs: { '${playerID}': { primary: '${goalPrefs.primary}', secondary: '${goalPrefs.secondary}', tertiary: '${goalPrefs.tertiary}' } },
-\tnightmares: {},
-\tnightmareState: {},
 \tstats: { placements: 0 },
-\tmeta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+\tmeta: { deckExhaustionCycle: null },
 \torigins: ${originsLiteral},
 \taction: initActionState(['${playerID}']),
+\tplayers: {
+\t\t'${playerID}': {
+\t\t\thand: ${handLiteral},
+\t\t\tprefs: { primary: '${goalPrefs.primary}', secondary: '${goalPrefs.secondary}', tertiary: '${goalPrefs.tertiary}' },
+\t\t\tnightmare: '',
+\t\t\tnightmareState: { abilityUsesRemaining: 0, handSizeBonus: 0 },
+\t\t\tstashBonus: 0,
+\t\t\tactionPlaysThisTurn: 0,
+\t\t},
+\t},
+\tsecret: { deck: [] },
 };
 
 const actionKey = (a: Action): string => {

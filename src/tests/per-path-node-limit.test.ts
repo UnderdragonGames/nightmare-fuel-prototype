@@ -4,6 +4,7 @@ import type { GState } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { computeScoresRaw } from '../game/scoring';
 import { initActionState } from '../game/effects';
+import { buildPlayers } from './testHelpers';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
 
@@ -21,15 +22,12 @@ const G: GState = {
 	radius: rules.RADIUS,
 	board: {},
 	lanes: [{ from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' }, { from: { q: 0, r: -1 }, to: { q: 0, r: -2 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' }, { from: { q: 0, r: -1 }, to: { q: -1, r: -1 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: 0, r: 1 }, color: 'V' }, { from: { q: 0, r: 0 }, to: { q: 0, r: 1 }, color: 'V' }, { from: { q: 0, r: 0 }, to: { q: 0, r: 1 }, color: 'V' }, { from: { q: 0, r: 1 }, to: { q: 0, r: 2 }, color: 'V' }, { from: { q: 0, r: 1 }, to: { q: 0, r: 2 }, color: 'V' }, { from: { q: 0, r: 2 }, to: { q: 0, r: 3 }, color: 'V' }, { from: { q: 0, r: 1 }, to: { q: -1, r: 2 }, color: 'R' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'G' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'G' }, { from: { q: 1, r: -1 }, to: { q: 2, r: -1 }, color: 'B' }, { from: { q: 1, r: -1 }, to: { q: 2, r: -1 }, color: 'B' }, { from: { q: 2, r: -1 }, to: { q: 2, r: -2 }, color: 'Y' }, { from: { q: 2, r: -1 }, to: { q: 2, r: -2 }, color: 'Y' }, { from: { q: 2, r: -1 }, to: { q: 3, r: -2 }, color: 'G' }, { from: { q: 2, r: -2 }, to: { q: 3, r: -3 }, color: 'G' }, { from: { q: 2, r: -2 }, to: { q: 3, r: -3 }, color: 'G' }, { from: { q: 2, r: -2 }, to: { q: 2, r: -3 }, color: 'Y' }],
-	deck: [],
+	secret: { deck: [] },
 	discard: [],
-	hands: { '0': [{ colors: ['R', 'O', 'Y', 'G', 'B', 'V'] } as any] },
+	players: buildPlayers({ '0': [{ colors: ['R', 'O', 'Y', 'G', 'B', 'V'] } as any] }, { prefs: { primary: 'R', secondary: 'O', tertiary: 'Y' } }),
 	treasure: [],
-	prefs: { '0': { primary: 'R', secondary: 'O', tertiary: 'Y' } },
-	nightmares: {},
-	nightmareState: {},
 	stats: { placements: 0 },
-	meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+	meta: { deckExhaustionCycle: null },
 	origins: [{ q: 0, r: 0 }],
 	action: initActionState(['0']),
 };

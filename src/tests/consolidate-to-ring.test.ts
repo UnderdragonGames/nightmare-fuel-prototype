@@ -4,6 +4,7 @@ import type { GState, PathLane, Rules } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { initActionState } from '../game/effects';
 import { enumerateActions, type Action } from '../game/ai';
+import { buildPlayers } from './testHelpers';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
 
@@ -45,15 +46,12 @@ const makeState = (rules: Rules): GState => ({
 	radius: rules.RADIUS,
 	board: {},
 	lanes: lanes.map((l) => ({ ...l })),
-	deck: [],
+	secret: { deck: [] },
 	discard: [],
-	hands: { '0': [{ colors: ['R', 'Y', 'B'], id: 0, name: 'Test', stats: {}, text: null, isAction: false, synergies: [], synergyCount: 0, flags: { needsNewPrint: false, needsDuplicate: false } }] },
+	players: buildPlayers({ '0': [{ colors: ['R', 'Y', 'B'], id: 0, name: 'Test', stats: {}, text: null, isAction: false, synergies: [], synergyCount: 0, flags: { needsNewPrint: false, needsDuplicate: false } }] }, { prefs: { primary: 'R', secondary: 'Y', tertiary: 'B' } }),
 	treasure: [],
-	prefs: { '0': { primary: 'R', secondary: 'Y', tertiary: 'B' } },
-	nightmares: {},
-	nightmareState: {},
 	stats: { placements: 0 },
-	meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+	meta: { deckExhaustionCycle: null },
 	origins: [{ q: 0, r: 0 }],
 	action: initActionState(['0']),
 });

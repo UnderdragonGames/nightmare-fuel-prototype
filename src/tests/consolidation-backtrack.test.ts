@@ -3,6 +3,7 @@ import { enumerateActions, type Action } from '../game/ai';
 import type { GState } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { initActionState } from '../game/effects';
+import { buildPlayers } from './testHelpers';
 
 const EDGE_COLORS = ['Y', 'G', 'B', 'V', 'R', 'O'] as const;
 
@@ -64,15 +65,12 @@ const G: GState = {
 		// (0,-1) ring 1 -> (0,0) ring 0, on edge that has forward lane (0,0)->(0,-1) color Y
 		{ from: { q: 0, r: -1 }, to: { q: 0, r: 0 }, color: 'B' },
 	],
-	deck: [],
+	secret: { deck: [] },
 	discard: [],
-	hands: { '0': [{ colors: ['R', 'O', 'Y', 'G', 'B', 'V'] } as any] },
+	players: buildPlayers({ '0': [{ colors: ['R', 'O', 'Y', 'G', 'B', 'V'] } as any] }, { prefs: { primary: 'Y', secondary: 'B', tertiary: 'V' } }),
 	treasure: [],
-	prefs: { '0': { primary: 'Y', secondary: 'B', tertiary: 'V' } },
-	nightmares: {},
-	nightmareState: {},
 	stats: { placements: 0 },
-	meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+	meta: { deckExhaustionCycle: null },
 	origins: [{ q: 0, r: 0 }],
 	action: initActionState(['0']),
 };

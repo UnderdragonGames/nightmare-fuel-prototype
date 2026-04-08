@@ -5,6 +5,7 @@ import { HEX_RULES, PATH_RULES, buildColorToDir, BASE_EDGE_COLORS } from '../gam
 import { key, buildAllCoords } from '../game/helpers';
 import { makeCard } from '../game/cardFactory';
 import { initActionState } from '../game/effects';
+import { buildPlayers } from './testHelpers';
 
 const TEST_RULES: Rules = {
 	...HEX_RULES,
@@ -28,15 +29,12 @@ const createTestState = (overrides: Partial<GState> = {}): GState => {
 		radius: rules.RADIUS,
 		board: {},
 		lanes: [],
-		deck: [],
+		secret: { deck: [] },
 		discard: [],
-		hands: {},
+		players: buildPlayers({}),
 		treasure: [],
-		prefs: {},
-		nightmares: {},
-		nightmareState: {},
 		stats: { placements: 0 },
-		meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+		meta: { deckExhaustionCycle: null },
 		origins: [{ q: 0, r: 0 }],
 		action: initActionState([]),
 		...overrides,
@@ -55,7 +53,7 @@ const setEmptyTile = (G: GState, coord: Co): void => {
 describe('COST_TO_ROTATE', () => {
 	it('rotateTile discards COST_TO_ROTATE cards', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] }),
 		});
 		setTile(G, co(0, 0), ['B'], 0);
 
@@ -67,7 +65,7 @@ describe('COST_TO_ROTATE', () => {
 
 		expect(result).not.toBeNull();
 		// Hand should have 2 cards remaining (was 3, discarded 1)
-		expect(result!.hands['0']!.length).toBe(2);
+		expect(result!.players['0']!.hand.length).toBe(2);
 		// Tile rotation should be updated
 		expect(result!.board[key(co(0, 0))]!.rotation).toBe(1);
 		// Discarded card should be in discard pile
@@ -84,7 +82,7 @@ describe('COST_TO_ROTATE', () => {
 		};
 		const G = createTestState({
 			rules,
-			hands: { '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] }),
 		});
 		setTile(G, co(0, 0), ['B'], 0);
 
@@ -103,7 +101,7 @@ describe('COST_TO_ROTATE', () => {
 			'0'
 		);
 		expect(successResult).not.toBeNull();
-		expect(successResult!.hands['0']!.length).toBe(1);
+		expect(successResult!.players['0']!.hand.length).toBe(1);
 		expect(successResult!.discard.length).toBe(2);
 	});
 
@@ -117,7 +115,7 @@ describe('COST_TO_ROTATE', () => {
 		};
 		const G = createTestState({
 			rules,
-			hands: { '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] }),
 		});
 		setTile(G, co(0, 0), ['B'], 0);
 
@@ -140,7 +138,7 @@ describe('COST_TO_ROTATE', () => {
 		};
 		const G = createTestState({
 			rules,
-			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B'])] }),
 		});
 		setTile(G, co(0, 0), ['B'], 0);
 
@@ -163,7 +161,7 @@ describe('COST_TO_ROTATE', () => {
 
 	it('enumerates rotateTile with correct handIndices combinations', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B'])] }),
 		});
 		setTile(G, co(0, 0), ['B'], 0);
 
@@ -185,7 +183,7 @@ describe('COST_TO_ROTATE', () => {
 describe('COST_TO_BLOCK', () => {
 	it('blockTile marks an empty tile as dead', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] }),
 		});
 		setEmptyTile(G, co(1, 0));
 
@@ -198,13 +196,13 @@ describe('COST_TO_BLOCK', () => {
 		expect(result).not.toBeNull();
 		expect(result!.board[key(co(1, 0))]!.dead).toBe(true);
 		// Discarded 2 cards
-		expect(result!.hands['0']!.length).toBe(1);
+		expect(result!.players['0']!.hand.length).toBe(1);
 		expect(result!.discard.length).toBe(2);
 	});
 
 	it('blockTile rejects when not enough cards', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R'])] },
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
 		});
 		setEmptyTile(G, co(1, 0));
 
@@ -219,7 +217,7 @@ describe('COST_TO_BLOCK', () => {
 
 	it('blockTile rejects occupied tiles', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B'])] }),
 		});
 		setTile(G, co(1, 0), ['B'], 0);
 
@@ -233,7 +231,7 @@ describe('COST_TO_BLOCK', () => {
 
 	it('blockTile rejects origin tiles', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B'])] }),
 			origins: [co(0, 0)],
 		});
 		setEmptyTile(G, co(0, 0));
@@ -248,7 +246,7 @@ describe('COST_TO_BLOCK', () => {
 
 	it('blockTile rejects already dead tiles', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B'])] }),
 		});
 		G.board[key(co(1, 0))] = { colors: [], rotation: 0, dead: true };
 
@@ -262,7 +260,7 @@ describe('COST_TO_BLOCK', () => {
 
 	it('blockTile rejects duplicate hand indices', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B'])] }),
 		});
 		setEmptyTile(G, co(1, 0));
 
@@ -281,7 +279,7 @@ describe('COST_TO_BLOCK', () => {
 		};
 		const G = createTestState({
 			rules,
-			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B'])] }),
 		});
 		setEmptyTile(G, co(1, 0));
 
@@ -292,7 +290,7 @@ describe('COST_TO_BLOCK', () => {
 
 	it('enumerates blockTile with all valid hand index combinations', () => {
 		const G = createTestState({
-			hands: { '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B']), makeCard(['G'])] }),
 		});
 		// Set several empty non-origin tiles
 		setEmptyTile(G, co(1, 0));
@@ -334,7 +332,7 @@ describe('path-mode rotateTile', () => {
 
 	it('rotates outgoing lanes 60° CW and remaps colors', () => {
 		const G = pathState({
-			hands: { '0': [makeCard(['R']), makeCard(['B'])] },
+			players: buildPlayers({ '0': [makeCard(['R']), makeCard(['B'])] }),
 			lanes: [
 				{ from: co(0, 0), to: co(0, -1), color: 'Y' }, // N → should become NE (G)
 			],
@@ -355,13 +353,13 @@ describe('path-mode rotateTile', () => {
 		expect(result!.lanes[0]!.to).toEqual(co(1, -1));
 		expect(result!.lanes[0]!.color).toBe('G');
 		// Card discarded
-		expect(result!.hands['0']!.length).toBe(1);
+		expect(result!.players['0']!.hand.length).toBe(1);
 		expect(result!.discard.length).toBe(1);
 	});
 
 	it('rotates multiple outgoing lanes together', () => {
 		const G = pathState({
-			hands: { '0': [makeCard(['R'])] },
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
 			lanes: [
 				{ from: co(0, 0), to: co(0, -1), color: 'Y' },  // N
 				{ from: co(0, 0), to: co(1, 0), color: 'B' },   // E
@@ -392,7 +390,7 @@ describe('path-mode rotateTile', () => {
 
 	it('does not rotate incoming lanes', () => {
 		const G = pathState({
-			hands: { '0': [makeCard(['R'])] },
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
 			lanes: [
 				{ from: co(0, 0), to: co(1, 0), color: 'B' },   // outgoing E from origin
 				{ from: co(1, 0), to: co(0, 0), color: 'O' },   // incoming from (1,0) — should stay
@@ -417,7 +415,7 @@ describe('path-mode rotateTile', () => {
 
 	it('rejects rotation when destination would be off-board', () => {
 		const G = pathState({
-			hands: { '0': [makeCard(['R'])] },
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
 			lanes: [
 				// Lane pointing to rim edge — rotating further could go off-board
 				{ from: co(0, -2), to: co(0, -3), color: 'Y' }, // N from ring 2 to ring 3 (rim)
@@ -440,7 +438,7 @@ describe('path-mode rotateTile', () => {
 
 	it('rejects rotation when destination is a dead tile', () => {
 		const G = pathState({
-			hands: { '0': [makeCard(['R'])] },
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
 			lanes: [
 				{ from: co(0, 0), to: co(0, -1), color: 'Y' }, // N
 			],
@@ -459,7 +457,7 @@ describe('path-mode rotateTile', () => {
 
 	it('rejects rotation when destination is an origin', () => {
 		const G = pathState({
-			hands: { '0': [makeCard(['R'])] },
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
 			origins: [co(0, 0), co(1, -1)], // two origins
 			lanes: [
 				{ from: co(0, 0), to: co(0, -1), color: 'Y' }, // N
@@ -479,7 +477,7 @@ describe('path-mode rotateTile', () => {
 
 	it('rejects rotation when node has no outgoing lanes', () => {
 		const G = pathState({
-			hands: { '0': [makeCard(['R'])] },
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
 			lanes: [
 				{ from: co(1, 0), to: co(0, 0), color: 'O' }, // incoming only
 			],
@@ -496,7 +494,7 @@ describe('path-mode rotateTile', () => {
 
 	it('120° CW rotation works correctly', () => {
 		const G = pathState({
-			hands: { '0': [makeCard(['R'])] },
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
 			lanes: [
 				{ from: co(0, 0), to: co(0, -1), color: 'Y' }, // N
 			],

@@ -4,6 +4,7 @@ import type { GState } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { initActionState } from '../game/effects';
 import { computeScoresRaw } from '../game/scoring';
+import { buildPlayers } from './testHelpers';
 
 const EDGE_COLORS = ['V', 'O', 'Y', 'B', 'R', 'G'] as const;
 
@@ -113,16 +114,13 @@ const G: GState = {
 		"5,0": { colors: [], rotation: 0 }
 	},
 	lanes: [{ from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'V' }, { from: { q: 0, r: -1 }, to: { q: 1, r: -2 }, color: 'O' }, { from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: -1, r: 0 }, color: 'G' }, { from: { q: 1, r: -2 }, to: { q: 2, r: -2 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: 1, r: -1 }, color: 'O' }, { from: { q: 2, r: -2 }, to: { q: 3, r: -2 }, color: 'Y' }, { from: { q: 3, r: -2 }, to: { q: 4, r: -2 }, color: 'Y' }, { from: { q: 4, r: -2 }, to: { q: 5, r: -2 }, color: 'Y' }, { from: { q: 1, r: 0 }, to: { q: 2, r: -1 }, color: 'O' }, { from: { q: 1, r: -2 }, to: { q: 0, r: -1 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' }, { from: { q: 0, r: -1 }, to: { q: -1, r: -1 }, color: 'G' }, { from: { q: 1, r: -2 }, to: { q: 0, r: -2 }, color: 'G' }, { from: { q: 2, r: -1 }, to: { q: 3, r: -1 }, color: 'Y' }, { from: { q: 3, r: -1 }, to: { q: 4, r: -1 }, color: 'Y' }, { from: { q: 4, r: -1 }, to: { q: 5, r: -1 }, color: 'Y' }, { from: { q: 2, r: -1 }, to: { q: 1, r: 0 }, color: 'Y' }, { from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'V' }, { from: { q: -1, r: -1 }, to: { q: -2, r: -1 }, color: 'G' }, { from: { q: -2, r: -1 }, to: { q: -3, r: 0 }, color: 'R' }, { from: { q: -3, r: 0 }, to: { q: -4, r: 0 }, color: 'G' }, { from: { q: -4, r: 0 }, to: { q: -3, r: -1 }, color: 'O' }, { from: { q: -3, r: -1 }, to: { q: -2, r: -2 }, color: 'O' }, { from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'Y' }, { from: { q: -2, r: -2 }, to: { q: -1, r: -3 }, color: 'O' }, { from: { q: -1, r: -3 }, to: { q: -1, r: -4 }, color: 'V' }],
-	deck: [],
+	secret: { deck: [] },
 	discard: [],
-	hands: { '0': [{ colors: ['B', 'Y'] } as any, { colors: ['R', 'V'] } as any] },
+	players: buildPlayers({ '0': [{ colors: ['B', 'Y'] } as any, { colors: ['R', 'V'] } as any] }, { prefs: { primary: 'V', secondary: 'G', tertiary: 'O' } }),
 	treasure: [{ colors: [] } as any, { colors: [] } as any],
-	prefs: { '0': { primary: 'V', secondary: 'G', tertiary: 'O' } },
 	stats: { placements: 0 },
-	meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+	meta: { deckExhaustionCycle: null },
 	origins: [{ q: 0, r: 0 }],
-	nightmares: {},
-	nightmareState: {},
 	action: initActionState(['0']),
 };
 
