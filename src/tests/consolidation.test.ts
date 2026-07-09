@@ -37,6 +37,9 @@ const actionKey = (a: Action): string => {
   switch (a.type) {
     case 'playCard': {
       const args = a.args;
+      if ('source' in args && 'convert' in args && args.convert) {
+      	return `convert:${args.handIndex}:${args.convert}->${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
+      }
       if ('source' in args) {
         return `play:${args.handIndex}:${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
       }
@@ -59,12 +62,13 @@ describe('enumerate-actions', () => {
   it('matches expected actions', () => {
     const actual = enumerateActions(G, '0').map(actionKey).sort();
     const expected = [
-      "play:0:G:0,-2->0,-1",
-      "play:0:R:-1,2->-1,1",
+      // Conversions (one per undirected edge — the old pair of directional
+      // recolors on (1,0)-(2,0) merges into a single conversion):
+      "convert:0:B->V:1,0->2,0",
+      "convert:0:V->R:-1,1->-1,2",
+      "convert:0:Y->G:0,-1->0,-2",
       "play:0:R:0,0->-1,1",
       "play:0:V:0,0->0,1",
-      "play:0:V:1,0->2,0",
-      "play:0:V:2,0->1,0",
       "stash:0",
       "end"
     ];
@@ -75,9 +79,8 @@ describe('enumerate-actions', () => {
   it('matches expected score deltas', () => {
     const baseScores = computeScoresRaw(G);
     const expectedScores: Record<string, number> = {
-      "play:0:R:-1,2->-1,1": 2,
-      "play:0:V:1,0->2,0": 1,
-      "play:0:V:2,0->1,0": 1
+      "convert:0:V->R:-1,1->-1,2": 2,
+      "convert:0:B->V:1,0->2,0": 1
     };
     for (const action of enumerateActions(G, '0')) {
       const k = actionKey(action);

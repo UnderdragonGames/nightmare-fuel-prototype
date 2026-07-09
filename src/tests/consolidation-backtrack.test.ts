@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { enumerateActions, type Action } from '../game/ai';
-import type { GState } from '../game/types';
+import { canConsolidate, applyConsolidation, countRimToCenterPaths } from '../game/helpers';
+import type { GState, PathLane } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { initActionState } from '../game/effects';
 import { buildPlayers } from './testHelpers';
@@ -24,47 +25,40 @@ const rules = {
 	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: 0 },
 };
 
-// Board state with 3 complete paths from origin to rim and a consolidation backtrack lane.
+// Board state with 3 complete radial paths from origin to rim (doubled first segments).
 //
-// Path 1 (Y, north):  (0,0)==>(0,-1)->(0,-2)->(0,-3)   [rim]  (doubled first segment)
-// Path 2 (B, east):   (0,0)==>(1,0)->(2,0)->(3,0)      [rim]  (doubled first segment)
-// Path 3 (V, south):  (0,0)==>(0,1)->(0,2)->(0,3)      [rim]  (doubled first segment)
-//
-// Consolidation backtrack lane: (0,-1)->(0,0) color B
-//   - goes inward (ring 1 -> ring 0)
-//   - on the undirected edge {(0,0),(0,-1)} which already has forward lane Y
-//   - this is a consolidation recolor (different color on an existing edge)
-//
-// The backtrack lane must NOT inflate outgoing counts at (0,-1) and thereby
-// block normal forward moves from that node.
+// Path 1 (Y, north):  (0,0)==>(0,-1)->(0,-2)->(0,-3)   [rim]
+// Path 2 (B, east):   (0,0)==>(1,0)->(2,0)->(3,0)      [rim]
+// Path 3 (V, south):  (0,0)==>(0,1)->(0,2)->(0,3)      [rim]
+const basePaths: PathLane[] = [
+	{ from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' },
+	{ from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' },
+	{ from: { q: 0, r: -1 }, to: { q: 0, r: -2 }, color: 'Y' },
+	{ from: { q: 0, r: -2 }, to: { q: 0, r: -3 }, color: 'Y' },
 
-const G: GState = {
+	{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' },
+	{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' },
+	{ from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'B' },
+	{ from: { q: 2, r: 0 }, to: { q: 3, r: 0 }, color: 'B' },
+
+	{ from: { q: 0, r: 0 }, to: { q: 0, r: 1 }, color: 'V' },
+	{ from: { q: 0, r: 0 }, to: { q: 0, r: 1 }, color: 'V' },
+	{ from: { q: 0, r: 1 }, to: { q: 0, r: 2 }, color: 'V' },
+	{ from: { q: 0, r: 2 }, to: { q: 0, r: 3 }, color: 'V' },
+];
+
+// R chain from the rim down to (0,-1), crossing onto the Y path's inner node.
+// R comp (rim-connected): (2,-3) [rim] -> (1,-2) -> (0,-1).
+const rChain: PathLane[] = [
+	{ from: { q: 2, r: -3 }, to: { q: 1, r: -2 }, color: 'R' },
+	{ from: { q: 1, r: -2 }, to: { q: 0, r: -1 }, color: 'R' },
+];
+
+const makeState = (lanes: PathLane[]): GState => ({
 	rules,
 	radius: rules.RADIUS,
 	board: {},
-	lanes: [
-		// Path 1: Y (north) from origin to rim - doubled first segment for capacity
-		{ from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' },
-		{ from: { q: 0, r: 0 }, to: { q: 0, r: -1 }, color: 'Y' },
-		{ from: { q: 0, r: -1 }, to: { q: 0, r: -2 }, color: 'Y' },
-		{ from: { q: 0, r: -2 }, to: { q: 0, r: -3 }, color: 'Y' },
-
-		// Path 2: B (east) from origin to rim - doubled first segment for capacity
-		{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' },
-		{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' },
-		{ from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'B' },
-		{ from: { q: 2, r: 0 }, to: { q: 3, r: 0 }, color: 'B' },
-
-		// Path 3: V (south) from origin to rim - doubled first segment for capacity
-		{ from: { q: 0, r: 0 }, to: { q: 0, r: 1 }, color: 'V' },
-		{ from: { q: 0, r: 0 }, to: { q: 0, r: 1 }, color: 'V' },
-		{ from: { q: 0, r: 1 }, to: { q: 0, r: 2 }, color: 'V' },
-		{ from: { q: 0, r: 2 }, to: { q: 0, r: 3 }, color: 'V' },
-
-		// Consolidation backtrack lane: B going inward on the Y-path edge
-		// (0,-1) ring 1 -> (0,0) ring 0, on edge that has forward lane (0,0)->(0,-1) color Y
-		{ from: { q: 0, r: -1 }, to: { q: 0, r: 0 }, color: 'B' },
-	],
+	lanes: lanes.map((l) => ({ ...l })),
 	secret: { deck: [] },
 	discard: [],
 	players: buildPlayers({ '0': [{ colors: ['R', 'O', 'Y', 'G', 'B', 'V'] } as any] }, { prefs: { primary: 'Y', secondary: 'B', tertiary: 'V' } }),
@@ -73,12 +67,15 @@ const G: GState = {
 	meta: { deckExhaustionCycle: null },
 	origins: [{ q: 0, r: 0 }],
 	action: initActionState(['0']),
-};
+});
 
 const actionKey = (a: Action): string => {
 	switch (a.type) {
 		case 'playCard': {
 			const args = a.args;
+			if ('source' in args && 'convert' in args && args.convert) {
+				return `convert:${args.handIndex}:${args.convert}->${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
+			}
 			if ('source' in args) {
 				return `play:${args.handIndex}:${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
 			}
@@ -97,11 +94,14 @@ const actionKey = (a: Action): string => {
 	}
 };
 
-describe('consolidation-backtrack', () => {
-	it('matches expected actions', () => {
-		const actual = enumerateActions(G, '0').map(actionKey).sort();
+describe('consolidation conversion', () => {
+	it('matches expected actions on the clean three-path state (no conversions available)', () => {
+		// Every path is already a single color from origin to rim, so nothing is
+		// consolidatable: each color's rim-connected component only touches its own
+		// path, and conversion requires the outer endpoint of a foreign edge.
+		const actual = enumerateActions(makeState(basePaths), '0').map(actionKey).sort();
 		const expected = [
-			// Forward moves from intermediate nodes (NOT blocked by backtrack lane)
+			// Forward moves from intermediate nodes
 			"play:0:Y:0,-1->0,-2",
 			"play:0:G:0,-1->1,-2",
 			"play:0:B:0,-1->1,-1",
@@ -128,36 +128,59 @@ describe('consolidation-backtrack', () => {
 			"end",
 		];
 		expect(actual).toEqual([...expected].sort());
-		// The backtrack lane must not block forward moves from (0,-1)
-		const forbidden: string[] = [
-			// If backtrack inflated outgoing count, these would be missing - ensure they are NOT forbidden
-		];
-		for (const key of forbidden) expect(actual).not.toContain(key);
+		const convertActions = actual.filter((k) => k.startsWith('convert:'));
+		expect(convertActions).toEqual([]);
 	});
 
-	it('forward moves from node with backtrack lane are not blocked', () => {
-		const actual = enumerateActions(G, '0').map(actionKey).sort();
-		const playActions = actual.filter((k) => k.startsWith('play:'));
-
-		// Node (0,-1) has a consolidation backtrack lane going inward (0,-1)->(0,0).
-		// It should still allow normal forward moves from (0,-1) outward.
-		const movesFromBacktrackNode = playActions.filter((k) => k.includes('0,-1->'));
-		expect(movesFromBacktrackNode.length).toBeGreaterThan(0);
-
-		// Specifically, stacking Y on (0,-1)->(0,-2) must be available
-		expect(actual).toContain('play:0:Y:0,-1->0,-2');
-
-		// Branching from (0,-1) to other directions should also be available
-		expect(actual).toContain('play:0:G:0,-1->1,-2');
-		expect(actual).toContain('play:0:B:0,-1->1,-1');
+	it('enumerates the conversion where R meets the doubled Y segment', () => {
+		const G = makeState([...basePaths, ...rChain]);
+		// R's rim-connected component reaches (0,-1), so R may convert one Y lane
+		// on the origin edge (0,0)-(0,-1).
+		const actual = enumerateActions(G, '0').map(actionKey);
+		expect(actual).toContain('convert:0:Y->R:0,0->0,-1');
+		// But not the outer Y edge — its outer endpoint (0,-2) is not on R's component.
+		expect(actual).not.toContain('convert:0:Y->R:0,-1->0,-2');
 	});
 
-	it('total playCard count is not drastically reduced by backtrack lane', () => {
-		const actual = enumerateActions(G, '0').map(actionKey).sort();
-		const playActions = actual.filter((k) => k.startsWith('play:'));
+	it('conversion preserves support and forward moves (geometry unchanged)', () => {
+		const G = makeState([...basePaths, ...rChain]);
+		const playsBefore = enumerateActions(G, '0').map(actionKey).filter((k) => k.startsWith('play:')).sort();
 
-		// With 3 full paths, 6-color hand, doubled first segments, and consolidation enabled,
-		// the backtrack lane should not drastically reduce options.
-		expect(playActions.length).toBeGreaterThanOrEqual(10);
+		expect(canConsolidate(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', 'R', rules)).toBe(true);
+		expect(applyConsolidation(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', 'R')).toBe(true);
+
+		// Geometry is unchanged, so the set of legal PLACEMENT moves is identical:
+		// support, fork capacity, and intersections are all color-blind.
+		const playsAfter = enumerateActions(G, '0').map(actionKey).filter((k) => k.startsWith('play:')).sort();
+		expect(playsAfter).toEqual(playsBefore);
+
+		// Concretely: stacking Y outward from (0,-1) and branching to the free
+		// west node both remain available.
+		expect(playsAfter).toContain('play:0:Y:0,-1->0,-2');
+		expect(playsAfter).toContain('play:0:B:0,-1->1,-1');
+	});
+
+	it('conversion completes R rim-to-center while doubled Y survives the takeover', () => {
+		const G = makeState([...basePaths, ...rChain]);
+		expect(countRimToCenterPaths(G)).toBe(3); // Y, B, V
+
+		applyConsolidation(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', 'R');
+
+		// R: (2,-3)[rim] -> (1,-2) -> (0,-1) -> (0,0) is now continuous.
+		// Y keeps its path via the remaining Y lane on the doubled segment.
+		expect(countRimToCenterPaths(G)).toBe(4); // Y, B, V, R
+	});
+
+	it('converting the last lane of a color breaks that color continuity (takeover)', () => {
+		// Single-width Y first segment: conversion takes the only Y lane.
+		const singleY = basePaths.filter((_, i) => i !== 0); // drop one doubled Y lane
+		const G = makeState([...singleY, ...rChain]);
+		expect(countRimToCenterPaths(G)).toBe(3); // Y, B, V
+
+		expect(canConsolidate(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', 'R', rules)).toBe(true);
+		applyConsolidation(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', 'R');
+
+		// R completes, Y's rim-to-center path is broken at the converted edge.
+		expect(countRimToCenterPaths(G)).toBe(3); // B, V, R — Y lost
 	});
 });

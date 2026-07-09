@@ -1,6 +1,6 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
-import { buildAllCoords, canPlace, canPlacePath, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
 import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, PlayerPrefs, PlayerState, HexTile, Co, Rules } from './types';
 import { drawOne, initActionState, playActionCardFromHand } from './effects';
 import { emitEvent } from './hooks';
@@ -274,8 +274,14 @@ export const HexStringsGame: Game<GState> = {
 							}
 							if (rules.MODE === 'path') {
 								if (!('source' in args)) return;
-								if (!canPlacePath(G, args.source, args.coord, args.pick, rules)) return;
-								G.lanes.push({ from: args.source, to: args.coord, color: args.pick });
+								if (args.convert) {
+									// Consolidation: convert one existing lane's color in place.
+									if (!canConsolidate(G, args.source, args.coord, args.convert, args.pick, rules)) return;
+									if (!applyConsolidation(G, args.source, args.coord, args.convert, args.pick)) return;
+								} else {
+									if (!canPlacePath(G, args.source, args.coord, args.pick, rules)) return;
+									G.lanes.push({ from: args.source, to: args.coord, color: args.pick });
+								}
 							} else {
 								if (!canPlace(G, args.coord, args.pick, rules)) return;
 								const k = key(args.coord);

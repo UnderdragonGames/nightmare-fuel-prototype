@@ -1,4 +1,4 @@
-import type { Card, PlayerID, PlayerPrefs, PlayerState, NightmareState } from '../game/types';
+import type { Card, PlayerID, PlayerState } from '../game/types';
 
 /** Build a minimal PlayerState for testing. Only `hand` is required; rest defaults to zero values. */
 export const buildPlayerState = (

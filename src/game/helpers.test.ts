@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canPlacePath, key } from './helpers';
+import { canPlacePath, canConsolidate, key } from './helpers';
 import { initActionState } from './effects';
 import type { GState, Rules, Co } from './types';
 import { PATH_RULES, buildColorToDir, BASE_EDGE_COLORS } from './rulesConfig';
@@ -18,15 +18,12 @@ const createTestState = (overrides: Partial<GState> = {}): GState => {
 		radius: rules.RADIUS,
 		board: {},
 		lanes: [],
-		deck: [],
+		secret: { deck: [] },
 		discard: [],
-		hands: {},
+		players: {},
 		treasure: [],
-		prefs: {},
-		nightmares: {},
-		nightmareState: {},
 		stats: { placements: 0 },
-		meta: { deckExhaustionCycle: null, stashBonus: {}, actionPlaysThisTurn: {} },
+		meta: { deckExhaustionCycle: null },
 		origins: [{ q: 0, r: 0 }],
 		action: initActionState([]),
 		...overrides,
@@ -91,7 +88,7 @@ describe('Path mode: CONSOLIDATION gates recoloring an existing edge', () => {
 	const rulesNoConsolidation: Rules = { ...TEST_RULES, PLACEMENT: { ...TEST_RULES.PLACEMENT, CONSOLIDATION: false, FORK_SUPPORT: false } };
 	const rulesWithConsolidation: Rules = { ...rulesNoConsolidation, PLACEMENT: { ...rulesNoConsolidation.PLACEMENT, CONSOLIDATION: true } };
 
-	it('blocks adding a new color to an existing edge before rim-connected; allows after rim-connected for that color', () => {
+	it('blocks converting an edge before rim-connected; allows conversion after rim-connected for that color', () => {
 		// Build a multi-color path to the rim, with final lane color V touching rim.
 		const base = createTestState({ rules: rulesWithConsolidation });
 		addLane(base, { q: 0, r: 0 }, { q: 1, r: 0 }, 'O');
@@ -100,21 +97,22 @@ describe('Path mode: CONSOLIDATION gates recoloring an existing edge', () => {
 		addLane(base, { q: 3, r: 0 }, { q: 4, r: 0 }, 'B');
 		addLane(base, { q: 4, r: 0 }, { q: 5, r: 0 }, 'V'); // touches rim (radius 5)
 
-		// Existing edge (4,0)->(5,0) already exists and is V already; propagate V one step inward by recoloring an existing edge.
-		// NOTE: This is an off-direction move for V in general, so it should only be allowed via consolidation.
-		// First, ensure we have V incident at (4,0)/(5,0), then recolor the adjacent existing edge (3,0)->(4,0).
-		expect(canPlacePath(base, { q: 3, r: 0 }, { q: 4, r: 0 }, 'V', rulesWithConsolidation)).toBe(true);
+		// Propagate V one step inward by CONVERTING the adjacent existing B edge (3,0)-(4,0).
+		expect(canConsolidate(base, { q: 3, r: 0 }, { q: 4, r: 0 }, 'B', 'V', rulesWithConsolidation)).toBe(true);
 
-		// Without consolidation enabled, recoloring an existing edge is blocked.
+		// Placement-based recolor no longer exists: V cannot be PLACED on that edge.
+		expect(canPlacePath(base, { q: 3, r: 0 }, { q: 4, r: 0 }, 'V', rulesWithConsolidation)).toBe(false);
+
+		// Without consolidation enabled, conversion is blocked.
 		const noCon = createTestState({ rules: rulesNoConsolidation, lanes: base.lanes, board: base.board });
-		expect(canPlacePath(noCon, { q: 3, r: 0 }, { q: 4, r: 0 }, 'V', rulesNoConsolidation)).toBe(false);
+		expect(canConsolidate(noCon, { q: 3, r: 0 }, { q: 4, r: 0 }, 'B', 'V', rulesNoConsolidation)).toBe(false);
 
-		// A different color that is NOT rim-connected cannot recolor that edge even with consolidation.
-		expect(canPlacePath(base, { q: 3, r: 0 }, { q: 4, r: 0 }, 'R', rulesWithConsolidation)).toBe(false);
+		// A color that is NOT rim-connected cannot convert that edge even with consolidation.
+		expect(canConsolidate(base, { q: 3, r: 0 }, { q: 4, r: 0 }, 'B', 'R', rulesWithConsolidation)).toBe(false);
 	});
 
-	it('allows backtracking recolor from the join node (even though NO_INTERSECT would block it)', () => {
-		// Shape: ... R, R, V at the end, and we "backtrack" V onto the last R edge from the join node.
+	it('conversion works regardless of edge direction and cannot create intersections', () => {
+		// Shape: ... R, R, V at the end; V converts the last R edge walking back toward center.
 		// Nodes: 2 -> 3 (R), 3 -> 4 (R), 4 -> 5 (V, rim). Join node is 4.
 		const G = createTestState({ rules: rulesWithConsolidation });
 		addLane(G, { q: 0, r: 0 }, { q: 1, r: 0 }, 'O');
@@ -123,9 +121,9 @@ describe('Path mode: CONSOLIDATION gates recoloring an existing edge', () => {
 		addLane(G, { q: 3, r: 0 }, { q: 4, r: 0 }, 'R');
 		addLane(G, { q: 4, r: 0 }, { q: 5, r: 0 }, 'V'); // rim-touching V
 
-		// Recolor existing undirected edge (3,0)-(4,0) with V, but in the *reverse* direction: 4 -> 3.
-		// This is off-direction for V and would also add a second incoming source into (3,0) (violating NO_INTERSECT)
-		// unless we treat consolidation recolor as exempt (since it follows an existing edge).
-		expect(canPlacePath(G, { q: 4, r: 0 }, { q: 3, r: 0 }, 'V', rulesWithConsolidation)).toBe(true);
+		// Conversion is undirected: (4,0)-(3,0) and (3,0)-(4,0) are the same edge.
+		// Geometry never changes, so NO_INTERSECT is unaffected by design.
+		expect(canConsolidate(G, { q: 4, r: 0 }, { q: 3, r: 0 }, 'R', 'V', rulesWithConsolidation)).toBe(true);
+		expect(canConsolidate(G, { q: 3, r: 0 }, { q: 4, r: 0 }, 'R', 'V', rulesWithConsolidation)).toBe(true);
 	});
 });

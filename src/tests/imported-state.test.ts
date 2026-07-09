@@ -135,6 +135,9 @@ const actionKey = (a: Action): string => {
 	switch (a.type) {
 		case 'playCard': {
 			const args = a.args;
+			if ('source' in args && 'convert' in args && args.convert) {
+				return `convert:${args.handIndex}:${args.convert}->${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
+			}
 			if ('source' in args) {
 				return `play:${args.handIndex}:${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
 			}
@@ -158,45 +161,27 @@ describe('imported-state', () => {
 		const actual = enumerateActions(G, '0').map(actionKey).sort();
 		// Filter out rotate actions (many nodes with outgoing lanes generate many combos)
 		const actualWithoutRotates = actual.filter((k) => !k.startsWith('rotate:'));
+		// Regenerated for the conversion model (2026-07-09):
+		// - The three old placement-based recolors became conversions (directional
+		//   pairs merged into one undirected conversion per edge).
+		// - Stacking/branching moves that relied on inward lanes manufacturing
+		//   support (e.g. play:0:B:0,-2->0,-1, play:0:R:4,-3->5,-3) are now
+		//   correctly blocked; the surviving stacks have genuine doubled support.
 		const expected = [
-  "play:0:B:-1,2->-1,3",
-  "play:0:B:0,-2->0,-1",
-  "play:0:B:2,2->2,3",
+  "convert:0:G->V:-2,-1->-3,0",
+  "convert:0:O->R:1,-1->2,-2",
+  "convert:0:Y->R:2,-2->1,-2",
   "play:0:B:3,-2->3,-1",
-  "play:0:B:3,1->3,2",
-  "play:0:B:4,-3->4,-2",
-  "play:0:G:-1,2->-2,3",
-  "play:0:G:1,-3->0,-2",
   "play:0:G:3,-2->2,-1",
-  "play:0:O:-1,2->0,1",
   "play:0:O:1,-1->2,-2",
-  "play:0:O:1,-3->2,-4",
   "play:0:O:3,-2->4,-3",
-  "play:0:O:4,-3->5,-4",
   "play:0:R:0,0->1,0",
   "play:0:R:1,-1->2,-1",
-  "play:0:R:1,-1->2,-2",
-  "play:0:R:1,-3->2,-3",
-  "play:0:R:1,-2->2,-2",
-  "play:0:R:2,-2->1,-1",
   "play:0:R:2,-2->3,-2",
-  "play:0:R:2,2->3,2",
   "play:0:R:3,-2->4,-2",
-  "play:0:R:3,1->4,1",
-  "play:0:R:4,-3->5,-3",
-  "play:0:V:-3,0->-2,-1",
-  "play:0:V:0,-2->0,-3",
-  "play:0:V:1,-3->1,-4",
-  "play:0:V:2,2->2,1",
   "play:0:V:3,-2->3,-3",
-  "play:0:V:3,1->3,0",
-  "play:0:V:4,-3->4,-4",
-  "play:0:Y:-1,2->-2,2",
-  "play:0:Y:0,-2->-1,-2",
   "play:0:Y:0,0->-1,0",
-  "play:0:Y:1,-3->0,-3",
   "play:0:Y:2,-2->1,-2",
-  "play:0:Y:4,-3->3,-3",
   "take:0",
   "take:1",
   "take:2",

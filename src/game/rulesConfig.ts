@@ -48,7 +48,6 @@ const HEX_PLACEMENT: PlacementRules = {
 	OVERWRITE: 'none',
 	CONSOLIDATION: false,
 	CONSOLIDATION_END: 0,
-	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: false,
 	CONSOLIDATE_TO_RING: 1,
 	STARTING_RING: 0,
 	COST_TO_BLOCK: 2,
@@ -132,8 +131,6 @@ export const PATH_RULES: Rules = {
 		CONSOLIDATION: true,
 		// Game ends when this many continuous paths reach from rim back to center
 		CONSOLIDATION_END: 3,
-		// Consolidation can exceed normal lane width limits (widths 4+ possible)
-		CONSOLIDATION_EXCEEDS_LANES_PER_PATH: true,
 		// Consolidation can reach center ring (ring 0) for game-ending paths
 		CONSOLIDATE_TO_RING: 0,
 		// New branches must start from ring 1 or further out (not from center ring 0)

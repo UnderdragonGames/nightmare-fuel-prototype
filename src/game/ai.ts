@@ -10,7 +10,7 @@
 import type { Ctx, PlayerID } from 'boardgame.io';
 import type { GState, Color, Co, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, Card, PlayerPrefs } from './types';
 import { emitEvent } from './hooks';
-import { buildAllCoords, canPlace, canPlacePath, countRimToCenterPaths, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, countRimToCenterPaths, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
 import { computeScores } from './scoring';
 
 // =============================================================================
@@ -96,6 +96,31 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 					for (const dest of neighbors(source)) {
 						if (canPlacePath(G, source, dest, color as Color, rules)) {
 							actions.push({ type: 'playCard', args: { handIndex: i, pick: color, source, coord: dest } });
+						}
+					}
+				}
+			}
+		}
+		// Consolidation conversions: recolor one existing lane per eligible edge.
+		if (rules.PLACEMENT.CONSOLIDATION) {
+			const edges = new Map<string, { a: Co; b: Co; colors: Set<Color> }>();
+			for (const ln of G.lanes) {
+				const ek = [key(ln.from), key(ln.to)].sort().join('|');
+				let e = edges.get(ek);
+				if (!e) {
+					e = { a: ln.from, b: ln.to, colors: new Set<Color>() };
+					edges.set(ek, e);
+				}
+				e.colors.add(ln.color);
+			}
+			for (let i = 0; i < hand.length; i += 1) {
+				const card = hand[i]!;
+				for (const color of card.colors) {
+					for (const e of edges.values()) {
+						for (const fromColor of e.colors) {
+							if (canConsolidate(G, e.a, e.b, fromColor, color as Color, rules)) {
+								actions.push({ type: 'playCard', args: { handIndex: i, pick: color, source: e.a, coord: e.b, convert: fromColor } });
+							}
 						}
 					}
 				}
@@ -231,8 +256,14 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			if (rules.ONE_COLOR_PER_CARD_PLAY && !card.colors.includes(args.pick)) return null;
 			if (rules.MODE === 'path') {
 				if (!('source' in args)) return null;
-				if (!canPlacePath(newG, args.source, args.coord, args.pick, rules)) return null;
-				newG.lanes.push({ from: args.source, to: args.coord, color: args.pick });
+				if (args.convert) {
+					// Consolidation: convert one existing lane's color in place.
+					if (!canConsolidate(newG, args.source, args.coord, args.convert, args.pick, rules)) return null;
+					if (!applyConsolidation(newG, args.source, args.coord, args.convert, args.pick)) return null;
+				} else {
+					if (!canPlacePath(newG, args.source, args.coord, args.pick, rules)) return null;
+					newG.lanes.push({ from: args.source, to: args.coord, color: args.pick });
+				}
 			} else {
 				if (!canPlace(newG, args.coord, args.pick, rules)) return null;
 				const k = key(args.coord);

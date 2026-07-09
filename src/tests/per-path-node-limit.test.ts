@@ -36,6 +36,9 @@ const actionKey = (a: Action): string => {
 	switch (a.type) {
 		case 'playCard': {
 			const args = a.args;
+			if ('source' in args && 'convert' in args && args.convert) {
+				return `convert:${args.handIndex}:${args.convert}->${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
+			}
 			if ('source' in args) {
 				return `play:${args.handIndex}:${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
 			}
@@ -58,6 +61,10 @@ describe('per-path-node-limit', () => {
 	it('matches expected actions', () => {
 		const actual = enumerateActions(G, '0').map(actionKey).sort();
 		const expected = [
+  // Conversions replace the old placement-based recolors of the B and Y edges:
+  "convert:0:B->G:1,-1->2,-1",
+  "convert:0:B->Y:1,-1->2,-1",
+  "convert:0:Y->G:2,-1->2,-2",
   "play:0:R:-1,-1->-2,0",
   "play:0:R:-1,2->-2,3",
   "play:0:R:0,0->-1,1",
@@ -68,22 +75,18 @@ describe('per-path-node-limit', () => {
   "play:0:O:0,-2->-1,-2",
   "play:0:O:0,-1->-1,-1",
   "play:0:O:0,0->-1,0",
-  "play:0:O:0,1->-1,1",
+  // NOTE: play:0:O:0,1->-1,1 and play:0:G:0,1->1,0 are now blocked: the
+  // branching pre-check applies to same-ring destinations too, and (0,1)
+  // already branches two ways without O/G present.
   "play:0:Y:-1,-1->-1,-2",
   "play:0:Y:-1,2->-1,1",
   "play:0:Y:0,-2->0,-3",
   "play:0:Y:0,-1->0,-2",
   "play:0:Y:0,0->0,-1",
-  "play:0:Y:1,-1->2,-1",
   "play:0:Y:1,-1->1,-2",
-  "play:0:Y:2,-1->1,-1",
   "play:0:G:0,-2->1,-3",
   "play:0:G:0,0->1,-1",
-  "play:0:G:0,1->1,0",
   "play:0:G:0,2->1,1",
-  "play:0:G:1,-1->2,-1",
-  "play:0:G:2,-1->1,-1",
-  "play:0:G:2,-2->2,-1",
   "play:0:B:0,-2->1,-2",
   "play:0:B:0,0->1,0",
   "play:0:B:0,2->1,2",

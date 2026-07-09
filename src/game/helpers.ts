@@ -1,4 +1,4 @@
-import type { Card, Co, Color, GState, PathLane, Rules } from './types';
+import type { Card, Co, Color, GState, Rules } from './types';
 
 export const key = (c: Co): string => `${c.q},${c.r}`;
 export const parse = (s: string): Co => {
@@ -142,18 +142,6 @@ const countIncomingLanes = (G: GState, node: Co): { count: number; sources: Set<
 	}
 	return { count, sources };
 };
-
-/**
- * Check if a lane goes inward (from higher ring to lower ring).
- * Inward-going lanes (whether from consolidation backtrack or normal color-directed
- * moves) should not count as "outward branching" for FORK_SUPPORT purposes,
- * and inward arrivals should not create "intersections" for NO_INTERSECT purposes.
- */
-const isInwardLane = (ln: PathLane): boolean => {
-	return ringIndex(ln.to) < ringIndex(ln.from);
-};
-
-
 
 const satisfiesDirectionRule = (G: GState, coord: Co, color: Color, rules: Rules): boolean => {
 	const targetRing = ringIndex(coord);
@@ -328,24 +316,10 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	if (!inBounds(source, G.radius) || !inBounds(dest, G.radius)) return false;
 	if (!isNeighbor(source, dest)) return false;
 
-	// Origins are wild and cannot be occupied / used as destination
-	// Exception: consolidation moves can target origins when CONSOLIDATE_TO_RING=0
+	// Origins are wild and cannot be occupied / used as destination.
+	// (Consolidation reaches origins by CONVERTING the existing lane on that edge — see canConsolidate.)
 	const destIsOrigin = G.origins.some((o) => o.q === dest.q && o.r === dest.r);
-	if (destIsOrigin) {
-		const destRing = ringIndex(dest);
-		if (destRing < rules.PLACEMENT.CONSOLIDATE_TO_RING || !rules.PLACEMENT.CONSOLIDATION) return false;
-		// Only allow consolidation recolor: edge must already exist with a different color
-		if (countUndirectedLanes(G, source, dest) === 0) return false;
-		if (undirectedHasColor(G, source, dest, color)) return false;
-		if (!isConsolidationMove(G, source, dest, color, rules)) return false;
-		// Must extend from existing segment of this color
-		if (!nodeHasColorLane(G, source, color) && !nodeHasColorLane(G, dest, color)) return false;
-		// Per-directed-segment capacity (consolidation can optionally exceed)
-		const directedCount = countDirectedLanes(G, source, dest);
-		const cap = rules.PLACEMENT.MAX_LANES_PER_PATH;
-		if (directedCount >= cap && !rules.PLACEMENT.CONSOLIDATION_EXCEEDS_LANES_PER_PATH) return false;
-		return true;
-	}
+	if (destIsOrigin) return false;
 	const destTile = G.board[key(dest)];
 	if (destTile?.dead) return false;
 
@@ -357,117 +331,84 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	if (!sourceIsValidStart && !nodeHasAnyLane(G, source)) return false;
 
 	// STARTING_RING: reject new branches from rings below the minimum.
-	// Stacking on existing edges is exempt (for consolidation).
+	// Stacking an existing color on an existing edge is exempt.
 	if (startingRing > 0 && ringIndex(source) < startingRing) {
 		const existingEdge = countUndirectedLanes(G, source, dest) > 0;
 		if (!existingEdge) return false;
 	}
 
-	// Block building INTO inner-ring tiles (below starting ring) unless consolidation
+	// Block building INTO inner-ring tiles (below starting ring) unless the edge already exists
 	if (startingRing > 0 && ringIndex(dest) < startingRing && !destIsOrigin) {
 		const existingEdge = countUndirectedLanes(G, source, dest) > 0;
 		if (!existingEdge) return false;
 	}
 
-	// Core mechanic: normally, a color implies its direction.
+	// Core mechanic: a color implies its direction.
 	const dir = rules.COLOR_TO_DIR[color];
 	const expectedDest: Co = { q: source.q + dir.q, r: source.r + dir.r };
 	const directionMatch = expectedDest.q === dest.q && expectedDest.r === dest.r;
+	if (!directionMatch) return false;
 
-	let isConsolidationRecolorMove = false;
-	let isConsolidationBacktrack = false;
-
-	// If this undirected edge already exists, adding a *new color* to it is CONSOLIDATION-gated.
-	// - stacking an existing color on the edge remains a normal move
-	// - creating new edges remains a normal move
+	// An undirected edge is color-locked once it exists: placing a different color on it
+	// is never a normal move. Changing an edge's color happens only via consolidation
+	// CONVERSION (canConsolidate), which mutates an existing lane instead of adding one.
 	{
 		const edgeExists = countUndirectedLanes(G, source, dest) > 0;
-		const isNewColorOnExistingEdge = edgeExists && !undirectedHasColor(G, source, dest, color);
+		if (edgeExists && !undirectedHasColor(G, source, dest, color)) return false;
+	}
 
-		// Consolidation exception (ONLY): allow placing a new color on an existing edge,
-		// and only if that same color has already reached the rim and is propagating.
-		if (isNewColorOnExistingEdge) {
-			if (!isConsolidationMove(G, source, dest, color, rules)) return false;
-			// Prevent "global recolor": must extend from an existing segment of this color.
-			if (!nodeHasColorLane(G, source, color) && !nodeHasColorLane(G, dest, color)) return false;
-			isConsolidationRecolorMove = true;
-			// Backtrack = reverse direction of an existing lane on this edge.
-			// Handles same-ring edges correctly (ring comparison can't determine direction).
-			isConsolidationBacktrack = countDirectedLanes(G, dest, source) > 0;
-		} else {
-			// Origins can stack, but cap parallel lanes at 2 per edge from an origin.
-			if (!directionMatch) return false;
-			// If already branching from this node, only add a new outward direction when this color is already present.
-			// Exclude inward-going lanes from the outgoing count since they represent
-			// backward/inward flow, not forward branching that consumes capacity.
-			if (!sourceIsValidStart && ringIndex(dest) > ringIndex(source)) {
-				const outgoing = new Set<string>();
-				for (const ln of G.lanes) {
-					if (ln.from.q === source.q && ln.from.r === source.r && !isInwardLane(ln)) {
-						outgoing.add(key(ln.to));
-					}
-				}
-				if (outgoing.size >= 2 && !outgoing.has(key(dest)) && !nodeHasColorLane(G, source, color)) {
-					return false;
-				}
+	// If already branching from this node, only add a new outward direction when this color is already present.
+	if (!sourceIsValidStart) {
+		const outgoing = new Set<string>();
+		for (const ln of G.lanes) {
+			if (ln.from.q === source.q && ln.from.r === source.r) {
+				outgoing.add(key(ln.to));
 			}
 		}
-
-		// Even for consolidation, disallow off-direction moves unless it is actually recoloring an existing edge.
-		if (!directionMatch && !isNewColorOnExistingEdge) return false;
+		if (outgoing.size >= 2 && !outgoing.has(key(dest)) && !nodeHasColorLane(G, source, color)) {
+			return false;
+		}
 	}
 
 	// Per-directed-segment capacity
-	// Consolidation can optionally exceed the normal lane limit (CONSOLIDATION_EXCEEDS_LANES_PER_PATH)
 	{
 		const directedCount = countDirectedLanes(G, source, dest);
-		const cap = rules.PLACEMENT.MAX_LANES_PER_PATH;
-		if (directedCount >= cap) {
-			if (!isConsolidationRecolorMove || !rules.PLACEMENT.CONSOLIDATION_EXCEEDS_LANES_PER_PATH) return false;
-		}
+		if (directedCount >= rules.PLACEMENT.MAX_LANES_PER_PATH) return false;
 	}
 
 	// NO_BUILD_FROM_RIM: cannot build FROM rim nodes
 	if (rules.PLACEMENT.NO_BUILD_FROM_RIM && ringIndex(source) >= G.radius) return false;
 
 	// NO_INTERSECT: all incoming lanes to dest must share the same source
-	// Consolidation backtrack (reverse of existing lane) is exempt: it follows an existing edge
-	// in reverse, so it cannot introduce a geometric intersection.
-	if (rules.PLACEMENT.NO_INTERSECT && (!isConsolidationRecolorMove || !isConsolidationBacktrack)) {
+	if (rules.PLACEMENT.NO_INTERSECT) {
 		const { sources } = countIncomingLanes(G, dest);
 		if (sources.size > 0 && !sources.has(key(source))) return false;
 	}
 
-	// Per-path node limit: at each non-origin source node, enforce three constraints:
+	// Per-path node limit (support tree): at each non-origin source node, enforce three constraints:
 	// 1. Unique outgoing DIRECTIONS cannot exceed total incoming lane count
 	// 2. Same-color lanes per directed outgoing edge cannot exceed incoming lane count
 	// 3. Total outgoing lanes cannot exceed IN + min(max(IN-1, 0), 2) (with tolerance for pre-existing violations)
-	// Consolidation backtrack on an existing edge is exempt (same reasoning as NO_INTERSECT).
-	// Inward-going lanes are excluded from outgoing counts since they represent
-	// backward/inward flow, not forward branching that consumes capacity.
-	if (rules.PLACEMENT.FORK_SUPPORT && (!isConsolidationRecolorMove || !isConsolidationBacktrack)) {
+	// Every lane is part of the support tree: it consumes capacity at its source and
+	// provides support at its destination, regardless of which ring it points to.
+	if (rules.PLACEMENT.FORK_SUPPORT) {
 		if (!sourceIsValidStart) {
-			// Total support at source node: incoming lanes PLUS inward outgoing lanes.
-			// Inward outgoing lanes (consolidation backtracks from this node) represent
-			// through-traffic and provide support for forward branching. This ensures
-			// a "2x path" where one lane is a consolidation backtrack still provides
-			// double support at the node for forking purposes.
 			let totalIn = 0;
 			for (const ln of G.lanes) {
 				if (ln.to.q === source.q && ln.to.r === source.r) {
-					totalIn++; // Normal incoming lane
-				} else if (ln.from.q === source.q && ln.from.r === source.r && isInwardLane(ln)) {
-					totalIn++; // Inward outgoing = through-traffic support
+					totalIn++;
 				}
 			}
 
-			if (totalIn > 0) {
+			// No incoming lanes = no support: nothing can grow from this node.
+			if (totalIn === 0) return false;
+
+			{
 				// Constraint 1: unique outgoing directions must not exceed incoming lane count
-				// Exclude inward-going lanes from outgoing (they don't consume forward capacity)
 				const outDirsBefore = new Set<string>();
 				let totalOutBefore = 0;
 				for (const ln of G.lanes) {
-					if (ln.from.q === source.q && ln.from.r === source.r && !isInwardLane(ln)) {
+					if (ln.from.q === source.q && ln.from.r === source.r) {
 						outDirsBefore.add(key(ln.to));
 						totalOutBefore++;
 					}
@@ -550,27 +491,63 @@ const buildRimConnectedNodesForColor = (G: GState, color: Color): Set<string> =>
 	return connected;
 };
 
-export const isConsolidationMove = (G: GState, source: Co, dest: Co, color: Color, rules: Rules): boolean => {
+/**
+ * Consolidation is a CONVERSION, not a placement: it swaps the color of one
+ * existing lane on the edge (a, b) from `fromColor` to `toColor`. Board geometry
+ * never changes — no width growth, no new arrivals, no new forks — so conversions
+ * need no fork-support or intersection checks. Physically: swap one path piece.
+ *
+ * Takeover semantics: converting destroys fromColor's continuity through this
+ * edge. Multi-width segments convert one lane per move, so a doubled segment
+ * keeps one lane of the old color — width resists takeover.
+ */
+export const canConsolidate = (G: GState, a: Co, b: Co, fromColor: Color, toColor: Color, rules: Rules): boolean => {
 	if (!rules.PLACEMENT.CONSOLIDATION) return false;
 	if (rules.MODE !== 'path') return false;
-	if (!hasRimConnectedPath(G, color)) return false;
-	if (countUndirectedLanes(G, source, dest) === 0) return false;
+	if (fromColor === toColor) return false;
+	if (!inBounds(a, G.radius) || !inBounds(b, G.radius)) return false;
+	if (!isNeighbor(a, b)) return false;
 
-	const sourceRing = ringIndex(source);
-	const destRing = ringIndex(dest);
-	const rimConnected = buildRimConnectedNodesForColor(G, color);
+	// Something to convert, and no duplicate: once toColor spans the edge,
+	// continuity exists and further conversion is neither needed nor allowed.
+	if (!undirectedHasColor(G, a, b, fromColor)) return false;
+	if (undirectedHasColor(G, a, b, toColor)) return false;
 
-	if (sourceRing === destRing) {
-		// Same-ring: must follow an existing lane in reverse (backtrack),
-		// and at least one node must be on the color's rim-connected path.
-		if (!rimConnected.has(key(source)) && !rimConnected.has(key(dest))) return false;
-		return countDirectedLanes(G, dest, source) > 0;
+	// Only a rim-connected color may consolidate.
+	if (!hasRimConnectedPath(G, toColor)) return false;
+
+	// CONSOLIDATE_TO_RING: consolidation may reach down to this ring (0 = origin edges allowed).
+	if (Math.min(ringIndex(a), ringIndex(b)) < rules.PLACEMENT.CONSOLIDATE_TO_RING) return false;
+
+	// Contiguity: consolidation spreads along toColor's rim-connected component.
+	// Different-ring edges require the OUTER endpoint in the component (it marches
+	// inward from the rim; outward steps only fill gaps already flanked by the color).
+	const aRing = ringIndex(a);
+	const bRing = ringIndex(b);
+	const rimConnected = buildRimConnectedNodesForColor(G, toColor);
+	if (aRing === bRing) {
+		return rimConnected.has(key(a)) || rimConnected.has(key(b));
 	}
+	const outer = aRing > bRing ? a : b;
+	return rimConnected.has(key(outer));
+};
 
-	// Different-ring: the outward node must be on the color's rim-connected path.
-	// This covers both inward and outward consolidation steps.
-	const outward = sourceRing > destRing ? source : dest;
-	return rimConnected.has(key(outward));
+/**
+ * Apply a consolidation conversion: recolor one lane of `fromColor` on edge (a, b)
+ * to `toColor`. Caller must have validated with canConsolidate. Returns true if a
+ * lane was converted.
+ */
+export const applyConsolidation = (G: GState, a: Co, b: Co, fromColor: Color, toColor: Color): boolean => {
+	for (const ln of G.lanes) {
+		if (ln.color !== fromColor) continue;
+		const onEdge =
+			(ln.from.q === a.q && ln.from.r === a.r && ln.to.q === b.q && ln.to.r === b.r) ||
+			(ln.from.q === b.q && ln.from.r === b.r && ln.to.q === a.q && ln.to.r === a.r);
+		if (!onEdge) continue;
+		ln.color = toColor;
+		return true;
+	}
+	return false;
 };
 
 export const shuffleInPlace = <T,>(arr: T[], rng: () => number = Math.random): void => {

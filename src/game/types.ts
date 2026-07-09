@@ -231,12 +231,10 @@ export type PlacementRules = {
 	TWO_TO_ROTATE: boolean;
 	// Overwrite rule: 'none' (disabled), 'match-4' (discard 4 of same color to overwrite a lane)
 	OVERWRITE: PlacementOverwriteRule;
-	// Consolidation: once a pathway reaches the rim, can place backwards along existing paths (reinforcement limits apply)
+	// Consolidation: once a color reaches the rim, it may CONVERT existing lanes along its path back toward center (recolor in place; geometry never changes)
 	CONSOLIDATION: boolean;
 	// Consolidation win: game ends when this many continuous paths reach from rim back to center
 	CONSOLIDATION_END: number;
-	// If true, consolidation moves can exceed MAX_LANES_PER_PATH (widths 4+ possible)
-	CONSOLIDATION_EXCEEDS_LANES_PER_PATH: boolean;
 	// Minimum ring a consolidation move can reach (0 = center origin, 1 = ring 1 adjacent to origin)
 	CONSOLIDATE_TO_RING: number;
 	// Minimum ring from which new path branches can originate (0 = center allowed, 1 = must start from ring 1+)
@@ -331,8 +329,10 @@ export type GameEffect =
 export type MovePlayCardArgs =
 	// Hex mode: place a color at a coord
 	| { handIndex: number; pick: Color; coord: Co }
-	// Path mode: place a lane from -> coord (must be adjacent)
-	| { handIndex: number; pick: Color; coord: Co; source: Co };
+	// Path mode: place a lane from -> coord (must be adjacent).
+	// When `convert` is set, this is a consolidation CONVERSION instead: recolor one
+	// existing `convert`-colored lane on the edge (source, coord) to `pick`.
+	| { handIndex: number; pick: Color; coord: Co; source: Co; convert?: Color };
 export type MovePlayActionArgs = { handIndex: number; effects?: GameEffect[] };
 export type MoveStashArgs = { handIndex: number };
 export type MoveTakeTreasureArgs = { index: number };

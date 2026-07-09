@@ -128,6 +128,9 @@ const actionKey = (a: Action): string => {
 	switch (a.type) {
 		case 'playCard': {
 			const args = a.args;
+			if ('source' in args && 'convert' in args && args.convert) {
+				return `convert:${args.handIndex}:${args.convert}->${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
+			}
 			if ('source' in args) {
 				return `play:${args.handIndex}:${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
 			}
@@ -152,15 +155,17 @@ describe('blocked-consolidation', () => {
 		// Filter out block actions for the exact match (many empty tiles generate many block combos)
 		const actualWithoutBlocks = actual.filter((k) => !k.startsWith('block:') && !k.startsWith('rotate:'));
 		const expected = [
+  // Conversions replace the old placement-based recolors on these edges:
+  "convert:0:G->Y:1,-2->0,-2",
+  "convert:1:O->V:-2,-2->-1,-3",
   "play:0:B:-1,0->-1,1",
   "play:0:B:0,0->0,1",
   "play:0:B:2,0->2,1",
-  "play:0:Y:0,-2->1,-2",
   "play:0:Y:0,0->1,0",
-  "play:0:Y:1,-2->2,-2",
   "play:0:Y:1,0->2,0",
-  "play:0:Y:2,-1->3,-1",
   "play:0:Y:2,0->3,0",
+  // NOTE: play:0:Y:1,-2->2,-2 and play:0:Y:2,-1->3,-1 are now correctly blocked:
+  // the inward Y lanes at (1,-2)/(2,-1) no longer manufacture doubling support.
   "play:1:R:-1,0->-2,1",
   "play:1:R:0,0->-1,1",
   "play:1:R:2,0->1,1",
@@ -169,8 +174,7 @@ describe('blocked-consolidation', () => {
   "stash:1",
   "take:0",
   "take:1",
-  "end",
-  "play:1:V:-1,-3->-2,-2"
+  "end"
 ];
 		expect(actualWithoutBlocks).toEqual([...expected].sort());
 		// Verify block actions exist (2 cards in hand, COST_TO_BLOCK=2, 1 combination [0,1])
@@ -189,7 +193,7 @@ describe('blocked-consolidation', () => {
 	it('matches expected score deltas', () => {
 		const baseScores = computeScoresRaw(G);
 		const expectedScores: Record<string, number> = {
-  "play:1:V:-1,-3->-2,-2": 1
+  "convert:1:O->V:-2,-2->-1,-3": 1
 };
 		for (const action of enumerateActions(G, '0')) {
 			const k = actionKey(action);

@@ -13,7 +13,7 @@ import { DiscardZone } from './ui/DiscardZone';
 import { ActionCardModal } from './ui/ActionCardModal';
 import { PlayerHandModal } from './ui/PlayerHandModal';
 import { computeScores } from './game/scoring';
-import { buildAllCoords, canPlace, canPlacePath, neighbors, asVisibleColor, key, serializeCard } from './game/helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, neighbors, asVisibleColor, key, serializeCard } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
 import { PlayerCard } from './ui/PlayerCard';
 import { StateLab } from './ui/StateLab';
@@ -87,7 +87,6 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	ctx,
 	moves,
 	playerID,
-	viewer,
 	onSetViewer,
 	undo,
 	log,
@@ -215,6 +214,18 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		return G.origins.some((o) => o.q === coord.q && o.r === coord.r);
 	};
 
+	// Helper: find a lane color on edge (a, b) that can be consolidation-converted to toColor.
+	const findConvertibleColor = (a: Co, b: Co, toColor: Color): Color | null => {
+		for (const ln of G.lanes) {
+			const onEdge =
+				(ln.from.q === a.q && ln.from.r === a.r && ln.to.q === b.q && ln.to.r === b.r) ||
+				(ln.from.q === b.q && ln.from.r === b.r && ln.to.q === a.q && ln.to.r === a.r);
+			if (!onEdge || ln.color === toColor) continue;
+			if (canConsolidate(G, a, b, ln.color, toColor, rules)) return ln.color;
+		}
+		return null;
+	};
+
 	// Helper: get valid destination dots from a source
 	const getValidDestinations = (source: Co, cardColors: Color[]): Co[] => {
 		const dests: Co[] = [];
@@ -229,16 +240,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				}
 			}
 
-			// Also check all neighbors for consolidation moves (off-direction recoloring).
+			// Also check all neighbors for consolidation CONVERSIONS (recolor an existing lane).
 			// When a color is explicitly selected, only check that color; otherwise check all card colors.
 			const colorsToCheck = selectedColor && cardColors.includes(selectedColor)
 				? [selectedColor]
 				: cardColors;
 			for (const col of colorsToCheck) {
 				for (const dest of neighbors(source)) {
-					if (isOriginCoord(dest)) continue;
 					if (dests.some((d) => d.q === dest.q && d.r === dest.r)) continue;
-					if (canPlacePath(G, source, dest, col, rules)) dests.push(dest);
+					if (findConvertibleColor(source, dest, col)) dests.push(dest);
 				}
 			}
 			return dests;
@@ -483,27 +493,24 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				return;
 			}
 
-			// Consolidation exception: allow using explicitly selected color (e.g. purple) off-direction
-			// when canPlacePath gates it as a consolidation move.
-			if (selectedColor && card.colors.includes(selectedColor) && canPlacePath(G, selectedSourceDot, coord, selectedColor, rules)) {
-				moves.playCard({ handIndex: selectedCard, pick: selectedColor, source: selectedSourceDot, coord });
-				setSelectedCard(null);
-				setSelectedColor(null);
-				setSelectedSourceDot(null);
-				return;
-			}
-
-			// Fallback: try ALL card colors to find any valid move to this destination.
-			// This handles cases where the valid color is neither the direction color nor
-			// the explicitly selected color (e.g., consolidation with an unselected color).
-			for (const col of card.colors) {
-				if (col === dirColor || col === selectedColor) continue; // already tried
-				if (canPlacePath(G, selectedSourceDot, coord, col as Color, rules)) {
-					moves.playCard({ handIndex: selectedCard, pick: col as Color, source: selectedSourceDot, coord });
-					setSelectedCard(null);
-					setSelectedColor(null);
-					setSelectedSourceDot(null);
-					return;
+			// Consolidation conversion: recolor an existing lane on this edge.
+			// Prefer the explicitly selected color, then any other card color.
+			{
+				const tried = new Set<string>();
+				const candidates: Color[] = [];
+				if (selectedColor && card.colors.includes(selectedColor)) candidates.push(selectedColor);
+				for (const col of card.colors) candidates.push(col as Color);
+				for (const col of candidates) {
+					if (tried.has(col)) continue;
+					tried.add(col);
+					const fromColor = findConvertibleColor(selectedSourceDot, coord, col);
+					if (fromColor) {
+						moves.playCard({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord, convert: fromColor });
+						setSelectedCard(null);
+						setSelectedColor(null);
+						setSelectedSourceDot(null);
+						return;
+					}
 				}
 			}
 

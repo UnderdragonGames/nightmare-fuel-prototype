@@ -36,6 +36,9 @@ const actionKey = (a: Action): string => {
   switch (a.type) {
     case 'playCard': {
       const args = a.args;
+      if ('source' in args && 'convert' in args && args.convert) {
+      	return `convert:${args.handIndex}:${args.convert}->${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
+      }
       if ('source' in args) {
         return `play:${args.handIndex}:${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
       }

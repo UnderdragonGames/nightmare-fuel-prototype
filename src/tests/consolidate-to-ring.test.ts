@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canPlacePath, countRimToCenterPaths } from '../game/helpers';
+import { canPlacePath, canConsolidate, applyConsolidation, countRimToCenterPaths } from '../game/helpers';
 import type { GState, PathLane, Rules } from '../game/types';
 import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
 import { initActionState } from '../game/effects';
@@ -60,6 +60,9 @@ const actionKey = (a: Action): string => {
 	switch (a.type) {
 		case 'playCard': {
 			const args = a.args;
+			if ('source' in args && 'convert' in args && args.convert) {
+				return `convert:${args.handIndex}:${args.convert}->${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
+			}
 			if ('source' in args) {
 				return `play:${args.handIndex}:${args.pick}:${args.source.q},${args.source.r}->${args.coord.q},${args.coord.r}`;
 			}
@@ -83,9 +86,11 @@ describe('consolidate-to-ring', () => {
 		const rules = { ...baseRules, PLACEMENT: { ...baseRules.PLACEMENT, CONSOLIDATE_TO_RING: 0 } };
 		const G = makeState(rules);
 
-		// R can consolidate from (0,-1) to (0,0) — the origin
-		const allowed = canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'R', rules);
+		// R can consolidate to the origin by CONVERTING one Y lane on edge (0,-1)-(0,0)
+		const allowed = canConsolidate(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', 'R', rules);
 		expect(allowed).toBe(true);
+		// Placement onto the origin is never legal
+		expect(canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'R', rules)).toBe(false);
 	});
 
 	it('CONSOLIDATE_TO_RING=1 blocks consolidation moves to the origin', () => {
@@ -93,7 +98,7 @@ describe('consolidate-to-ring', () => {
 		const G = makeState(rules);
 
 		// R cannot consolidate to origin when CONSOLIDATE_TO_RING=1
-		const blocked = canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'R', rules);
+		const blocked = canConsolidate(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', 'R', rules);
 		expect(blocked).toBe(false);
 	});
 
@@ -102,8 +107,9 @@ describe('consolidate-to-ring', () => {
 		const G = makeState(rules);
 
 		const actions = enumerateActions(G, '0').map(actionKey);
-		// R consolidation from (0,-1) -> (0,0) should appear
-		expect(actions).toContain('play:0:R:0,-1->0,0');
+		// R conversion of a Y lane on edge (0,0)-(0,-1) should appear
+		// (edge endpoints are keyed by the first lane's from/to: (0,0)->(0,-1))
+		expect(actions).toContain('convert:0:Y->R:0,0->0,-1');
 	});
 
 	it('consolidation to origin is NOT enumerated with CONSOLIDATE_TO_RING=1', () => {
@@ -111,7 +117,7 @@ describe('consolidate-to-ring', () => {
 		const G = makeState(rules);
 
 		const actions = enumerateActions(G, '0').map(actionKey);
-		expect(actions).not.toContain('play:0:R:0,-1->0,0');
+		expect(actions).not.toContain('convert:0:Y->R:0,0->0,-1');
 	});
 
 	it('countRimToCenterPaths detects completed path after consolidation to origin', () => {
@@ -123,11 +129,12 @@ describe('consolidate-to-ring', () => {
 		// Y already has a complete path: (0,0)->(0,-1)->(0,-2)->(0,-3)
 		expect(beforeCount).toBe(1); // only Y
 
-		// Apply the consolidation move: add R lane from (0,-1) to (0,0)
-		G.lanes.push({ from: { q: 0, r: -1 }, to: { q: 0, r: 0 }, color: 'R' });
+		// Apply the consolidation: convert ONE of the two Y lanes on edge (0,-1)-(0,0) to R.
+		// The doubled segment keeps one Y lane, so Y's path survives the takeover.
+		expect(applyConsolidation(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', 'R')).toBe(true);
 
 		const afterCount = countRimToCenterPaths(G);
-		// Now R also has a complete rim-to-center path
+		// Now R also has a complete rim-to-center path, and Y still does
 		expect(afterCount).toBe(2); // Y + R
 	});
 
@@ -135,12 +142,15 @@ describe('consolidate-to-ring', () => {
 		const rules = { ...baseRules, PLACEMENT: { ...baseRules.PLACEMENT, CONSOLIDATE_TO_RING: 0 } };
 		const G = makeState(rules);
 
-		// Y already exists on edge (0,0)<->(0,-1) — stacking same color is not a consolidation recolor
-		const sameColor = canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', rules);
+		// Converting to the same color is meaningless and blocked
+		const sameColor = canConsolidate(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', 'Y', rules);
 		expect(sameColor).toBe(false);
 
-		// B has no rim connection and no existing edge to origin from a B-connected node
-		const noRimConnection = canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'B', rules);
+		// B has no rim connection, so B cannot convert anything
+		const noRimConnection = canConsolidate(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', 'B', rules);
 		expect(noRimConnection).toBe(false);
+
+		// Normal placement onto the origin is always blocked
+		expect(canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', rules)).toBe(false);
 	});
 });
