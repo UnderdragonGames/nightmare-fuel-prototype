@@ -60,7 +60,7 @@ When the consolidation front meets an edge that already carries `toColor`, there
 - `game.ts` `placePath` / `ai.ts` `applyMicroAction`: consolidation stops pushing a lane and instead mutates the chosen lane's color. Move args gain the convert-target when ambiguous.
 - `enumerateActions` (ai.ts): enumerate conversions per distinct convertible color on each eligible edge.
 - UI (App.tsx placement preview): consolidation targets are edges, not empty destinations — verify the existing "consolidation move" preview path renders conversion correctly.
-- **Audit any code assuming `lane.color` ⇒ direction** (e.g., path rotation, direction inference): converted lanes have colors that no longer match their geometric direction. This is already true of today's additive recolors, but conversion makes it more common.
+- **Rotation rule (decided 2026-07-11):** path-mode `rotateTile` recolors only lanes whose color matched their old direction; a converted lane KEEPS its color when rotated (physically: the swapped piece rotates as-is). Rotation thereby becomes a legitimate tactical attack on a consolidated route — it moves the converted lane without un-converting it.
 
 ## Test plan
 

@@ -306,12 +306,16 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 				const outgoing = newG.lanes.filter(l => key(l.from) === coordKey);
 				if (outgoing.length === 0) return null;
 
+				// Converted lanes (color != direction) keep their color through rotation;
+				// only direction-matched lanes take the new direction's color.
 				const rotated = outgoing.map(lane => {
+					const oldDirColor = dirToColor(rules, { q: lane.to.q - args.coord.q, r: lane.to.r - args.coord.r });
 					const newTo = rotateNeighbor(args.coord, lane.to, args.rotation);
 					const dq = newTo.q - args.coord.q;
 					const dr = newTo.r - args.coord.r;
 					const newColor = dirToColor(rules, { q: dq, r: dr });
-					return { lane, newTo, newColor };
+					const isConverted = lane.color !== oldDirColor;
+					return { lane, newTo, newColor, isConverted };
 				});
 
 				for (const { newTo, newColor } of rotated) {
@@ -322,9 +326,9 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 					if (newG.origins.some(o => o.q === newTo.q && o.r === newTo.r)) return null;
 				}
 
-				for (const { lane, newTo, newColor } of rotated) {
+				for (const { lane, newTo, newColor, isConverted } of rotated) {
 					lane.to = newTo;
-					lane.color = newColor!;
+					if (!isConverted) lane.color = newColor!;
 				}
 			} else {
 				// HEX MODE: rotate tile orientation

@@ -360,13 +360,18 @@ export const HexStringsGame: Game<GState> = {
 								const outgoing = G.lanes.filter(l => key(l.from) === coordKey);
 								if (outgoing.length === 0) return;
 
-								// Compute rotated destinations and new colors
+								// Compute rotated destinations and new colors.
+								// Consolidation-converted lanes (color != direction) keep their color:
+								// physically, the swapped piece rotates as-is. Only direction-matched
+								// lanes take the new direction's color.
 								const rotated = outgoing.map(lane => {
+									const oldDirColor = dirToColor(rules, { q: lane.to.q - coord.q, r: lane.to.r - coord.r });
 									const newTo = rotateNeighbor(coord, lane.to, args.rotation);
 									const dq = newTo.q - coord.q;
 									const dr = newTo.r - coord.r;
 									const newColor = dirToColor(rules, { q: dq, r: dr });
-									return { lane, newTo, newColor };
+									const isConverted = lane.color !== oldDirColor;
+									return { lane, newTo, newColor, isConverted };
 								});
 
 								// Validate all rotated destinations
@@ -379,9 +384,9 @@ export const HexStringsGame: Game<GState> = {
 								}
 
 								// Apply rotation
-								for (const { lane, newTo, newColor } of rotated) {
+								for (const { lane, newTo, newColor, isConverted } of rotated) {
 									lane.to = newTo;
-									lane.color = newColor!;
+									if (!isConverted) lane.color = newColor!;
 								}
 							} else {
 								// HEX MODE: rotate tile orientation

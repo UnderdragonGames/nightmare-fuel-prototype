@@ -127,7 +127,7 @@ export const PATH_RULES: Rules = {
 		NO_INTERSECT: true,
 		// Tiles at rim cannot have outgoing edges (paths terminate at rim)
 		NO_BUILD_FROM_RIM: true,
-		// Consolidation: once a pathway reaches rim, can reinforce existing paths backward toward center
+		// Consolidation: once a color reaches the rim, it may CONVERT existing lanes along its path back toward center (recolor in place)
 		CONSOLIDATION: true,
 		// Game ends when this many continuous paths reach from rim back to center
 		CONSOLIDATION_END: 3,

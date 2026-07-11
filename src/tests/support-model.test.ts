@@ -150,3 +150,39 @@ describe('consolidation conversion: bridges and contiguity', () => {
 		expect(canConsolidate(G, { q: 1, r: 0 }, { q: 2, r: -1 }, 'G', 'O', G.rules)).toBe(false);
 	});
 });
+
+describe('rotation preserves converted lane colors', () => {
+	it('rotating a node recolors direction-matched lanes but keeps converted colors', async () => {
+		const { applyMicroAction } = await import('../game/ai');
+		const { buildAllCoords, key: coordKey } = await import('../game/helpers');
+		const radius = 3;
+		// Node (1,0): a direction-matched B lane east to (2,0), and a converted R
+		// lane pointing north to (1,-1) (N's direction color is Y, so R = converted).
+		const lanes: PathLane[] = [
+			{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' },
+			{ from: { q: 0, r: 0 }, to: { q: 1, r: 0 }, color: 'B' },
+			{ from: { q: 1, r: 0 }, to: { q: 2, r: 0 }, color: 'B' },
+			{ from: { q: 1, r: 0 }, to: { q: 1, r: -1 }, color: 'R' },
+		];
+		const G = makeG(radius, lanes);
+		// rotateTile validation requires board tiles to exist at rotated destinations.
+		for (const c of buildAllCoords(radius)) {
+			G.board[coordKey(c)] = { colors: [], rotation: 0, dead: false };
+		}
+		(G.players['0'] as { hand: unknown[] }).hand = [{ colors: ['B'] }];
+
+		const next = applyMicroAction(G, {
+			type: 'rotateTile',
+			args: { coord: { q: 1, r: 0 }, handIndices: [0], rotation: 1 },
+		}, '0');
+		expect(next).not.toBeNull();
+
+		const outgoing = next!.lanes.filter((l) => l.from.q === 1 && l.from.r === 0);
+		// B lane rotated E -> SE: direction-matched, so it takes SE's color (V).
+		const rotatedMatched = outgoing.find((l) => l.to.q === 1 && l.to.r === 1);
+		expect(rotatedMatched?.color).toBe('V');
+		// R lane rotated N -> NE: converted, so it KEEPS R (NE's color would be G).
+		const rotatedConverted = outgoing.find((l) => l.to.q === 2 && l.to.r === -1);
+		expect(rotatedConverted?.color).toBe('R');
+	});
+});
