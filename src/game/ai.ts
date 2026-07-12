@@ -476,6 +476,9 @@ const getColorValue = (color: Color, prefs: PlayerPrefs): number => {
 };
 
 const getCardValue = (card: Card, prefs: PlayerPrefs): number => {
+	// Action cards have no colors; Math.max() of nothing is -Infinity, which
+	// poisons every evaluation downstream. Treat them as neutral value.
+	if (card.colors.length === 0) return 0;
 	return Math.max(...card.colors.map((c) => getColorValue(c, prefs)));
 };
 
