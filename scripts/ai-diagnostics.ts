@@ -13,6 +13,8 @@ import {
 	applyEndTurn,
 	selectBestAction,
 	selectWithLookahead,
+	generateCandidates,
+	evaluateAction,
 	type Action,
 } from '../src/game/ai';
 import { countRimToCenterPaths } from '../src/game/helpers';
@@ -43,6 +45,7 @@ type PlayerStats = {
 	// Times the bot chose an action with a worse immediate score delta than the best available playCard
 	pickedWorseThanBestScoring: number;
 	bestScoringDeltaMissed: number[];
+	probes: { inCandidates: boolean; value: number; delta: number }[];
 };
 
 const newStats = (): PlayerStats => ({
@@ -54,25 +57,27 @@ const newStats = (): PlayerStats => ({
 	endedTurnWithScoringMove: 0,
 	pickedWorseThanBestScoring: 0,
 	bestScoringDeltaMissed: [],
+	probes: [],
 });
 
 /** Best immediate score delta among playCard actions (and the chosen action's delta). */
 const scoringAnalysis = (G: GState, pid: PlayerID, chosen: Action | null) => {
 	const base = computeScoresRaw(G)[pid] ?? 0;
 	let bestDelta = 0;
+	let bestAction: Action | null = null;
 	for (const a of enumerateActions(G, pid)) {
 		if (a.type !== 'playCard') continue;
 		const next = applyMicroAction(G, a, pid);
 		if (!next) continue;
 		const delta = (computeScoresRaw(next)[pid] ?? 0) - base;
-		if (delta > bestDelta) bestDelta = delta;
+		if (delta > bestDelta) { bestDelta = delta; bestAction = a; }
 	}
 	let chosenDelta = 0;
 	if (chosen) {
 		const next = applyMicroAction(G, chosen, pid);
 		if (next) chosenDelta = (computeScoresRaw(next)[pid] ?? 0) - base;
 	}
-	return { bestDelta, chosenDelta };
+	return { bestDelta, chosenDelta, bestAction };
 };
 
 type GameResult = {
@@ -115,13 +120,21 @@ const playGame = (policies: Record<PlayerID, Policy>, analyzeScoring: boolean): 
 			st.decisionMs.push(performance.now() - t0);
 
 			if (analyzeScoring) {
-				const { bestDelta, chosenDelta } = scoringAnalysis(G, pid, action);
-				if (bestDelta > 0 && action === null) {
-					st.endedTurnWithScoringMove += 1;
-					st.bestScoringDeltaMissed.push(bestDelta);
-				} else if (bestDelta > 0 && chosenDelta < bestDelta) {
-					st.pickedWorseThanBestScoring += 1;
-					st.bestScoringDeltaMissed.push(bestDelta - chosenDelta);
+				const { bestDelta, chosenDelta, bestAction } = scoringAnalysis(G, pid, action);
+				if (bestDelta > 0 && (action === null || chosenDelta < bestDelta)) {
+					if (action === null) st.endedTurnWithScoringMove += 1;
+					else st.pickedWorseThanBestScoring += 1;
+					st.bestScoringDeltaMissed.push(action === null ? bestDelta : bestDelta - chosenDelta);
+					// ROOT CAUSE PROBE: was the best-scoring move even a candidate,
+					// and what value did the evaluator assign it?
+					if (bestAction) {
+						const cands = generateCandidates(G, pid, ctx);
+						const key = JSON.stringify(bestAction.args);
+						const inCandidates = cands.some((c) => c.type === 'playCard' && JSON.stringify(c.args) === key);
+						const gAfter = applyMicroAction(G, bestAction, pid);
+						const value = gAfter ? evaluateAction(G, gAfter, bestAction, pid, ctx) : NaN;
+						st.probes.push({ inCandidates, value, delta: bestDelta });
+					}
 				}
 			}
 
@@ -182,6 +195,7 @@ const runMatchup = (name: string, pol0: Policy, pol1: Policy, games: number, ana
 			dst.endedTurnWithScoringMove += src.endedTurnWithScoringMove;
 			dst.pickedWorseThanBestScoring += src.pickedWorseThanBestScoring;
 			dst.bestScoringDeltaMissed.push(...src.bestScoringDeltaMissed);
+			dst.probes.push(...src.probes);
 			dst.decisionMs.push(...src.decisionMs);
 			for (const [k, v] of Object.entries(src.byType)) dst.byType[k] = (dst.byType[k] ?? 0) + v;
 		}
@@ -197,10 +211,21 @@ const runMatchup = (name: string, pol0: Policy, pol1: Policy, games: number, ana
 		if (analyzeScoring) {
 			console.log(`     missed-scoring: endedTurn ${s.endedTurnWithScoringMove}, pickedWorse ${s.pickedWorseThanBestScoring},`
 				+ ` avg missed delta ${avg(s.bestScoringDeltaMissed).toFixed(1)} (${pct(s.endedTurnWithScoringMove + s.pickedWorseThanBestScoring, s.decisionMs.length)} of decisions)`);
+			if (s.probes.length) {
+				const notCand = s.probes.filter((pr) => !pr.inCandidates).length;
+				const negValue = s.probes.filter((pr) => pr.inCandidates && pr.value <= 0.1).length;
+				const posValue = s.probes.filter((pr) => pr.inCandidates && pr.value > 0.1).length;
+				console.log(`     probe: bestScoring move missing from candidates ${notCand}/${s.probes.length},`
+					+ ` evaluated<=threshold ${negValue}, evaluated>threshold ${posValue};`
+					+ ` avg value when evaluated ${avg(s.probes.filter((pr) => pr.inCandidates).map((pr) => pr.value)).toFixed(1)}`);
+			}
 		}
 	}
 };
 
 const N = Number(process.argv[2]) || 8;
 runMatchup('Evaluator (A) vs Random (B)', evaluatorPolicy, randomPolicy, N, true);
-runMatchup('EvaluatorPlus (A) vs Evaluator (B)', evaluatorPlusPolicy, evaluatorPolicy, Math.max(4, Math.floor(N / 2)), true);
+// EvaluatorPlus lookahead measured at minutes-to-hours per decision — only run when asked.
+if (process.argv.includes('--plus')) {
+	runMatchup('EvaluatorPlus (A) vs Evaluator (B)', evaluatorPlusPolicy, evaluatorPolicy, Math.max(2, Math.floor(N / 2)), true);
+}
