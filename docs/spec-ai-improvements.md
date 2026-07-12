@@ -45,6 +45,18 @@ unplayable action cards, reasonable until action-card play exists.
 
 ## Plan, in priority order
 
+### P0. Finish action card implementation — DONE (merged to main 2026-07-12)
+Audit of all 25 action cards found 3 hard-broken and 2 silently dead:
+- **Culled** (mechanics don't exist digitally; definitions kept, excluded from
+  deck via `DIGITALLY_EXCLUDED_CARD_IDS`): 48 Ingenuity, 65 New Agenda (stat
+  system), 86 Restrict, 90 Seal Power (stat/synergy triggers).
+- **Mystery Box (63) finished**: drafted action cards auto-play at APPLY time
+  (new `autoPlayDrafted` effect); input-requiring drafts stay in hand.
+- All 21 remaining in-deck action cards verified to resolve and apply; hook
+  cards (Sabotage skip-turn, Barren Wasteland draw-block) confirmed wired via
+  onTurnStart/onDraw events.
+
+
 ### P1. Bots play action cards
 `enumerateActions` / `applyMicroAction` don't know `playActionCard` at all —
 bots hold or stash every action card forever (the -Infinity bug made this
