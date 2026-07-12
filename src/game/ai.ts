@@ -916,7 +916,7 @@ export const evaluateAction = (
  * Generate a prioritized subset of actions to evaluate.
  * This keeps branching factor small for efficiency.
  */
-export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Action[] => {
+export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx, opts: { cheap?: boolean } = {}): Action[] => {
 	const allActions = enumerateActions(G, playerID);
 	const prefs = G.players[playerID]?.prefs!;
 	const rules = G.rules;
@@ -974,7 +974,7 @@ export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Act
 	// Candidate integrity: the color/rim heuristic can rank the actual
 	// best-scoring moves below the cutoff. Cheaply compute immediate score
 	// deltas over the heuristic top-40 and force-include the top scorers.
-	if (!consolidationThreat && playActions.length > maxPlayCandidates) {
+	if (!opts.cheap && !consolidationThreat && playActions.length > maxPlayCandidates) {
 		const included = new Set(candidates);
 		const baseScore = computeScoresRaw(G)[playerID] ?? 0;
 		const byDelta: { action: Action; delta: number }[] = [];
@@ -1160,46 +1160,130 @@ const isVolatileState = (G: GState, playerID: PlayerID, ctx: Ctx): boolean => {
 /**
  * Perform 1-ply lookahead for volatile situations.
  */
-export const selectWithLookahead = (G: GState, ctx: Ctx, playerID: PlayerID): Action | null => {
-	const candidates = generateCandidates(G, playerID, ctx);
-
-	if (candidates.length === 0) {
-		return null;
+/**
+ * Fast absolute state value for search nodes. Deliberately excludes the
+ * full-board mobility sweeps and threat enumeration that made the old
+ * lookahead cost minutes: search depth substitutes for feature breadth.
+ * The opponent-gap weight is soft (2.0 vs the greedy evaluator's 8.0):
+ * feed-the-rival caution should emerge from simulating the rival's actual
+ * reply, not from a hand-tuned penalty.
+ */
+export const evaluateState = (G: GState, ctx: Ctx, playerID: PlayerID): number => {
+	const prefs = G.players[playerID]?.prefs;
+	if (!prefs) return 0;
+	const scores = computeScoresRaw(G);
+	const my = scores[playerID] ?? 0;
+	let bestOpp = 0;
+	for (const pid of ctx.playOrder) {
+		if (pid === playerID) continue;
+		bestOpp = Math.max(bestOpp, scores[pid] ?? 0);
 	}
-
-	const threatBefore = hasImmediateOpponentWin(G, ctx, playerID);
-	let bestAction: Action | null = null;
-	let bestValue = threatBefore ? -Infinity : DELTA_V_THRESHOLD;
-
-	for (const action of candidates) {
-		const gAfter = applyMicroAction(G, action, playerID);
-		if (!gAfter) continue;
-
-		// Immediate value
-		let value = evaluateAction(G, gAfter, action, playerID, ctx);
-
-		// 1-ply lookahead: what's the best follow-up action?
-		const followUpCandidates = generateCandidates(gAfter, playerID, ctx);
-		let bestFollowUp = 0;
-
-		for (const followUp of followUpCandidates) {
-			const gAfterFollowUp = applyMicroAction(gAfter, followUp, playerID);
-			if (!gAfterFollowUp) continue;
-			const followUpValue = evaluateAction(gAfter, gAfterFollowUp, followUp, playerID, ctx);
-			bestFollowUp = Math.max(bestFollowUp, followUpValue);
-		}
-
-		// Discount follow-up value
-		value += bestFollowUp * 0.5;
-
-		if (value > bestValue) {
-			bestValue = value;
-			bestAction = action;
-		}
-	}
-
-	return bestAction;
+	let value = 0;
+	value += 5.0 * my;
+	value += 2.0 * (my - bestOpp);
+	value += 2.0 * estimateRimProgress(G, playerID);
+	value += 0.3 * evaluateHandQuality(G.players[playerID]?.hand ?? [], prefs);
+	return value;
 };
+
+const nextPlayer = (ctx: Ctx, playerID: PlayerID): PlayerID => {
+	const order = ctx.playOrder as PlayerID[];
+	const idx = order.indexOf(playerID);
+	return order[(idx + 1) % order.length]!;
+};
+
+/**
+ * Simulate the next opponent's greedy reply (up to 2 actions) after we end
+ * our turn, and return the resulting state value from OUR perspective.
+ * This is where "should I complete a chain that also feeds my rival"
+ * resolves by consequence instead of by weight.
+ */
+const valueAfterOpponentReply = (G: GState, ctx: Ctx, playerID: PlayerID): number => {
+	const ended = applyEndTurn(G, ctx, playerID);
+	let g = ended.G;
+	const opp = nextPlayer(ctx, playerID);
+	const oppCtx = { ...ctx, currentPlayer: opp } as Ctx;
+
+	for (let step = 0; step < 2; step += 1) {
+		const candidates = generateCandidates(g, opp, oppCtx, { cheap: true }).slice(0, 6);
+		let bestG: GState | null = null;
+		let bestV = evaluateState(g, oppCtx, opp); // opponent passes if nothing helps
+		for (const a of candidates) {
+			const g2 = applyMicroAction(g, a, opp);
+			if (!g2) continue;
+			const v = evaluateState(g2, oppCtx, opp);
+			if (v > bestV) { bestV = v; bestG = g2; }
+		}
+		if (!bestG) break;
+		g = bestG;
+	}
+	return evaluateState(g, ctx, playerID);
+};
+
+/**
+ * P2: bounded beam search over micro-action SEQUENCES within the turn,
+ * refined by a 1-ply opponent reply on the top leaves. Re-planned each
+ * micro-step; returns the first action of the best sequence, or null to
+ * end the turn. Hard time budget — supersedes the volatility recursion.
+ */
+export const selectSearchAction = (
+	G: GState,
+	ctx: Ctx,
+	playerID: PlayerID,
+	budgetMs = 2500,
+): Action | null => {
+	const start = performance.now();
+	const BEAM = 6;
+	const EXPAND = 8;
+	const MAX_DEPTH = 4;
+	const REFINE_TOP = 3;
+
+	type Node = { G: GState; first: Action | null; value: number };
+	const rootValue = evaluateState(G, ctx, playerID);
+	let frontier: Node[] = [{ G, first: null, value: rootValue }];
+	const leaves: Node[] = [{ G, first: null, value: rootValue }];
+
+	outer:
+	for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
+		const next: Node[] = [];
+		for (const node of frontier) {
+			if (performance.now() - start > budgetMs) break outer;
+			// Full candidates (with the score-delta probe) only at the root.
+			const candidates = generateCandidates(node.G, playerID, ctx, { cheap: depth > 0 }).slice(0, EXPAND);
+			for (const action of candidates) {
+				const g2 = applyMicroAction(node.G, action, playerID);
+				if (!g2) continue;
+				const first = node.first ?? action;
+				const value = evaluateState(g2, ctx, playerID);
+				const child = { G: g2, first, value };
+				next.push(child);
+				leaves.push(child);
+			}
+		}
+		if (next.length === 0) break;
+		next.sort((a, b) => b.value - a.value);
+		frontier = next.slice(0, BEAM);
+	}
+
+	// Refine the most promising end states with the opponent's reply.
+	leaves.sort((a, b) => b.value - a.value);
+	const top = leaves.slice(0, REFINE_TOP);
+	let best: { first: Action | null; value: number } = { first: null, value: -Infinity };
+	for (const node of top) {
+		if (performance.now() - start > budgetMs * 1.2) break;
+		const refined = valueAfterOpponentReply(node.G, ctx, playerID);
+		if (refined > best.value) best = { first: node.first, value: refined };
+	}
+	if (best.first === null && top.length > 0) {
+		// Budget exhausted before refinement — fall back to raw leaf ranking.
+		return top[0]!.first;
+	}
+	return best.first;
+};
+
+/** Superseded by selectSearchAction; kept as the stable entry point. */
+export const selectWithLookahead = (G: GState, ctx: Ctx, playerID: PlayerID): Action | null =>
+	selectSearchAction(G, ctx, playerID);
 
 // =============================================================================
 // Part 1.4: Random Bot (Actually Random)
