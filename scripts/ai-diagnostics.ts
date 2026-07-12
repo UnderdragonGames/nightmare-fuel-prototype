@@ -227,8 +227,9 @@ const runMatchup = (name: string, pol0: Policy, pol1: Policy, games: number, ana
 };
 
 const N = Number(process.argv[2]) || 8;
-runMatchup('Evaluator (A) vs Random (B)', evaluatorPolicy, randomPolicy, N, true);
-// EvaluatorPlus lookahead measured at minutes-to-hours per decision — only run when asked.
-if (process.argv.includes('--plus')) {
-	runMatchup('EvaluatorPlus (A) vs Evaluator (B)', evaluatorPlusPolicy, evaluatorPolicy, Math.max(2, Math.floor(N / 2)), true);
+if (!process.argv.includes('--plus-only')) {
+	runMatchup('Evaluator (A) vs Random (B)', evaluatorPolicy, randomPolicy, N, true);
+}
+if (process.argv.includes('--plus') || process.argv.includes('--plus-only')) {
+	runMatchup('Search/Plus (A) vs Evaluator (B)', evaluatorPlusPolicy, evaluatorPolicy, N, false);
 }

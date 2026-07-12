@@ -87,6 +87,13 @@ Replace the greedy threshold loop with a small search so choices like
   beam width shrinks under pressure. Kill the 504s outlier class and the
   unusable EvaluatorPlus volatility recursion (superseded by this).
 
+### P2 RESULTS (2026-07-12): ACCEPTED
+Search vs greedy Evaluator, 6 games: **4W/1L/1D (67%)**. Four games ended via
+CONSOLIDATION (rim-to-center completion) — the first win-condition endings ever
+measured; previously 100% deck exhaustion. 1.8 actions/turn, 51 conversions,
+avg game 60 turns (was ~100). Latency avg 1.5s; one 29s outlier — the budget
+check is too coarse (no check inside candidate loops); fix in P5.
+
 ### P3. Candidate integrity
 Always include the top-K actions by actual immediate score delta (24/57 of
 missed scoring moves never reached evaluation via the color/rim heuristic).
