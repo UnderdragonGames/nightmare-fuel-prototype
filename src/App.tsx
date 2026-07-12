@@ -13,7 +13,7 @@ import { DiscardZone } from './ui/DiscardZone';
 import { ActionCardModal } from './ui/ActionCardModal';
 import { PlayerHandModal } from './ui/PlayerHandModal';
 import { computeScores } from './game/scoring';
-import { buildAllCoords, canPlace, canPlacePath, canConsolidate, neighbors, asVisibleColor, key, serializeCard } from './game/helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, isRotatableNode, neighbors, asVisibleColor, key, serializeCard } from './game/helpers';
 import { useUIStore } from './ui/useUIStore';
 import { PlayerCard } from './ui/PlayerCard';
 import { StateLab } from './ui/StateLab';
@@ -161,6 +161,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		}
 	}, [selectedActionCard]);
 
+
 	const parseCoord = (value: string): Co | undefined => {
 		const parts = value.split(',').map((p) => p.trim());
 		if (parts.length !== 2) return undefined;
@@ -248,7 +249,12 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			for (const col of colorsToCheck) {
 				for (const dest of neighbors(source)) {
 					if (dests.some((d) => d.q === dest.q && d.r === dest.r)) continue;
-					if (findConvertibleColor(source, dest, col)) dests.push(dest);
+					if (findConvertibleColor(source, dest, col)) {
+						dests.push(dest);
+						continue;
+					}
+					// Finishing move: off-direction placement into the origin.
+					if (isOriginCoord(dest) && canPlacePath(G, source, dest, col, rules)) dests.push(dest);
 				}
 			}
 			return dests;
@@ -325,6 +331,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const actionNeedsRevealedPick = selectedActionList.some((action) => action.type === 'pickOneToHand');
 	const actionNeedsDraftPicks = selectedActionList.some((action) => action.type === 'draftInTurnOrder');
 
+	// Pre-select the only possible target so cards like Steal work in one click.
+	React.useEffect(() => {
+		if (!actionModalOpen || !actionNeedsTargetPlayer || actionTargetPlayer !== '') return;
+		const opponents = (ctx.playOrder as PlayerID[]).filter((pid) => pid !== currentPlayer);
+		if (opponents.length === 1) setActionTargetPlayer(opponents[0]!);
+	}, [actionModalOpen, actionNeedsTargetPlayer, actionTargetPlayer, ctx.playOrder, currentPlayer]);
+
 	const buildActionContext = (): CardActionResolveContext => {
 		const ctxBase: CardActionResolveContext = {
 			currentPlayerId: currentPlayer,
@@ -389,12 +402,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		setSelectedSourceDot(null);
 	};
 
+	const humanizeActionError = (msg: string): string => {
+		if (msg.includes('targetPlayerId')) return 'Choose a target player.';
+		if (msg.includes('coord')) return 'Pick a target hex.';
+		if (msg.includes('choiceIndex')) return 'Pick an option.';
+		if (msg.includes('moveFrom') || msg.includes('moveTo')) return 'Pick the move source and destination.';
+		if (msg.includes('replaceColor')) return 'Pick a replacement color.';
+		if (msg.includes('chosenStat')) return 'Pick a stat.';
+		return msg;
+	};
+
 	let actionResolveError: string | null = null;
 	if (selectedActionCard && actionLimitAllows) {
 		try {
 			resolveCardEffects(selectedActionCard, buildActionContext());
 		} catch (err) {
-			actionResolveError = err instanceof Error ? err.message : 'Action requires more input.';
+			actionResolveError = humanizeActionError(err instanceof Error ? err.message : 'Action requires more input.');
 		}
 	}
 
@@ -441,8 +464,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			if (!discardReady || rules.PLACEMENT.DISCARD_TO_ROTATE === false) return;
 			if (isPathMode) {
 				// Path mode: node must have outgoing lanes
-				const hasOutgoing = G.lanes.some(l => key(l.from) === key(coord));
-				if (hasOutgoing) {
+				if (isRotatableNode(G, coord)) {
 					setPendingRotationTile(coord);
 					return;
 				}
@@ -493,8 +515,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				return;
 			}
 
-			// Consolidation conversion: recolor an existing lane on this edge.
-			// Prefer the explicitly selected color, then any other card color.
+			// Consolidation-class moves: conversion of an existing lane, or the
+			// finishing placement into the origin. Prefer the explicitly selected
+			// color, then any other card color.
 			{
 				const tried = new Set<string>();
 				const candidates: Color[] = [];
@@ -503,6 +526,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				for (const col of candidates) {
 					if (tried.has(col)) continue;
 					tried.add(col);
+					if (col !== dirColor && canPlacePath(G, selectedSourceDot, coord, col, rules)) {
+						// Off-direction legal placement = finishing move into the origin.
+						moves.playCard({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord });
+						setSelectedCard(null);
+						setSelectedColor(null);
+						setSelectedSourceDot(null);
+						return;
+					}
 					const fromColor = findConvertibleColor(selectedSourceDot, coord, col);
 					if (fromColor) {
 						moves.playCard({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord, convert: fromColor });
@@ -584,8 +615,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			const coords = buildAllCoords(G.radius);
 			if (isPathMode) {
 				// Path mode: nodes with outgoing lanes
-				const outgoingKeys = new Set(G.lanes.map(l => key(l.from)));
-				setRotatable(coords.filter(c => outgoingKeys.has(key(c))));
+				setRotatable(coords.filter(c => isRotatableNode(G, c)));
 			} else {
 				// Hex mode: occupied tiles
 				setRotatable(coords.filter((c) => {
@@ -1000,7 +1030,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									<option value="">Select player</option>
 									{ctx.playOrder.map((pid) => (
 										<option key={`ap-${pid}`} value={pid}>
-											P{pid}
+											P{pid}{pid === currentPlayer ? ' (you)' : ''}
 										</option>
 									))}
 								</select>

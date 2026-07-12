@@ -389,28 +389,81 @@ describe('path-mode rotateTile', () => {
 	});
 
 	it('does not rotate incoming lanes', () => {
+		// Incoming lane arrives from (0,1) — NOT at the outgoing lane's tip, so the
+		// node is still a rotatable loose end.
 		const G = pathState({
 			players: buildPlayers({ '0': [makeCard(['R'])] }),
 			lanes: [
-				{ from: co(0, 0), to: co(1, 0), color: 'B' },   // outgoing E from origin
-				{ from: co(1, 0), to: co(0, 0), color: 'O' },   // incoming from (1,0) — should stay
+				{ from: co(0, 0), to: co(1, 0), color: 'B' },   // outgoing E from origin (tip loose)
+				{ from: co(0, 1), to: co(0, 0), color: 'O' },   // incoming from the south — should stay
 			],
 		});
 		setEmptyTile(G, co(1, 0));
-		setEmptyTile(G, co(0, 1));
+		setEmptyTile(G, co(1, -1));
 
-		// Rotate origin 60° CW: outgoing E→SE
+		// Rotate origin 60° CCW-equivalent (rotation 5): outgoing E→NE
 		const result = applyMicroAction(
 			G,
-			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 5 } },
 			'0'
 		);
 
 		expect(result).not.toBeNull();
 		// Incoming lane should be unchanged
-		const incoming = result!.lanes.find(l => l.from.q === 1 && l.from.r === 0 && l.to.q === 0 && l.to.r === 0);
+		const incoming = result!.lanes.find(l => l.from.q === 0 && l.from.r === 1 && l.to.q === 0 && l.to.r === 0);
 		expect(incoming).toBeDefined();
 		expect(incoming!.color).toBe('O'); // unchanged
+	});
+
+	it('rejects rotation when the tip is not a loose end', () => {
+		// The outgoing lane's tip (1,0) has another lane touching it (a backtrack),
+		// so rotating would detach it — forbidden.
+		const G = pathState({
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
+			lanes: [
+				{ from: co(0, 0), to: co(1, 0), color: 'B' },
+				{ from: co(1, 0), to: co(0, 0), color: 'O' },
+			],
+		});
+		setEmptyTile(G, co(1, 0));
+		setEmptyTile(G, co(0, 1));
+
+		const result = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+		expect(result).toBeNull();
+	});
+
+	it('rejects mid-path rotation (continuation at the tip)', () => {
+		const G = pathState({
+			players: buildPlayers({ '0': [makeCard(['R'])] }),
+			lanes: [
+				{ from: co(0, 0), to: co(1, 0), color: 'B' },
+				{ from: co(1, 0), to: co(2, 0), color: 'B' }, // continuation — (1,0) is mid-path
+			],
+		});
+		setEmptyTile(G, co(1, 0));
+		setEmptyTile(G, co(2, 0));
+		setEmptyTile(G, co(0, 1));
+
+		// Rotating (0,0) would detach the (1,0)->(2,0) continuation.
+		const midPath = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(0, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+		expect(midPath).toBeNull();
+
+		// But the tip node (1,0) itself rotates fine: its outgoing lane ends loose.
+		setEmptyTile(G, co(1, 1));
+		const tip = applyMicroAction(
+			G,
+			{ type: 'rotateTile', args: { coord: co(1, 0), handIndices: [0], rotation: 1 } },
+			'0'
+		);
+		expect(tip).not.toBeNull();
 	});
 
 	it('rejects rotation when destination would be off-board', () => {

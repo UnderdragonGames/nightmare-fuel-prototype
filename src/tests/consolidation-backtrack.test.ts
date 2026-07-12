@@ -149,10 +149,14 @@ describe('consolidation conversion', () => {
 		expect(canConsolidate(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', 'R', rules)).toBe(true);
 		expect(applyConsolidation(G, { q: 0, r: 0 }, { q: 0, r: -1 }, 'Y', 'R')).toBe(true);
 
-		// Geometry is unchanged, so the set of legal PLACEMENT moves is identical:
-		// support, fork capacity, and intersections are all color-blind.
+		// Geometry is unchanged, so the set of legal PLACEMENT moves is identical —
+		// except finishing moves into the origin, whose legality depends on lane
+		// colors: converting Y->R on the origin edge consumes R's finisher there.
+		const noFinishers = (k: string) => !k.endsWith('->0,0');
 		const playsAfter = enumerateActions(G, '0').map(actionKey).filter((k) => k.startsWith('play:')).sort();
-		expect(playsAfter).toEqual(playsBefore);
+		expect(playsAfter.filter(noFinishers)).toEqual(playsBefore.filter(noFinishers));
+		expect(playsBefore).toContain('play:0:R:0,-1->0,0'); // finisher available before
+		expect(playsAfter).not.toContain('play:0:R:0,-1->0,0'); // consumed by the conversion
 
 		// Concretely: stacking Y outward from (0,-1) and branching to the free
 		// west node both remain available.

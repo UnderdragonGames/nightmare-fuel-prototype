@@ -89,8 +89,9 @@ describe('consolidate-to-ring', () => {
 		// R can consolidate to the origin by CONVERTING one Y lane on edge (0,-1)-(0,0)
 		const allowed = canConsolidate(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', 'R', rules);
 		expect(allowed).toBe(true);
-		// Placement onto the origin is never legal
-		expect(canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'R', rules)).toBe(false);
+		// R can ALSO finish into the origin by placing a new lane (finishing move):
+		// R is rim-connected and (0,-1) is on its component.
+		expect(canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'R', rules)).toBe(true);
 	});
 
 	it('CONSOLIDATE_TO_RING=1 blocks consolidation moves to the origin', () => {
@@ -150,7 +151,7 @@ describe('consolidate-to-ring', () => {
 		const noRimConnection = canConsolidate(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', 'B', rules);
 		expect(noRimConnection).toBe(false);
 
-		// Normal placement onto the origin is always blocked
+		// A color already on the origin edge cannot finish again (duplicate)
 		expect(canPlacePath(G, { q: 0, r: -1 }, { q: 0, r: 0 }, 'Y', rules)).toBe(false);
 	});
 });

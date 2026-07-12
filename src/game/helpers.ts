@@ -316,10 +316,19 @@ export const canPlacePath = (G: GState, source: Co, dest: Co, color: Color, rule
 	if (!inBounds(source, G.radius) || !inBounds(dest, G.radius)) return false;
 	if (!isNeighbor(source, dest)) return false;
 
-	// Origins are wild and cannot be occupied / used as destination.
-	// (Consolidation reaches origins by CONVERTING the existing lane on that edge — see canConsolidate.)
+	// Origins are normally not placeable destinations. Exception: the FINISHING
+	// move — a rim-connected color completes its consolidated path into the
+	// origin (CONSOLIDATE_TO_RING permitting). Direction is ignored, like all
+	// consolidation-class moves; contiguity mirrors canConsolidate.
 	const destIsOrigin = G.origins.some((o) => o.q === dest.q && o.r === dest.r);
-	if (destIsOrigin) return false;
+	if (destIsOrigin) {
+		if (!rules.PLACEMENT.CONSOLIDATION) return false;
+		if (rules.PLACEMENT.CONSOLIDATE_TO_RING > ringIndex(dest)) return false;
+		if (undirectedHasColor(G, source, dest, color)) return false;
+		if (countUndirectedLanes(G, source, dest) >= rules.PLACEMENT.MAX_LANES_PER_PATH) return false;
+		if (!hasRimConnectedPath(G, color)) return false;
+		return buildRimConnectedNodesForColor(G, color).has(key(source));
+	}
 	const destTile = G.board[key(dest)];
 	if (destTile?.dead) return false;
 
@@ -548,6 +557,28 @@ export const applyConsolidation = (G: GState, a: Co, b: Co, fromColor: Color, to
 		return true;
 	}
 	return false;
+};
+
+/**
+ * Path mode: a node may rotate only when every one of its outgoing lanes is a
+ * "loose end" — the destination has no lane incident to it other than the
+ * outgoing lanes being rotated. Mid-path rotation would detach continuations.
+ */
+export const isRotatableNode = (G: GState, coord: Co): boolean => {
+	let hasOutgoing = false;
+	for (const ln of G.lanes) {
+		if (ln.from.q !== coord.q || ln.from.r !== coord.r) continue;
+		hasOutgoing = true;
+		for (const other of G.lanes) {
+			// Lanes rotating together (same pivot) are allowed at the tip.
+			if (other.from.q === coord.q && other.from.r === coord.r) continue;
+			const touchesTip =
+				(other.from.q === ln.to.q && other.from.r === ln.to.r) ||
+				(other.to.q === ln.to.q && other.to.r === ln.to.r);
+			if (touchesTip) return false;
+		}
+	}
+	return hasOutgoing;
 };
 
 export const shuffleInPlace = <T,>(arr: T[], rng: () => number = Math.random): void => {

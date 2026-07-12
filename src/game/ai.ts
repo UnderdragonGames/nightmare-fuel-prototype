@@ -10,7 +10,7 @@
 import type { Ctx, PlayerID } from 'boardgame.io';
 import type { GState, Color, Co, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, Card, PlayerPrefs } from './types';
 import { emitEvent } from './hooks';
-import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, countRimToCenterPaths, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, countRimToCenterPaths, isRotatableNode, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
 import { computeScores } from './scoring';
 
 // =============================================================================
@@ -152,6 +152,7 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 				for (const handIndices of indexCombos) {
 					for (const co of coords) {
 						if (!outgoingKeys.has(key(co))) continue;
+						if (!isRotatableNode(G, co)) continue;
 						for (const rotation of [1, 2, 4, 5]) {
 							// Validate rotated destinations are valid
 							const outgoing = G.lanes.filter(l => key(l.from) === key(co));
@@ -305,6 +306,8 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 				const coordKey = key(args.coord);
 				const outgoing = newG.lanes.filter(l => key(l.from) === coordKey);
 				if (outgoing.length === 0) return null;
+				// Only loose ends may rotate
+				if (!isRotatableNode(newG, args.coord)) return null;
 
 				// Converted lanes (color != direction) keep their color through rotation;
 				// only direction-matched lanes take the new direction's color.

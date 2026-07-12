@@ -24,6 +24,19 @@ const computeIntersectionCountByColorPath = (G: GState): Record<Color, number> =
 		originConnected.add(ok);
 		queue.push(ok);
 	}
+	// STARTING_RING > 0: paths begin at the starting ring, so its nodes are
+	// effective origins for scoring connectivity (mirrors hasRimConnectedPath).
+	const startingRing = G.rules.PLACEMENT.STARTING_RING;
+	if (startingRing > 0) {
+		for (const coord of buildAllCoords(radius)) {
+			if (ringIndex(coord) !== startingRing) continue;
+			const ck = key(coord);
+			if (!originConnected.has(ck)) {
+				originConnected.add(ck);
+				queue.push(ck);
+			}
+		}
+	}
 	while (queue.length) {
 		const cur = queue.shift()!;
 		const nbrs = adjAny.get(cur);

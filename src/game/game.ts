@@ -1,6 +1,6 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
-import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, isRotatableNode, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
 import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, PlayerPrefs, PlayerState, HexTile, Co, Rules } from './types';
 import { drawOne, initActionState, playActionCardFromHand } from './effects';
 import { emitEvent } from './hooks';
@@ -359,6 +359,8 @@ export const HexStringsGame: Game<GState> = {
 								const coordKey = key(coord);
 								const outgoing = G.lanes.filter(l => key(l.from) === coordKey);
 								if (outgoing.length === 0) return;
+								// Only loose ends may rotate (mid-path rotation detaches continuations)
+								if (!isRotatableNode(G, coord)) return;
 
 								// Compute rotated destinations and new colors.
 								// Consolidation-converted lanes (color != direction) keep their color:
