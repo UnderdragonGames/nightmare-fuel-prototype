@@ -183,7 +183,10 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 				break;
 			}
 			case 'autoPlayPickedCard':
-				throw new Error('autoPlayPickedCard requires explicit effects and is not implemented.');
+				// Drafted cards aren't known at (client-side) resolve time; the
+				// autoPlayDrafted effect resolves them when the move applies.
+				pushEffect({ type: 'autoPlayDrafted', order: [...ctx.playerOrder] });
+				break;
 			case 'chooseAgenda':
 				// UI-driven selection before setAgendaOverride.
 				break;

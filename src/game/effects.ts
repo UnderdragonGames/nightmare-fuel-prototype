@@ -13,6 +13,7 @@ import type {
 	Stat,
 } from './types';
 import { emitEvent, registerHook } from './hooks';
+import { resolveCardEffects } from './cardActions';
 import { canPlace, inferPlacementRotation, inBounds, key } from './helpers';
 import { buildColorToDir } from './rulesConfig';
 
@@ -50,12 +51,14 @@ export const initActionState = (playerIDs: PlayerID[] = []): ActionState => {
 	const extraActionPlays: Record<PlayerID, number> = {};
 	const agendaOverrides: Record<PlayerID, Stat | null> = {};
 	const revealUnusedVillainsUntil: Record<PlayerID, number | null> = {};
+	const draftedHandIndex: Record<PlayerID, number | null> = {};
 	for (const pid of playerIDs) {
 		extraPlays[pid] = 0;
 		extraPlacements[pid] = { count: 0, color: null };
 		extraActionPlays[pid] = 0;
 		agendaOverrides[pid] = null;
 		revealUnusedVillainsUntil[pid] = null;
+		draftedHandIndex[pid] = null;
 	}
 	return {
 		revealed: [],
@@ -68,6 +71,7 @@ export const initActionState = (playerIDs: PlayerID[] = []): ActionState => {
 		revealUnusedVillainsUntil,
 		attachedCards: [],
 		lastPlacedColor: null,
+		draftedHandIndex,
 	};
 };
 
@@ -163,7 +167,42 @@ export const draftInTurnOrder = (G: GState, order: PlayerID[], picks: Record<Pla
 		if (index === undefined) continue;
 		if (index < 0 || index >= G.action.revealed.length) continue;
 		const [card] = G.action.revealed.splice(index, 1);
-		if (card) ensureHand(G, playerId).push(card);
+		if (card) {
+			const hand = ensureHand(G, playerId);
+			hand.push(card);
+			// Remember what was drafted so autoPlayDrafted can resolve it.
+			G.action.draftedHandIndex[playerId] = hand.length - 1;
+		}
+	}
+};
+
+/**
+ * Auto-play drafted ACTION cards (Mystery Box): resolve each drafted action
+ * card with a minimal context at APPLY time (the cards aren't known when the
+ * playing client resolves effects). Cards whose actions require player input
+ * stay in hand instead of auto-playing.
+ */
+export const autoPlayDrafted = (G: GState, ctx: Ctx | undefined, order: PlayerID[], rng: () => number): void => {
+	for (const playerId of order) {
+		const idx = G.action.draftedHandIndex[playerId];
+		G.action.draftedHandIndex[playerId] = null;
+		if (idx === null || idx === undefined) continue;
+		const hand = ensureHand(G, playerId);
+		const card = hand[idx];
+		if (!card || !card.isAction) continue;
+		let effects: GameEffect[];
+		try {
+			effects = resolveCardEffects(card, {
+				currentPlayerId: playerId,
+				playerOrder: order,
+				lastPlacedColor: G.action.lastPlacedColor,
+				mode: G.rules.MODE,
+			});
+		} catch {
+			continue; // needs input the draft flow can't supply — keep in hand
+		}
+		hand.splice(idx, 1);
+		playActionCardFromCard(G, ctx, playerId, card, effects, rng);
 	}
 };
 
@@ -435,6 +474,9 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 			break;
 		case 'discardRevealed':
 			discardRevealed(G);
+			break;
+		case 'autoPlayDrafted':
+			autoPlayDrafted(G, context.ctx, effect.order, rng);
 			break;
 		case 'draftInTurnOrder':
 			draftInTurnOrder(G, effect.order, effect.picks);

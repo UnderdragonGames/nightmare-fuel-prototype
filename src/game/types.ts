@@ -131,6 +131,9 @@ export type ActionState = {
 	revealUnusedVillainsUntil: Record<PlayerID, number | null>;
 	attachedCards: AttachedCard[];
 	lastPlacedColor: Color | null;
+	// Hand index of the card each player drafted in the most recent draft
+	// (consumed by autoPlayDrafted; null when not mid-draft).
+	draftedHandIndex: Record<PlayerID, number | null>;
 };
 
 // Path-mode lane segment between adjacent nodes.
@@ -308,6 +311,7 @@ export type GameEffect =
 	| { type: 'revealTop'; count: number }
 	| { type: 'discardRevealed' }
 	| { type: 'draftInTurnOrder'; order: PlayerID[]; picks: Record<PlayerID, number> }
+	| { type: 'autoPlayDrafted'; order: PlayerID[] }
 	| { type: 'autoPlayPickedCard'; playerId: PlayerID; revealedIndex: number; effects?: GameEffect[] }
 	| { type: 'moveCardToPlayerHand'; playerId: PlayerID; card?: Card; usePlayedCard?: boolean }
 	| { type: 'placeOnDrawPileTopFaceUp'; card?: Card; usePlayedCard?: boolean }
