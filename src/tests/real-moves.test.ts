@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Ctx, PlayerID } from 'boardgame.io';
+import type { Ctx } from 'boardgame.io';
 import { HexStringsGame } from '../game/game';
 import { enumerateActions, applyMicroAction, type Action } from '../game/ai';
 import { resolveCardEffects } from '../game/cardActions';
@@ -34,15 +34,11 @@ const setupGame = (): GState => {
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 const executeReal = (G: GState, ctx: Ctx, action: Action): void => {
-	switch (action.type) {
-		case 'playCard': realMove('playCard', G, ctx, action.args); break;
-		case 'playActionCard': realMove('playActionCard', G, ctx, action.args); break;
-		case 'rotateTile': realMove('rotateTile', G, ctx, action.args); break;
-		case 'blockTile': realMove('blockTile', G, ctx, action.args); break;
-		case 'stashToTreasure': realMove('stashToTreasure', G, ctx, action.args); break;
-		case 'takeFromTreasure': realMove('takeFromTreasure', G, ctx, action.args); break;
-		case 'endTurnAndRefill': realMove('endTurnAndRefill', G, ctx); break;
-	}
+	// String-keyed dispatch: the real moves accept the same names as Action
+	// types, and this stays compatible as new action types (playActionCard)
+	// land from the AI branch.
+	if (action.type === 'endTurnAndRefill') realMove('endTurnAndRefill', G, ctx);
+	else realMove(action.type, G, ctx, 'args' in action ? action.args : undefined);
 };
 
 describe('real moves: basic lifecycle', () => {
@@ -147,8 +143,10 @@ describe('simulator parity: applyMicroAction matches real moves', () => {
 			for (let step = 0; step < 12; step += 1) {
 				const actions = enumerateActions(G, '0')
 					// Random effects (steal/discard) can't be compared bit-for-bit;
-					// everything else must match exactly.
-					.filter((a) => !(a.type === 'playActionCard' && JSON.stringify(a.args).includes('random')));
+					// everything else must match exactly. (playActionCard is only
+					// enumerated on the AI branch; compare by string to stay
+					// forward-compatible.)
+					.filter((a) => !((a.type as string) === 'playActionCard' && JSON.stringify('args' in a ? a.args : {}).includes('random')));
 
 				for (const action of actions) {
 					if (action.type === 'endTurnAndRefill') continue;

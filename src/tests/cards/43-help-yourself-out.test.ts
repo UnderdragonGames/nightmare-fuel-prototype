@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { byId, filler, makeState, playAction } from './cardTestUtils';
+import { byId, makeState, playAction } from './cardTestUtils';
 
 describe('#43 Help Yourself Out', () => {
 	it('moves a hex tile to an empty destination (hex mode)', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { byId, filler, makeState, playAction } from './cardTestUtils';
+import { byId, makeState, playAction } from './cardTestUtils';
 import { emitEvent } from '../../game/hooks';
 
 describe('#89 Sabotage', () => {

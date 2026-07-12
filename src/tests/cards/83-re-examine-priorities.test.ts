@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { byId, filler, makeState, playAction } from './cardTestUtils';
+import { byId, makeState, playAction } from './cardTestUtils';
 
 describe('#83 Re-examine Priorities', () => {
 	it('reorders the player prefs as chosen', () => {

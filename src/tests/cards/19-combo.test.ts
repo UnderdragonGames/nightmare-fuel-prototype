@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { byId, filler, makeState, playAction } from './cardTestUtils';
+import { byId, makeState, playAction } from './cardTestUtils';
 
 describe('#19 Combo', () => {
 	it('choice grants either 2 extra placements or 2 extra action plays', () => {

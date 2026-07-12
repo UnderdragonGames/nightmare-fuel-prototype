@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { byId, filler, makeState, playAction } from './cardTestUtils';
+import { byId, makeState, playAction } from './cardTestUtils';
 
 describe('#87 Spy on Villain', () => {
 	it('is UI-only: resolves to no effects and discards cleanly', () => {

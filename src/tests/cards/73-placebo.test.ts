@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { byId, filler, makeState, playAction } from './cardTestUtils';
+import { byId, makeState, playAction } from './cardTestUtils';
 
 describe('#73 Placebo', () => {
 	it('replaces the target hex with a dead tile (same as Malfunction)', () => {
