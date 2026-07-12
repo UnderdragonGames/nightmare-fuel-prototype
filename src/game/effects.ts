@@ -540,7 +540,13 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 			setAgendaOverride(G, effect.playerId, effect.stat);
 			break;
 		case 'grantRevealUnusedVillains':
-			grantRevealUnusedVillains(G, effect.playerId, effect.untilRound ?? null);
+			// Default: reveal lasts one full round from now (resolver can't know
+			// the turn; null is the "off" sentinel and must not be the default).
+			grantRevealUnusedVillains(
+				G,
+				effect.playerId,
+				effect.untilRound ?? (context.ctx ? context.ctx.turn + context.ctx.numPlayers : null),
+			);
 			break;
 		case 'attachCard': {
 			const card = effect.usePlayedCard ? context.playedCard : effect.card;

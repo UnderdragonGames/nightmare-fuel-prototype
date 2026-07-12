@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { Ctx } from 'boardgame.io';
-import { CARDS } from '../game/cards';
-import { buildDeck, DIGITALLY_EXCLUDED_CARD_IDS } from '../game/deck';
-import { resolveCardEffects } from '../game/cardActions';
-import { initActionState, playActionCardFromHand } from '../game/effects';
-import { MODE_RULESETS, buildColorToDir } from '../game/rulesConfig';
-import type { Card, GState } from '../game/types';
-import { buildPlayers } from './testHelpers';
+import { CARDS } from '../../game/cards';
+import { buildDeck, DIGITALLY_EXCLUDED_CARD_IDS } from '../../game/deck';
+import { resolveCardEffects } from '../../game/cardActions';
+import { initActionState, playActionCardFromHand } from '../../game/effects';
+import { MODE_RULESETS, buildColorToDir } from '../../game/rulesConfig';
+import type { Card, GState } from '../../game/types';
+import { buildPlayers } from '../testHelpers';
 
 const byId = (id: number): Card => {
 	const c = (CARDS as Card[]).find((x) => x.id === id);
