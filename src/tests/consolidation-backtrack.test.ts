@@ -81,6 +81,8 @@ const actionKey = (a: Action): string => {
 			}
 			return `play:${args.handIndex}:${args.pick}:${args.coord.q},${args.coord.r}`;
 		}
+		case 'playActionCard':
+			return `action:${a.args.handIndex}`;
 		case 'rotateTile':
 			return `rotate:${a.args.handIndices.join('+')}:${a.args.coord.q},${a.args.coord.r}:${a.args.rotation}`;
 		case 'blockTile':

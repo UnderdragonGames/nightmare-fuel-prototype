@@ -8,10 +8,12 @@
  */
 
 import type { Ctx, PlayerID } from 'boardgame.io';
-import type { GState, Color, Co, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, Card, PlayerPrefs } from './types';
+import type { GState, Color, Co, MovePlayCardArgs, MovePlayActionArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, Card, PlayerPrefs } from './types';
 import { emitEvent } from './hooks';
+import { playActionCardFromHand } from './effects';
+import { resolveCardEffects, type CardActionResolveContext } from './cardActions';
 import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, countRimToCenterPaths, isRotatableNode, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
-import { computeScores } from './scoring';
+import { computeScores, computeScoresRaw } from './scoring';
 
 // =============================================================================
 // Types
@@ -19,10 +21,11 @@ import { computeScores } from './scoring';
 
 export type BotKind = 'None' | 'Random' | 'Evaluator' | 'EvaluatorPlus';
 
-export type ActionType = 'playCard' | 'rotateTile' | 'blockTile' | 'stashToTreasure' | 'takeFromTreasure' | 'endTurnAndRefill';
+export type ActionType = 'playCard' | 'playActionCard' | 'rotateTile' | 'blockTile' | 'stashToTreasure' | 'takeFromTreasure' | 'endTurnAndRefill';
 
 export type Action =
 	| { type: 'playCard'; args: MovePlayCardArgs }
+	| { type: 'playActionCard'; args: MovePlayActionArgs }
 	| { type: 'rotateTile'; args: MoveRotateTileArgs }
 	| { type: 'blockTile'; args: MoveBlockTileArgs }
 	| { type: 'stashToTreasure'; args: MoveStashArgs }
@@ -33,6 +36,7 @@ type BGIOClient = {
 	getState(): ({ G: GState; ctx: Ctx } & { playerID?: PlayerID }) | undefined;
 	moves: {
 		playCard(a: MovePlayCardArgs): void;
+		playActionCard(a: MovePlayActionArgs): void;
 		rotateTile(a: MoveRotateTileArgs): void;
 		blockTile(a: MoveBlockTileArgs): void;
 		stashToTreasure(a: MoveStashArgs): void;
@@ -134,6 +138,52 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 					if (canPlace(G, co, color as Color, rules)) {
 						actions.push({ type: 'playCard', args: { handIndex: i, pick: color, coord: co } });
 					}
+				}
+			}
+		}
+	}
+
+	// Enumerate playActionCard moves with bounded contexts.
+	// Coord-targeting cards (Malfunction, Help Yourself Out, ...) are skipped in
+	// v1 — their contexts fail to resolve and the card is simply not offered.
+	if (rules.ACTION_CARDS !== 'disabled') {
+		const p = G.players[playerID];
+		const played = p?.actionPlaysThisTurn ?? 0;
+		const extra = G.action.extraActionPlays[playerID] ?? 0;
+		const limitAllows = rules.ACTION_CARDS === 'unlimited' || played === 0 || extra > 0;
+		if (limitAllows) {
+			const order = Object.keys(G.players) as PlayerID[];
+			const opponents = order.filter((pid) => pid !== playerID);
+			for (let i = 0; i < hand.length; i += 1) {
+				const card = hand[i]!;
+				if (!card.isAction) continue;
+				const base: CardActionResolveContext = {
+					currentPlayerId: playerID,
+					playerOrder: order,
+					lastPlacedColor: G.action.lastPlacedColor,
+					mode: rules.MODE,
+					revealedPickIndex: 0,
+					draftPicks: Object.fromEntries(order.map((pid) => [pid, 0])) as Record<PlayerID, number>,
+				};
+				// Candidate contexts: default, per-opponent target, per-choice option.
+				const contexts: CardActionResolveContext[] = [base];
+				for (const t of opponents) contexts.push({ ...base, targetPlayerId: t });
+				for (let ci = 0; ci < 4; ci += 1) contexts.push({ ...base, choiceIndex: ci });
+				const seen = new Set<string>();
+				let added = 0;
+				for (const ctx of contexts) {
+					if (added >= 4) break;
+					let effects;
+					try {
+						effects = resolveCardEffects(card, ctx);
+					} catch {
+						continue;
+					}
+					const sig = JSON.stringify(effects);
+					if (seen.has(sig)) continue;
+					seen.add(sig);
+					actions.push({ type: 'playActionCard', args: { handIndex: i, effects } });
+					added += 1;
 				}
 			}
 		}
@@ -283,6 +333,28 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			emitEvent(newG, { type: 'onPlacement', playerId: playerID, coord, color: args.pick });
 			const [used] = hand.splice(args.handIndex, 1);
 			if (used) newG.discard.push(used);
+			break;
+		}
+
+		case 'playActionCard': {
+			const args = action.args;
+			const card = hand[args.handIndex];
+			if (!card || !card.isAction) return null;
+			if (rules.ACTION_CARDS === 'disabled') return null;
+			if (!args.effects) return null;
+			const p = newG.players[playerID]!;
+			const played = p.actionPlaysThisTurn;
+			const extra = newG.action.extraActionPlays[playerID] ?? 0;
+			if (rules.ACTION_CARDS === 'one-per-turn' && played > 0 && extra <= 0) return null;
+			if (rules.ACTION_CARDS === 'one-per-turn') {
+				if (played > 0 && extra > 0) {
+					newG.action.extraActionPlays[playerID] = extra - 1;
+				}
+				p.actionPlaysThisTurn = played + 1;
+			} else {
+				p.actionPlaysThisTurn += 1;
+			}
+			playActionCardFromHand(newG, undefined, playerID, args.handIndex, args.effects);
 			break;
 		}
 
@@ -852,6 +924,7 @@ export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Act
 
 	// Separate actions by type
 	const playActions: Action[] = [];
+	const actionCardActions: Action[] = [];
 	const rotateActions: Action[] = [];
 	const blockActions: Action[] = [];
 	const stashActions: Action[] = [];
@@ -861,6 +934,9 @@ export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Act
 		switch (action.type) {
 			case 'playCard':
 				playActions.push(action);
+				break;
+			case 'playActionCard':
+				actionCardActions.push(action);
 				break;
 			case 'rotateTile':
 				rotateActions.push(action);
@@ -893,6 +969,32 @@ export const generateCandidates = (G: GState, playerID: PlayerID, ctx: Ctx): Act
 	const maxPlayCandidates = consolidationThreat ? playActions.length : Math.min(15, playActions.length);
 	for (let i = 0; i < maxPlayCandidates; i += 1) {
 		candidates.push(scoredPlayActions[i]!.action);
+	}
+
+	// Candidate integrity: the color/rim heuristic can rank the actual
+	// best-scoring moves below the cutoff. Cheaply compute immediate score
+	// deltas over the heuristic top-40 and force-include the top scorers.
+	if (!consolidationThreat && playActions.length > maxPlayCandidates) {
+		const included = new Set(candidates);
+		const baseScore = computeScoresRaw(G)[playerID] ?? 0;
+		const byDelta: { action: Action; delta: number }[] = [];
+		const probeLimit = Math.min(40, scoredPlayActions.length);
+		for (let i = 0; i < probeLimit; i += 1) {
+			const action = scoredPlayActions[i]!.action;
+			if (included.has(action)) continue;
+			const next = applyMicroAction(G, action, playerID);
+			if (!next) continue;
+			const delta = (computeScoresRaw(next)[playerID] ?? 0) - baseScore;
+			if (delta > 0) byDelta.push({ action, delta });
+		}
+		byDelta.sort((a, b) => b.delta - a.delta);
+		for (const { action } of byDelta.slice(0, 3)) candidates.push(action);
+	}
+
+	// Action cards: let the evaluator judge them (bounded set from enumeration).
+	const maxActionCardCandidates = Math.min(3, actionCardActions.length);
+	for (let i = 0; i < maxActionCardCandidates; i += 1) {
+		candidates.push(actionCardActions[i]!);
 	}
 
 	// Rotate candidates: only include if they might unlock valuable placements
@@ -1181,6 +1283,9 @@ const executeAction = (client: BGIOClient, action: Action): void => {
 	switch (action.type) {
 		case 'playCard':
 			client.moves.playCard(action.args);
+			break;
+		case 'playActionCard':
+			client.moves.playActionCard(action.args);
 			break;
 		case 'rotateTile':
 			client.moves.rotateTile(action.args);

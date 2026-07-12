@@ -98,6 +98,9 @@ const playGame = (policies: Record<PlayerID, Policy>, analyzeScoring: boolean): 
 		phase: null,
 	} as unknown as Ctx;
 	let G = (HexStringsGame.setup as (c: { ctx: Ctx }) => GState)({ ctx });
+	// tsx has no vite env, so RULES defaults ACTION_CARDS to 'disabled'; the real
+	// game runs one-per-turn (.env.local) — match it so bots face action cards.
+	G = { ...G, rules: { ...G.rules, ACTION_CARDS: 'one-per-turn' } };
 	const stats: Record<string, PlayerStats> = { '0': newStats(), '1': newStats() };
 
 	let endReason = 'turn-cap';

@@ -86,6 +86,7 @@ export function useBotClients(
 							getState: () => client.getState() as { G: GState; ctx: typeof state.ctx } | undefined,
 							moves: client.moves as {
 								playCard: (a: unknown) => void;
+								playActionCard: (a: unknown) => void;
 								rotateTile: (a: unknown) => void;
 								blockTile: (a: unknown) => void;
 								stashToTreasure: (a: unknown) => void;

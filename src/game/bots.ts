@@ -39,6 +39,7 @@ type BGIOClient = {
 	getState(): ({ G: GState; ctx: Ctx } & { playerID?: PlayerID }) | undefined;
 	moves: {
 		playCard(a: unknown): void;
+		playActionCard(a: unknown): void;
 		rotateTile(a: unknown): void;
 		stashToTreasure(a: unknown): void;
 		takeFromTreasure(a: unknown): void;
