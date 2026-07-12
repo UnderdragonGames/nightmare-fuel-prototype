@@ -1,43 +1,47 @@
 {
-  "name": "nightmare-fuel-prototype",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "start": "tsx server.ts",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "server": "bun server.ts",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "bgio-postgres": "^1.0.15",
-    "boardgame.io": "^0.50.2",
-    "classnames": "^2.5.1",
-    "framer-motion": "^12.36.0",
-    "koa-static": "^5.0.0",
-    "pg": "^8.16.3",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "tsx": "^4.20.6",
-    "zustand": "^5.0.8"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.33.0",
-    "@types/pg": "^8.15.6",
-    "@types/react": "^19.1.10",
-    "@types/react-dom": "^19.1.7",
-    "@vitejs/plugin-react": "^5.0.0",
-    "eslint": "^9.33.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.20",
-    "globals": "^16.3.0",
-    "typescript": "~5.8.3",
-    "typescript-eslint": "^8.39.1",
-    "vite": "^7.1.2",
-    "vitest": "^4.0.16"
-  }
+	"name": "nightmare-fuel-prototype",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc -b && vite build",
+		"start": "tsx server.ts",
+		"lint": "eslint .",
+		"preview": "vite preview",
+		"server": "bun server.ts",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage --coverage.include='src/game/**/*.ts' --coverage.exclude='**/*.test.ts'",
+		"test:ui": "node scripts/ui-smoke.mjs"
+	},
+	"dependencies": {
+		"bgio-postgres": "^1.0.15",
+		"boardgame.io": "^0.50.2",
+		"classnames": "^2.5.1",
+		"framer-motion": "^12.36.0",
+		"koa-static": "^5.0.0",
+		"pg": "^8.16.3",
+		"react": "^19.1.1",
+		"react-dom": "^19.1.1",
+		"tsx": "^4.20.6",
+		"zustand": "^5.0.8"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.33.0",
+		"@types/pg": "^8.15.6",
+		"@types/react": "^19.1.10",
+		"@types/react-dom": "^19.1.7",
+		"@vitejs/plugin-react": "^5.0.0",
+		"@vitest/coverage-v8": "4.0.17",
+		"eslint": "^9.33.0",
+		"eslint-plugin-react-hooks": "^5.2.0",
+		"eslint-plugin-react-refresh": "^0.4.20",
+		"globals": "^16.3.0",
+		"playwright-core": "^1.61.1",
+		"typescript": "~5.8.3",
+		"typescript-eslint": "^8.39.1",
+		"vite": "^7.1.2",
+		"vitest": "^4.0.16"
+	}
 }
