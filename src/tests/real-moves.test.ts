@@ -13,7 +13,7 @@ import type { GState } from '../game/types';
 
 type MoveFn = (context: { G: GState; ctx: Ctx; events?: Record<string, unknown> }, args?: unknown) => unknown;
 
-const gameMoves = (HexStringsGame.turn as { stages: { active: { moves: Record<string, MoveFn | { move: MoveFn }> } } })
+const gameMoves = (HexStringsGame.turn as unknown as { stages: { active: { moves: Record<string, MoveFn | { move: MoveFn }> } } })
 	.stages.active.moves;
 
 const realMove = (name: string, G: GState, ctx: Ctx, args?: unknown): void => {
