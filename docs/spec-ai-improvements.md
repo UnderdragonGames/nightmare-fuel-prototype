@@ -34,66 +34,74 @@ the shared-scoring penalties genuinely refuse moves that also feed opponents —
 that's design question 1, not a bug. Stash count doubled (63): the bot dumps
 unplayable action cards, reasonable until action-card play exists.
 
-## Problems, in priority order
+## Direction (per Julian, 2026-07-12)
 
-### P1. Missed scoring moves — ROOT CAUSE FOUND AND FIXED
-Probe results (34 missed-scoring events): only 4 were missing from candidates;
-30 were evaluated and rejected with value **-Infinity**.
+- **Emergent over hand-programmed**: don't encode "should I feed a rival"
+  as weights; let it fall out of simulating consequences. → bounded search.
+- **Action cards are the main gap**: bots must learn to PLAY them, not park
+  them in treasure.
+- **Think time: whatever it takes** (quality over speed) — but bounded; the
+  measured 8-minute pathological decision is a bug, not a budget.
 
-`getCardValue` did `Math.max(...card.colors.map(...))` — action cards have
-`colors: []`, and `Math.max()` of nothing is `-Infinity`. Via
-`evaluateHandQuality` (hand average), **holding any action card poisoned every
-evaluation to -Infinity**: the bot could only pass, and its one escape hatch
-was stashing the action card (explaining the stash addiction; once treasure
-filled, it passed forever). Fixed: colorless cards value 0. Re-baseline below.
+## Plan, in priority order
 
-**Remaining P1 work after the fix:**
-- Candidate generation: always include the top-K actions by actual immediate
-  score delta (the 4/34 starvation cases).
-- Shared-scoring calibration (open question 1): penalize opponent gains only to
-  the extent the opponent could not take the same points themselves next turn.
+### P1. Bots play action cards
+`enumerateActions` / `applyMicroAction` don't know `playActionCard` at all —
+bots hold or stash every action card forever (the -Infinity bug made this
+worse, but the capability gap is the real issue; ai-planning.md §7 was never
+built). Work:
+- Enumerate `playActionCard` with bounded context candidates: for cards needing
+  a target player, enumerate opponents; choices, each option; coords, a small
+  scored subset (own/rival hotspots). Cap total action-card candidates per
+  micro-step.
+- Simulate via the same effect resolution the move uses (`resolveCardEffects`
+  + `playActionCardFromHand`) so sim matches game exactly.
+- Evaluate with existing features (score/hand/tempo deltas capture most
+  effects); special-case turn-control effects (extra plays) as tempo value.
+- Treasure policy follows automatically: stash only genuinely dead cards
+  (action cards are no longer dead).
 
-### P2. Passivity (0.4 actions/turn)
-Hand refills to 3 at end of turn regardless, so unplayed cards are mostly free
-tempo left unused. `DELTA_V_THRESHOLD = 0.1` treats "end turn" as a neutral
-baseline; it should carry an opportunity cost when the hand contains playable
-objective cards. Target: ~1.5–2.5 actions/turn without spamming junk moves.
+### P2. Emergent strategy via bounded search
+Replace the greedy threshold loop with a small search so choices like
+"complete a shared chain that feeds a rival" emerge from consequences:
+- **Own-turn planning**: search micro-action *sequences* within the turn
+  (beam over top-N candidates, depth = plays remaining), not one action at a
+  time. Fixes combo blindness (support lane → double; convert → finisher).
+- **Opponent reply sampling**: after our turn, simulate each opponent's best
+  greedy reply (1 ply). Shared-scoring caution then comes from seeing the
+  rival's actual follow-up, not from scoreGapDelta weights — soften those
+  weights (they currently reject scoring moves at −14.8 avg).
+- **Budget, not threshold**: hard cap per decision (default ~3s, configurable);
+  beam width shrinks under pressure. Kill the 504s outlier class and the
+  unusable EvaluatorPlus volatility recursion (superseded by this).
 
-### P3. Decision latency (1.8s avg; Plus unusable)
-`countMobility` / `countObjectivePlacements` sweep every coord × 6 neighbors ×
-hand colors through `canPlacePath` for EVERY candidate evaluation (~25×). Fixes:
-- Localize mobility deltas: a placement only changes legality near its edge —
-  recompute mobility in a radius-2 neighborhood instead of the whole board.
-- Cache per-evaluation invariants (origin-connected set, per-color rim
-  components) inside a scratch context instead of rebuilding per call.
-- Budget the lookahead: cap opponent-reply candidates (currently unbounded),
-  and only recurse on the top few own candidates. Target: <100ms/decision
-  for Evaluator, <500ms for Plus.
+### P3. Candidate integrity
+Always include the top-K actions by actual immediate score delta (24/57 of
+missed scoring moves never reached evaluation via the color/rim heuristic).
+Cheap: one `computeScoresRaw` pass per enumerated playCard, already done by
+the harness.
 
-### P4. Consolidation & finishing awareness
-The evaluator has no feature for progress toward rim-to-center completion —
-the literal win condition. Add:
-- `finisherProgress`: per rim-connected color, how many converted/owned edges
-  remain to reach the origin (and whether a finisher is available NOW).
-- Value conversions that extend own-objective-color components toward center;
-  value takeovers that break an opponent's near-complete color.
-- `CONSOLIDATION_END` proximity should trigger the (fixed) lookahead, not the
-  current volatility heuristic.
+### P4. Win-condition awareness in the leaf evaluator
+- `finisherProgress` per rim-connected color: remaining edges to origin,
+  finisher availability now; value own progress, penalize rivals' near-complete
+  colors (enables emergent blocking via search).
+- Value conversions extending own components toward center; takeovers that
+  break rival completions.
 
-### P5. Harness as permanent rig
-Keep `scripts/ai-diagnostics.ts` in-repo; extend with a fixed-seed mode when
-RNG injection lands, and a win-rate regression gate (new evaluator must beat
-the old one >60% over N games) so AI changes are measured, not vibes.
+### P5. Performance in service of depth
+Same eval-cost work as before, now motivated by search depth per budget:
+localized mobility deltas (radius-2 neighborhood instead of full-board sweeps),
+cached per-color components / origin-connected sets per node expansion.
+
+### P6. Harness as regression gate
+`scripts/ai-diagnostics.ts` stays in-repo. Acceptance for this work:
+- New bot beats current (post--Infinity-fix) Evaluator ≥60% over 12+ games.
+- Bots play action cards in obviously-good spots (measured: >0 per game,
+  and hand contains no permanently-parked action cards).
+- Median decision ≤3s, p99 ≤10s.
+- Actions/turn in the 1.5–3 range; missed-scoring decisions <5%.
 
 ## Non-goals (v1)
-- Action-card planning (bots currently don't play action cards; separate pass).
-- MCTS/deep search; the evaluator-driven planner architecture stays.
-- Difficulty levels (comes free later via thresholds/noise once the evaluator is strong).
-
-## Open questions for Julian
-1. Shared scoring intent: when a move gives you +4 and a rival +6, is playing it
-   generally right (points now, race on) or wrong (never feed the leader)? This
-   calibrates P1's rebalance.
-2. Should bots stash/deny via treasure aggressively, or is treasure play meant
-   to stay light?
-3. Acceptable AI think time in the browser (currently ~2s and blocking)?
+- Difficulty levels (comes later via budget/noise knobs).
+- Self-play weight learning (revisit if hand-set leaf weights + search
+  underperform; the harness makes it possible later).
