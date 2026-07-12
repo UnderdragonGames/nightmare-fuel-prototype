@@ -1058,7 +1058,7 @@ const isVolatileState = (G: GState, playerID: PlayerID, ctx: Ctx): boolean => {
 /**
  * Perform 1-ply lookahead for volatile situations.
  */
-const selectWithLookahead = (G: GState, ctx: Ctx, playerID: PlayerID): Action | null => {
+export const selectWithLookahead = (G: GState, ctx: Ctx, playerID: PlayerID): Action | null => {
 	const candidates = generateCandidates(G, playerID, ctx);
 
 	if (candidates.length === 0) {
