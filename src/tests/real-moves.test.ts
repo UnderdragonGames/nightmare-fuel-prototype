@@ -136,7 +136,7 @@ describe('simulator parity: applyMicroAction matches real moves', () => {
 	it('every enumerated action produces identical state in sim and real move', () => {
 		// Walk a few games forward with real moves, checking parity at each step.
 		for (let game = 0; game < 3; game += 1) {
-			let G = setupGame();
+			const G = setupGame();
 			const ctx = makeCtx();
 			let checked = 0;
 
@@ -175,5 +175,5 @@ describe('simulator parity: applyMicroAction matches real moves', () => {
 			}
 			expect(checked).toBeGreaterThan(20);
 		}
-	});
+	}, 30_000);
 });

@@ -540,12 +540,13 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 			setAgendaOverride(G, effect.playerId, effect.stat);
 			break;
 		case 'grantRevealUnusedVillains':
-			// Default: reveal lasts one full round from now (resolver can't know
-			// the turn; null is the "off" sentinel and must not be the default).
+			// Default: reveal lasts one full round from now. Derive the turn from
+			// G.meta (synced in turn.onBegin) rather than ctx so the AI simulator,
+			// which has no ctx, stays in lockstep with the real move.
 			grantRevealUnusedVillains(
 				G,
 				effect.playerId,
-				effect.untilRound ?? (context.ctx ? context.ctx.turn + context.ctx.numPlayers : null),
+				effect.untilRound ?? (G.meta.turn ?? 0) + Object.keys(G.players).length,
 			);
 			break;
 		case 'attachCard': {

@@ -384,14 +384,18 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		return ctxBase;
 	};
 
-	const actionLimitAllows = (() => {
-		if (!isMyTurn || locked || selectedActionCard === null) return false;
-		if (rules.ACTION_CARDS === 'disabled') return false;
-		if (rules.ACTION_CARDS === 'unlimited') return true;
+	// Why an action card can't be played right now (null = playable).
+	const actionBlockReason = (() => {
+		if (!isMyTurn) return 'Not your turn.';
+		if (locked) return 'Waiting for the current move to finish.';
+		if (rules.ACTION_CARDS === 'disabled') return 'Action cards are disabled in this game.';
+		if (rules.ACTION_CARDS === 'unlimited') return null;
 		const played = G.players[currentPlayer]?.actionPlaysThisTurn ?? 0;
 		const extra = G.action.extraActionPlays[currentPlayer] ?? 0;
-		return played === 0 || extra > 0;
+		if (played === 0 || extra > 0) return null;
+		return 'Action limit reached (one per turn).';
 	})();
+	const actionLimitAllows = selectedActionCard !== null && actionBlockReason === null;
 
 	const handleModeChange = (newMode: ActionMode) => {
 		setActionMode(newMode);
@@ -1274,16 +1278,12 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							className="action-panel__button"
 							onClick={onPlayAction}
 							disabled={!actionLimitAllows || actionResolveError !== null}
-							title={
-								!actionLimitAllows
-									? 'Action limit reached'
-									: (actionResolveError ?? 'Play action card')
-							}
+							title={actionBlockReason ?? actionResolveError ?? 'Play action card'}
 						>
 							Play Action
 						</button>
-						{!actionLimitAllows && (
-							<div className="action-panel__error">Action limit reached.</div>
+						{actionBlockReason && (
+							<div className="action-panel__error">{actionBlockReason}</div>
 						)}
 						{actionResolveError && (
 							<div className="action-panel__error">{actionResolveError}</div>
