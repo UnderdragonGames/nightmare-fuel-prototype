@@ -12,6 +12,9 @@ import type { GState } from './src/game/types.js';
 
 const GAME_NAME = 'hex-strings';
 
+const rootDir = resolve(new URL('.', import.meta.url).pathname);
+const APP_VERSION = (JSON.parse(await readFile(resolve(rootDir, 'package.json'), 'utf-8')) as { version: string }).version;
+
 // USE_FLATFILE=1 runs without Postgres (local dev / tests); production uses
 // DATABASE_URL or the DB_* variables.
 const dbUrl = process.env.DATABASE_URL;
@@ -189,7 +192,7 @@ const ensureServerBots = async (): Promise<void> => {
 };
 
 server.run(port, () => {
-	console.log(`Server running on port ${port}`);
+	console.log(`Server running on port ${port} — nightmare-fuel-prototype v${APP_VERSION}`);
 	setInterval(() => {
 		ensureServerBots().catch((err) => console.error('bot scan failed:', err));
 	}, 3000);

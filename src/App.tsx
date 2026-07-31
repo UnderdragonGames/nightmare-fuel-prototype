@@ -1747,6 +1747,9 @@ const NetworkModal: React.FC<{
 					)}
 
 					{error && <div className="network-error">{error}</div>}
+					<div className="network-version">
+						v{__APP_VERSION__} ({__APP_COMMIT__}) · built {__APP_BUILT_AT__.slice(0, 10)}
+					</div>
 				</div>
 			</div>
 		</div>
@@ -1872,6 +1875,12 @@ const App: React.FC = () => {
 					prefill={joinPrefill}
 				/>
 			)}
+			<div
+				className="version-badge"
+				title={`Built ${__APP_BUILT_AT__} from commit ${__APP_COMMIT__}`}
+			>
+				v{__APP_VERSION__} ({__APP_COMMIT__})
+			</div>
 		</div>
 	);
 };

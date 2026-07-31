@@ -1,10 +1,28 @@
 import { defineConfig, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import { mkdir, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { resolve } from 'node:path'
+
+// Build identity baked into the bundle: semver from package.json (the single
+// source of truth) plus the commit it was built from.
+const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')) as { version: string }
+const gitCommit = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim()
+  } catch {
+    return 'unknown'
+  }
+})()
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_COMMIT__: JSON.stringify(gitCommit),
+    __APP_BUILT_AT__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     {
