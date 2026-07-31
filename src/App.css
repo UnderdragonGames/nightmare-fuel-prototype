@@ -739,6 +739,7 @@
 /* === NETWORK MODAL === */
 .network-modal {
 	width: 380px;
+	max-width: calc(100vw - 32px);
 }
 
 .network-section {
@@ -1572,9 +1573,18 @@
 		display: block;
 	}
 
-	/* Hide setup controls on mobile */
+	/* Setup controls sit below the mobile status bar and player icon row
+	   instead of the desktop top-left corner */
 	.setup-controls {
-		display: none;
+		top: 104px;
+		left: 8px;
+		padding: 4px 8px;
+		gap: 6px;
+	}
+
+	.setup-controls button {
+		width: 32px;
+		height: 32px;
 	}
 
 	/* Hide players panel by default on mobile */
