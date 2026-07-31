@@ -824,9 +824,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			)}
 
 			{/* RIGHT PANEL - Board */}
+			{/* Zones collapse via their own hover-out grace period (CardZone), not
+			    the instant the pointer reaches the board. */}
 			<main
 				className={`game-board ${boardInteractable ? 'game-board--active' : 'game-board--inactive'}`}
-				onMouseEnter={() => setExpandedZone(null)}
 			>
 				<HexBoard
 					rules={rules}
@@ -916,6 +917,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						handCount={myHand.length}
 						treasureCount={G.treasure.length}
 						discardCount={G.discard.length}
+						hasHandSelection={actionMode === 'place' ? selectedCard !== null : discardSelection.length > 0}
+						handSelectionColor={actionMode === 'place' && selectedColor ? asVisibleColor(selectedColor) : null}
 					/>
 					{expandedZone === 'hand' && (
 						<div className="mobile-zone-panel">
@@ -946,8 +949,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 											const c = myHand[i];
 											if (!c) return;
 											if (isPathMode) setSelectedColor(null);
+											// Close the panel so the board is immediately visible for
+											// placement; the tab bar keeps showing the selection.
+											setExpandedZone(null);
 										}}
-										onPickColor={(color) => onPickColor(i, color)}
+										onPickColor={(color) => {
+											onPickColor(i, color);
+											setExpandedZone(null);
+										}}
 									/>
 								))}
 							</div>

@@ -3398,6 +3398,20 @@
 		letter-spacing: 0.5px;
 	}
 
+	.zone-tab-bar__tab--has-selection {
+		border-color: rgba(139, 92, 246, 0.5);
+		color: var(--text-primary);
+	}
+
+	.zone-tab-bar__selection-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: var(--accent-primary, #8b5cf6);
+		box-shadow: 0 0 6px rgba(139, 92, 246, 0.8);
+		flex-shrink: 0;
+	}
+
 	.zone-tab-bar__count {
 		display: inline-flex;
 		align-items: center;
