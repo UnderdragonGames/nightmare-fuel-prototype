@@ -739,6 +739,7 @@
 /* === NETWORK MODAL === */
 .network-modal {
 	width: 380px;
+	max-width: calc(100vw - 32px);
 }
 
 .network-section {
@@ -1572,9 +1573,18 @@
 		display: block;
 	}
 
-	/* Hide setup controls on mobile */
+	/* Setup controls sit below the mobile status bar and player icon row
+	   instead of the desktop top-left corner */
 	.setup-controls {
-		display: none;
+		top: 104px;
+		left: 8px;
+		padding: 4px 8px;
+		gap: 6px;
+	}
+
+	.setup-controls button {
+		width: 32px;
+		height: 32px;
 	}
 
 	/* Hide players panel by default on mobile */
@@ -3386,6 +3396,20 @@
 	.zone-tab-bar__label {
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
+	}
+
+	.zone-tab-bar__tab--has-selection {
+		border-color: rgba(139, 92, 246, 0.5);
+		color: var(--text-primary);
+	}
+
+	.zone-tab-bar__selection-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: var(--accent-primary, #8b5cf6);
+		box-shadow: 0 0 6px rgba(139, 92, 246, 0.8);
+		flex-shrink: 0;
 	}
 
 	.zone-tab-bar__count {

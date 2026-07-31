@@ -13,6 +13,16 @@ export const BASE_DIRECTIONS: readonly Co[] = [
 // Default edge colors going clockwise from North (edges 0-5): YGBVRO
 export const BASE_EDGE_COLORS: readonly Color[] = ['Y', 'G', 'B', 'V', 'R', 'O'];
 
+// Env override for the action card rule. Reads Vite's import.meta.env in the
+// browser and process.env on the server (tsx/bun have no VITE_* injection), so
+// both the Local() setup and the multiplayer server resolve the same rule.
+const envActionCardsRule = (): ActionCardsRule | null => {
+	const fromVite = (import.meta as { env?: Record<string, string> }).env?.VITE_ACTION_CARDS;
+	const fromNode = typeof process !== 'undefined' ? process.env?.VITE_ACTION_CARDS : undefined;
+	const value = fromVite ?? fromNode;
+	return value === 'disabled' || value === 'one-per-turn' || value === 'unlimited' ? value : null;
+};
+
 export const buildColorToDir = (edgeColors: readonly Color[]): Record<Color, Co> => {
 	if (edgeColors.length !== 6) {
 		throw new Error(`EDGE_COLORS must be length 6, got ${edgeColors.length}`);
@@ -91,7 +101,7 @@ export const HEX_RULES: Rules = {
 	// If true, game ends only after all players have had equal turns since deck exhaustion
 	EQUAL_TURNS: true,
 	// Action card play rule (env: VITE_ACTION_CARDS=disabled|one-per-turn|unlimited)
-	ACTION_CARDS: ((import.meta as any).env?.VITE_ACTION_CARDS as ActionCardsRule) || 'disabled',
+	ACTION_CARDS: envActionCardsRule() ?? 'one-per-turn',
 	// Scoring configuration
 	SCORING: HEX_SCORING,
 	// Placement configuration

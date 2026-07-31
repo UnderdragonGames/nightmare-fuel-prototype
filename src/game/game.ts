@@ -199,7 +199,7 @@ export const HexStringsGame: Game<GState> = {
 			discard: [],
 			treasure: [],
 			stats: { placements: 0 },
-			meta: { deckExhaustionCycle: null },
+			meta: { deckExhaustionCycle: null, turn: 0 },
 			origins,
 			action: initActionState(context.ctx.playOrder),
 			players: {},
@@ -250,6 +250,7 @@ export const HexStringsGame: Game<GState> = {
 		onBegin: (context) => {
 			const { G, ctx, events } = context;
 			const pid = ctx.currentPlayer;
+			G.meta.turn = ctx.turn;
 			G.players[pid]!.actionPlaysThisTurn = 0;
 			const { blocked } = emitEvent(G, { type: 'onTurnStart', playerId: pid });
 			if (blocked) {

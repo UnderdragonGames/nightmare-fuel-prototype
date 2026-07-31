@@ -181,6 +181,9 @@ export type GState = {
 	stats: { placements: number };
 	meta: {
 		deckExhaustionCycle: number | null; // cycle index when deck was first exhausted
+		// Current boardgame.io turn index, synced in turn.onBegin so effect
+		// resolution can reference the round without a ctx (AI simulation has none).
+		turn?: number;
 	};
 	origins: Co[]; // starting places for scoring (center or random)
 	action: ActionState;
