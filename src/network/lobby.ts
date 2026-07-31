@@ -104,3 +104,55 @@ export const firstFreeSeat = (match: LobbyMatch): PlayerID | null => {
 	const seat = match.players.find((p) => !p.name && !botSeats[String(p.id)]);
 	return seat !== undefined ? (String(seat.id) as PlayerID) : null;
 };
+
+/**
+ * Look up a match by a typed or pasted code, forgivingly: accepts surrounding
+ * whitespace, a pasted invite URL, and any letter case (new codes are
+ * uppercase, but legacy nanoid IDs are mixed-case, so the exact form is
+ * tried first).
+ */
+export const findMatchByCode = async (serverURL: string, input: string): Promise<LobbyMatch> => {
+	let code = input.trim();
+	const urlMatch = code.match(/[?&]join=([^&\s]+)/);
+	if (urlMatch) code = decodeURIComponent(urlMatch[1]!);
+	try {
+		return await getMatch(serverURL, code);
+	} catch (err) {
+		const upper = code.toUpperCase();
+		if (upper === code) throw err;
+		return getMatch(serverURL, upper);
+	}
+};
+
+/** Invite link that auto-joins the match when opened. */
+export const buildInviteURL = (matchID: string): string =>
+	`${window.location.origin}/?join=${encodeURIComponent(matchID)}`;
+
+/**
+ * Share an invite: native share sheet where available (iOS/Android — includes
+ * standalone PWAs), clipboard otherwise. Returns how it was delivered so the
+ * UI can confirm ("copied" needs feedback; the share sheet is its own).
+ */
+export const shareInvite = async (matchID: string): Promise<'shared' | 'copied' | 'failed'> => {
+	const url = buildInviteURL(matchID);
+	const nav = navigator as Navigator & { share?: (data: { title?: string; text?: string; url?: string }) => Promise<void> };
+	if (typeof nav.share === 'function') {
+		try {
+			await nav.share({
+				title: 'Nightmare Fuel',
+				text: `Join my Nightmare Fuel match — code ${matchID}`,
+				url,
+			});
+			return 'shared';
+		} catch (err) {
+			// AbortError = user closed the sheet; anything else falls back to copy.
+			if (err instanceof Error && err.name === 'AbortError') return 'shared';
+		}
+	}
+	try {
+		await navigator.clipboard.writeText(url);
+		return 'copied';
+	} catch {
+		return 'failed'; // clipboard blocked — the visible code is the fallback
+	}
+};

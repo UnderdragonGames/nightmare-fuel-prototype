@@ -24,12 +24,14 @@ import { ZoneTabBar } from './ui/ZoneTabBar';
 import { ActionModeStrip, type ActionMode } from './ui/ActionModeStrip';
 import {
 	createMatch,
+	findMatchByCode,
 	firstFreeSeat,
 	getMatch,
 	getServerURL,
 	joinMatch,
 	leaveMatch,
 	playAgain,
+	shareInvite,
 } from './network/lobby';
 import type { BotMode, NetworkSession } from './ui/useUIStore';
 
@@ -131,6 +133,16 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const playerName = useUIStore((s) => s.playerName);
 	const [rematchBusy, setRematchBusy] = React.useState(false);
 	const [rematchError, setRematchError] = React.useState<string | null>(null);
+	const [inviteShared, setInviteShared] = React.useState<'idle' | 'copied'>('idle');
+
+	const handleShareInvite = async () => {
+		if (!network) return;
+		const result = await shareInvite(network.matchID);
+		if (result === 'copied') {
+			setInviteShared('copied');
+			setTimeout(() => setInviteShared('idle'), 1500);
+		}
+	};
 
 	// Game-start gate: in a network match the game technically starts at
 	// creation, but we hold the board behind a waiting room until every seat
@@ -1460,17 +1472,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					<div className="waiting-room">
 						<h2>Waiting for players…</h2>
 						{network && (
-							<div className="waiting-room__match">
-								<span className="waiting-room__match-label">Match ID</span>
-								<code>{network.matchID}</code>
-								<button
-									className="waiting-room__copy"
-									onClick={() => navigator.clipboard.writeText(network.matchID)}
-									title="Copy match ID"
-								>
-									📋 Copy
+							<>
+								<div className="waiting-room__match">
+									<span className="waiting-room__match-label">Match code</span>
+									<code className="waiting-room__code">{network.matchID}</code>
+									<button
+										className="waiting-room__copy"
+										onClick={() => navigator.clipboard.writeText(network.matchID)}
+										title="Copy match code"
+									>
+										📋
+									</button>
+								</div>
+								<button className="waiting-room__share" onClick={handleShareInvite}>
+									{inviteShared === 'copied' ? 'Invite link copied!' : '📤 Share Invite Link'}
 								</button>
-							</div>
+							</>
 						)}
 						<ul className="waiting-room__seats">
 							{matchData.map((seat) => {
@@ -1537,7 +1554,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 const NetworkModal: React.FC<{
 	isOpen: boolean;
 	onClose: () => void;
-}> = ({ isOpen, onClose }) => {
+	/** Seed from a ?join= invite link that could not auto-join. */
+	prefill?: { code: string; error: string | null } | null;
+}> = ({ isOpen, onClose, prefill = null }) => {
 	const network = useUIStore((s) => s.network);
 	const setNetwork = useUIStore((s) => s.setNetwork);
 	const numPlayers = useUIStore((s) => s.numPlayers);
@@ -1547,7 +1566,15 @@ const NetworkModal: React.FC<{
 	const [inputMatchID, setInputMatchID] = React.useState('');
 	const [busy, setBusy] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
+	const [shareState, setShareState] = React.useState<'idle' | 'copied'>('idle');
 	const serverURL = getServerURL();
+
+	React.useEffect(() => {
+		if (prefill) {
+			setInputMatchID(prefill.code);
+			setError(prefill.error);
+		}
+	}, [prefill]);
 
 	if (!isOpen) return null;
 
@@ -1586,26 +1613,35 @@ const NetworkModal: React.FC<{
 	};
 
 	const handleJoin = async () => {
-		const matchID = inputMatchID.trim();
-		if (!matchID) {
-			setError('Enter a match ID');
+		if (!inputMatchID.trim()) {
+			setError('Enter a match code');
 			return;
 		}
 		setBusy(true);
 		setError(null);
 		try {
-			const match = await getMatch(serverURL, matchID);
+			// Forgiving lookup: handles pasted invite links and any letter case.
+			const match = await findMatchByCode(serverURL, inputMatchID);
 			const seat = firstFreeSeat(match);
 			if (seat === null) {
 				throw new Error('Match is full — every seat is taken.');
 			}
-			const credentials = await joinMatch(serverURL, matchID, seat, nameFor(seat));
-			setNetwork({ matchID, seat, credentials, numPlayers: match.players.length });
+			const credentials = await joinMatch(serverURL, match.matchID, seat, nameFor(seat));
+			setNetwork({ matchID: match.matchID, seat, credentials, numPlayers: match.players.length });
 			onClose();
 		} catch (e) {
 			setError(e instanceof Error ? e.message : 'Failed to join match');
 		} finally {
 			setBusy(false);
+		}
+	};
+
+	const handleShare = async () => {
+		if (!network) return;
+		const result = await shareInvite(network.matchID);
+		if (result === 'copied') {
+			setShareState('copied');
+			setTimeout(() => setShareState('idle'), 1500);
 		}
 	};
 
@@ -1648,6 +1684,9 @@ const NetworkModal: React.FC<{
 								<label>Server:</label>
 								<span>{serverURL}</span>
 							</div>
+							<button className="btn btn--primary" onClick={handleShare}>
+								{shareState === 'copied' ? 'Link copied!' : '📤 Share Invite'}
+							</button>
 							<button className="btn btn--danger" onClick={handleDisconnect}>
 								Leave Match
 							</button>
@@ -1694,7 +1733,7 @@ const NetworkModal: React.FC<{
 								<div className="network-join">
 									<input
 										type="text"
-										placeholder="Enter match ID"
+										placeholder="Match code or invite link"
 										value={inputMatchID}
 										onChange={(e) => setInputMatchID(e.target.value)}
 										onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
@@ -1725,6 +1764,34 @@ const App: React.FC = () => {
 	const serverURL = getServerURL();
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 	const [isLabRoute, setIsLabRoute] = React.useState(false);
+	const [joinPrefill, setJoinPrefill] = React.useState<{ code: string; error: string | null } | null>(null);
+	const joinLinkHandled = React.useRef(false);
+
+	// Invite links: /?join=<code> auto-claims a free seat. On failure (full,
+	// not found, server down) the network modal opens seeded with the code.
+	React.useEffect(() => {
+		if (joinLinkHandled.current) return;
+		const code = new URLSearchParams(window.location.search).get('join');
+		if (!code) return;
+		joinLinkHandled.current = true;
+		window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+		(async () => {
+			const { network: current, playerName, setNetwork } = useUIStore.getState();
+			try {
+				const match = await findMatchByCode(serverURL, code);
+				if (current?.matchID === match.matchID) return; // already seated here
+				const seat = firstFreeSeat(match);
+				if (seat === null) throw new Error('Match is full — every seat is taken.');
+				// Following an invite means switching matches: free the old seat.
+				if (current) await leaveMatch(serverURL, current.matchID, current.seat, current.credentials);
+				const credentials = await joinMatch(serverURL, match.matchID, seat, playerName.trim() || `Player ${seat}`);
+				setNetwork({ matchID: match.matchID, seat, credentials, numPlayers: match.players.length });
+			} catch (e) {
+				setJoinPrefill({ code, error: e instanceof Error ? e.message : 'Failed to join match' });
+				setNetworkModalOpen(true);
+			}
+		})();
+	}, [serverURL]);
 
 	// Local games: the human is always seat "0" and bots run in-browser.
 	// Network games: the seat was claimed through the lobby (with credentials),
@@ -1802,6 +1869,7 @@ const App: React.FC = () => {
 				<NetworkModal
 					isOpen={networkModalOpen}
 					onClose={() => setNetworkModalOpen(false)}
+					prefill={joinPrefill}
 				/>
 			)}
 		</div>

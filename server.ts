@@ -28,9 +28,19 @@ const dbConfig = process.env.USE_FLATFILE
 				dialect: 'postgres',
 			});
 
+// Short, human-friendly match codes for sharing/typing: 6 chars from an
+// alphabet without lookalikes (no 0/O, 1/I/L). ~890M combinations.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const shortMatchCode = (): string =>
+	Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+
 const server = Server({
 	games: [HexStringsGame],
 	db: dbConfig,
+	uuid: shortMatchCode,
+	// uuid doubles as the credentials generator by default — keep credentials
+	// long even though match codes are short.
+	generateCredentials: () => randomUUID(),
 	origins: [
 		'http://localhost:5173',
 		'http://localhost:3000',
