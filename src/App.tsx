@@ -22,10 +22,23 @@ import { resolveCardActions, resolveCardEffects, type CardActionResolveContext }
 import { useIsMobile } from './ui/useIsMobile';
 import { ZoneTabBar } from './ui/ZoneTabBar';
 import { ActionModeStrip, type ActionMode } from './ui/ActionModeStrip';
+import {
+	createMatch,
+	firstFreeSeat,
+	getMatch,
+	getServerURL,
+	joinMatch,
+	leaveMatch,
+	playAgain,
+} from './network/lobby';
+import type { BotMode, NetworkSession } from './ui/useUIStore';
 
 // Types
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
 type AppBoardProps = BGIOBoardProps<GState> & ExtraBoardProps;
+
+// Stable empty bot map: local bot clients are disabled while in a network match.
+const EMPTY_BOTS: Record<PlayerID, BotMode> = {};
 
 // Mobile Status Bar Component
 const MobileStatusBar: React.FC<{
@@ -90,6 +103,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	onSetViewer,
 	undo,
 	log,
+	matchData,
 }) => {
 	const rules = G.rules;
 	const isMobile = useIsMobile();
@@ -109,6 +123,66 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const setAiPaused = useUIStore((s) => s.setAiPaused);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
+
+	// Network session (null in local games). matchData is only provided by the
+	// multiplayer server, so its presence — not the store — gates network UI.
+	const network = useUIStore((s) => s.network);
+	const setNetwork = useUIStore((s) => s.setNetwork);
+	const playerName = useUIStore((s) => s.playerName);
+	const [rematchBusy, setRematchBusy] = React.useState(false);
+	const [rematchError, setRematchError] = React.useState<string | null>(null);
+
+	// Game-start gate: in a network match the game technically starts at
+	// creation, but we hold the board behind a waiting room until every seat
+	// is claimed, then flash a start banner. Local() also supplies matchData
+	// (with unnamed seats), so the store's session decides what "network" is.
+	const isNetworked = network !== null && !!matchData;
+	const allSeatsJoined = !isNetworked || !!matchData?.every((p) => !!p.name);
+	const [startBanner, setStartBanner] = React.useState(false);
+	const prevJoinedRef = React.useRef(allSeatsJoined);
+	React.useEffect(() => {
+		const was = prevJoinedRef.current;
+		prevJoinedRef.current = allSeatsJoined;
+		if (!was && allSeatsJoined) {
+			setStartBanner(true);
+			const t = setTimeout(() => setStartBanner(false), 3000);
+			return () => clearTimeout(t);
+		}
+	}, [allSeatsJoined]);
+
+	const nameOf = (pid: PlayerID): string | null =>
+		matchData?.find((p) => String(p.id) === pid)?.name ?? null;
+
+	const handleRematch = async () => {
+		if (!network) return;
+		setRematchBusy(true);
+		setRematchError(null);
+		try {
+			const serverURL = getServerURL();
+			// playAgain is idempotent per match: every player's button converges
+			// on the same next match. Rejoin the same seat, or any free one.
+			const nextMatchID = await playAgain(serverURL, network.matchID, network.seat, network.credentials);
+			const myName = playerName.trim() || `Player ${network.seat}`;
+			let seat = network.seat;
+			let credentials: string;
+			try {
+				credentials = await joinMatch(serverURL, nextMatchID, seat, myName);
+			} catch {
+				const match = await getMatch(serverURL, nextMatchID);
+				const free = firstFreeSeat(match);
+				if (free === null) throw new Error('The rematch is already full.');
+				seat = free;
+				credentials = await joinMatch(serverURL, nextMatchID, seat, myName);
+			}
+			const session: NetworkSession = { matchID: nextMatchID, seat, credentials, numPlayers: network.numPlayers };
+			setNetwork(session);
+			setGameOverDismissed(false);
+		} catch (e) {
+			setRematchError(e instanceof Error ? e.message : 'Rematch failed.');
+		} finally {
+			setRematchBusy(false);
+		}
+	};
 	const [showCoords, setShowCoords] = React.useState(false);
 	const [actionTargetPlayer, setActionTargetPlayer] = React.useState<PlayerID | ''>('');
 	const [actionChoiceIndex, setActionChoiceIndex] = React.useState('0');
@@ -744,6 +818,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							score={scores[pid] ?? 0}
 							goals={G.players[pid]!.prefs}
 							nightmareName={G.players[pid]?.nightmare}
+							name={isNetworked ? nameOf(pid) : null}
+							botSelectable={!isNetworked}
 							botKind={botByPlayer[pid] ?? 'None'}
 							onBotChange={(bot) => setBotFor(pid, bot)}
 							isViewer={pid === myID}
@@ -1373,6 +1449,61 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				⚙
 			</button>
 
+			{/* Your-turn indicator (desktop; the mobile status bar has its own) */}
+			{isMyTurn && !ctx.gameover && allSeatsJoined && (
+				<div className="turn-pill">Your turn</div>
+			)}
+
+			{/* WAITING ROOM — network match, not all seats claimed yet */}
+			{isNetworked && !allSeatsJoined && !ctx.gameover && (
+				<div className="waiting-room-overlay">
+					<div className="waiting-room">
+						<h2>Waiting for players…</h2>
+						{network && (
+							<div className="waiting-room__match">
+								<span className="waiting-room__match-label">Match ID</span>
+								<code>{network.matchID}</code>
+								<button
+									className="waiting-room__copy"
+									onClick={() => navigator.clipboard.writeText(network.matchID)}
+									title="Copy match ID"
+								>
+									📋 Copy
+								</button>
+							</div>
+						)}
+						<ul className="waiting-room__seats">
+							{matchData.map((seat) => {
+								const isMe = String(seat.id) === playerID;
+								return (
+									<li
+										key={`wr-${seat.id}`}
+										className={`waiting-room__seat ${seat.name ? 'waiting-room__seat--claimed' : 'waiting-room__seat--open'}`}
+									>
+										<span className="waiting-room__seat-id">P{seat.id}</span>
+										<span className="waiting-room__seat-name">
+											{seat.name ?? 'Open seat'}
+											{isMe ? ' (you)' : ''}
+										</span>
+										<span
+											className={`waiting-room__seat-status ${seat.name ? (seat.isConnected ? 'waiting-room__seat-status--online' : 'waiting-room__seat-status--offline') : ''}`}
+										>
+											{seat.name ? (seat.isConnected ? 'online' : 'offline') : 'waiting'}
+										</span>
+									</li>
+								);
+							})}
+						</ul>
+						<p className="waiting-room__hint">The game starts once every seat is filled.</p>
+					</div>
+				</div>
+			)}
+
+			{/* Game-start banner */}
+			{startBanner && (
+				<div className="game-start-banner">All players in — game on!</div>
+			)}
+
 			{/* Game Over overlay */}
 			{ctx.gameover && !gameOverDismissed && (
 				<div className="game-over-overlay" onClick={() => setGameOverDismissed(true)}>
@@ -1381,11 +1512,17 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						<ul className="game-over-scores">
 							{Object.entries((ctx.gameover as { scores: Record<PlayerID, number> }).scores).map(([pid2, s]) => (
 								<li key={`go-${pid2}`}>
-									<span className="game-over-scores__player">P{pid2}</span>
+									<span className="game-over-scores__player">{nameOf(pid2 as PlayerID) ?? `P${pid2}`}</span>
 									<span className="game-over-scores__value">{s}</span>
 								</li>
 							))}
 						</ul>
+						{isNetworked && (
+							<button className="game-over-rematch" onClick={handleRematch} disabled={rematchBusy}>
+								{rematchBusy ? 'Setting up rematch…' : 'Rematch'}
+							</button>
+						)}
+						{rematchError && <div className="game-over-error">{rematchError}</div>}
 						<button className="game-over-dismiss" onClick={() => setGameOverDismissed(true)}>
 							Continue
 						</button>
@@ -1400,49 +1537,83 @@ const GameBoard: React.FC<AppBoardProps> = ({
 const NetworkModal: React.FC<{
 	isOpen: boolean;
 	onClose: () => void;
-	matchID: string | null;
-	onSetMatchID: (id: string | null) => void;
-	numPlayers: number;
-	serverURL: string;
-}> = ({ isOpen, onClose, matchID, onSetMatchID, numPlayers, serverURL }) => {
+}> = ({ isOpen, onClose }) => {
+	const network = useUIStore((s) => s.network);
+	const setNetwork = useUIStore((s) => s.setNetwork);
+	const numPlayers = useUIStore((s) => s.numPlayers);
+	const botByPlayer = useUIStore((s) => s.botByPlayer);
+	const playerName = useUIStore((s) => s.playerName);
+	const setPlayerName = useUIStore((s) => s.setPlayerName);
 	const [inputMatchID, setInputMatchID] = React.useState('');
-	const [isCreating, setIsCreating] = React.useState(false);
+	const [busy, setBusy] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
+	const serverURL = getServerURL();
 
 	if (!isOpen) return null;
 
+	const nameFor = (seat: PlayerID): string => playerName.trim() || `Player ${seat}`;
+
+	// Seats configured as bots are reserved for the server's AI players.
+	const botSeats = (): Record<string, BotMode> => {
+		const bots: Record<string, BotMode> = {};
+		for (let i = 0; i < numPlayers; i += 1) {
+			const pid = String(i) as PlayerID;
+			const kind = botByPlayer[pid] ?? 'None';
+			if (kind !== 'None') bots[pid] = kind;
+		}
+		return bots;
+	};
+
 	const handleCreate = async () => {
-		setIsCreating(true);
+		setBusy(true);
 		setError(null);
 		try {
-			const res = await fetch(`${serverURL}/games/hex-strings/create`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ numPlayers }),
-			});
-			if (!res.ok) throw new Error('Failed to create match');
-			const data = await res.json();
-			onSetMatchID(data.matchID);
+			const bots = botSeats();
+			const creatorSeat = Array.from({ length: numPlayers }, (_, i) => String(i) as PlayerID)
+				.find((pid) => !bots[pid]);
+			if (!creatorSeat) {
+				throw new Error('Every seat is set to AI — leave at least one human seat.');
+			}
+			const matchID = await createMatch(serverURL, numPlayers, bots);
+			const credentials = await joinMatch(serverURL, matchID, creatorSeat, nameFor(creatorSeat));
+			setNetwork({ matchID, seat: creatorSeat, credentials, numPlayers });
 			onClose();
 		} catch (e) {
 			setError(e instanceof Error ? e.message : 'Failed to create match');
 		} finally {
-			setIsCreating(false);
+			setBusy(false);
 		}
 	};
 
-	const handleJoin = () => {
-		if (!inputMatchID.trim()) {
+	const handleJoin = async () => {
+		const matchID = inputMatchID.trim();
+		if (!matchID) {
 			setError('Enter a match ID');
 			return;
 		}
+		setBusy(true);
 		setError(null);
-		onSetMatchID(inputMatchID.trim());
-		onClose();
+		try {
+			const match = await getMatch(serverURL, matchID);
+			const seat = firstFreeSeat(match);
+			if (seat === null) {
+				throw new Error('Match is full — every seat is taken.');
+			}
+			const credentials = await joinMatch(serverURL, matchID, seat, nameFor(seat));
+			setNetwork({ matchID, seat, credentials, numPlayers: match.players.length });
+			onClose();
+		} catch (e) {
+			setError(e instanceof Error ? e.message : 'Failed to join match');
+		} finally {
+			setBusy(false);
+		}
 	};
 
-	const handleDisconnect = () => {
-		onSetMatchID(null);
+	const handleDisconnect = async () => {
+		if (network) {
+			await leaveMatch(serverURL, network.matchID, network.seat, network.credentials);
+		}
+		setNetwork(null);
 		setInputMatchID('');
 		setError(null);
 	};
@@ -1454,20 +1625,20 @@ const NetworkModal: React.FC<{
 					<h2>Network Game</h2>
 					<button className="modal-close" onClick={onClose}>×</button>
 				</div>
-				
+
 				<div className="modal-body">
-					{matchID ? (
+					{network ? (
 						<div className="network-status">
 							<div className="network-status__connected">
 								<span className="network-status__dot" />
-								Connected
+								Connected as P{network.seat}
 							</div>
 							<div className="network-status__match-id">
 								<label>Match ID:</label>
-								<code>{matchID}</code>
-								<button 
+								<code>{network.matchID}</code>
+								<button
 									className="network-status__copy"
-									onClick={() => navigator.clipboard.writeText(matchID)}
+									onClick={() => navigator.clipboard.writeText(network.matchID)}
 									title="Copy"
 								>
 									📋
@@ -1478,29 +1649,48 @@ const NetworkModal: React.FC<{
 								<span>{serverURL}</span>
 							</div>
 							<button className="btn btn--danger" onClick={handleDisconnect}>
-								Disconnect
+								Leave Match
 							</button>
 						</div>
 					) : (
 						<>
 							<div className="network-section">
+								<h3>Your Name</h3>
+								<input
+									type="text"
+									className="network-name-input"
+									placeholder="Player"
+									maxLength={24}
+									value={playerName}
+									onChange={(e) => setPlayerName(e.target.value)}
+								/>
+							</div>
+
+							<div className="network-section">
 								<h3>Create New Match</h3>
-								<p className="network-hint">Start a new {numPlayers}-player game and share the match ID</p>
-								<button 
-									className="btn btn--primary" 
+								<p className="network-hint">
+									Starts a {numPlayers}-player match using the current player setup
+									{Object.keys(botSeats()).length > 0
+										? ` (${Object.keys(botSeats()).length} AI seat${Object.keys(botSeats()).length > 1 ? 's' : ''} played by the server)`
+										: ''}
+									. Share the match ID with the other players.
+								</p>
+								<button
+									className="btn btn--primary"
 									onClick={handleCreate}
-									disabled={isCreating}
+									disabled={busy}
 								>
-									{isCreating ? 'Creating...' : 'Create Match'}
+									{busy ? 'Working…' : 'Create Match'}
 								</button>
 							</div>
-							
+
 							<div className="network-divider">
 								<span>or</span>
 							</div>
-							
+
 							<div className="network-section">
 								<h3>Join Existing Match</h3>
+								<p className="network-hint">You'll be seated in the first open spot.</p>
 								<div className="network-join">
 									<input
 										type="text"
@@ -1509,14 +1699,14 @@ const NetworkModal: React.FC<{
 										onChange={(e) => setInputMatchID(e.target.value)}
 										onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
 									/>
-									<button className="btn" onClick={handleJoin}>
-										Join
+									<button className="btn" onClick={handleJoin} disabled={busy}>
+										{busy ? '…' : 'Join'}
 									</button>
 								</div>
 							</div>
 						</>
 					)}
-					
+
 					{error && <div className="network-error">{error}</div>}
 				</div>
 			</div>
@@ -1531,27 +1721,30 @@ const App: React.FC = () => {
 	const resetBotsForCount = useUIStore((s) => s.resetBotsForCount);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const aiPaused = useUIStore((s) => s.aiPaused);
-	const matchID = useUIStore((s) => s.matchID);
-	const setMatchID = useUIStore((s) => s.setMatchID);
-	const serverURL = import.meta.env.VITE_SERVER_URL || (import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin);
+	const network = useUIStore((s) => s.network);
+	const serverURL = getServerURL();
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 	const [isLabRoute, setIsLabRoute] = React.useState(false);
 
-	// Human is always player "0". Bot clients are headless — managed by useBotClients.
-	const humanPlayerID = '0' as PlayerID;
+	// Local games: the human is always seat "0" and bots run in-browser.
+	// Network games: the seat was claimed through the lobby (with credentials),
+	// and AI seats are played by the server.
+	const humanPlayerID = network ? network.seat : ('0' as PlayerID);
+	const clientNumPlayers = network ? network.numPlayers : numPlayers;
 
 	const ClientComp = React.useMemo(
 		() => Client<GState, AppBoardProps>({
 			game: HexStringsGame,
-			numPlayers,
+			numPlayers: clientNumPlayers,
 			board: GameBoard,
-			multiplayer: matchID ? SocketIO({ server: serverURL }) : Local(),
+			multiplayer: network ? SocketIO({ server: serverURL }) : Local(),
 		}),
-		[numPlayers, matchID, serverURL]
+		[clientNumPlayers, network, serverURL]
 	);
 
 	// Create headless bot clients that auto-play when it's their turn
-	useBotClients(HexStringsGame, numPlayers, botByPlayer, aiPaused);
+	// (local games only — network bot seats are driven by the server).
+	useBotClients(HexStringsGame, numPlayers, network ? EMPTY_BOTS : botByPlayer, aiPaused);
 
 	React.useEffect(() => {
 		const update = () => {
@@ -1577,19 +1770,17 @@ const App: React.FC = () => {
 						const next = Math.min(8, numPlayers + 1);
 						setNumPlayers(next);
 						resetBotsForCount(next);
-						if (matchID) setMatchID(`match-${Date.now()}`);
-					}}>+</button>
-					<span className="setup-controls__count">{numPlayers}P</span>
+					}} disabled={network !== null} title={network ? 'Leave the network match to change players' : undefined}>+</button>
+					<span className="setup-controls__count">{clientNumPlayers}P</span>
 					<button onClick={() => {
 						const next = Math.max(2, numPlayers - 1);
 						setNumPlayers(next);
 						resetBotsForCount(next);
-						if (matchID) setMatchID(`match-${Date.now()}`);
-					}} disabled={numPlayers <= 2}>−</button>
+					}} disabled={network !== null || numPlayers <= 2} title={network ? 'Leave the network match to change players' : undefined}>−</button>
 					<button
-						className={`setup-controls__network ${matchID ? 'setup-controls__network--connected' : ''}`}
+						className={`setup-controls__network ${network ? 'setup-controls__network--connected' : ''}`}
 						onClick={() => setNetworkModalOpen(true)}
-						title={matchID ? 'Connected to network game' : 'Network game'}
+						title={network ? 'Connected to network game' : 'Network game'}
 					>
 						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
 							<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
@@ -1599,16 +1790,18 @@ const App: React.FC = () => {
 			)}
 			{isLabRoute
 				? <StateLab onExit={() => window.location.assign('/')} />
-				: <ClientComp playerID={humanPlayerID} matchID={matchID || undefined} viewer={humanPlayerID} onSetViewer={() => {}} />
+				: <ClientComp
+						playerID={humanPlayerID}
+						matchID={network?.matchID}
+						credentials={network?.credentials}
+						viewer={humanPlayerID}
+						onSetViewer={() => {}}
+					/>
 			}
 			{!isLabRoute && (
 				<NetworkModal
 					isOpen={networkModalOpen}
 					onClose={() => setNetworkModalOpen(false)}
-					matchID={matchID}
-					onSetMatchID={setMatchID}
-					numPlayers={numPlayers}
-					serverURL={serverURL}
 				/>
 			)}
 		</div>

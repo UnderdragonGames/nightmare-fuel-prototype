@@ -5,17 +5,27 @@ import type { BotKind } from '../game/bots';
 
 export type BotMode = BotKind;
 
+/** A claimed seat in a network match. Persisted so a refresh reconnects. */
+export type NetworkSession = {
+	matchID: string;
+	seat: PlayerID;
+	credentials: string;
+	numPlayers: number;
+};
+
 export type UIState = {
 	viewer: PlayerID;
 	numPlayers: number;
 	botByPlayer: Record<PlayerID, BotMode>;
-	matchID: string | null;
+	network: NetworkSession | null;
+	playerName: string;
 	aiPaused: boolean;
 	setViewer: (v: PlayerID) => void;
 	setNumPlayers: (n: number) => void;
 	setBotFor: (pid: PlayerID, bot: BotMode) => void;
 	resetBotsForCount: (count: number) => void;
-	setMatchID: (id: string | null) => void;
+	setNetwork: (session: NetworkSession | null) => void;
+	setPlayerName: (name: string) => void;
 	setAiPaused: (v: boolean) => void;
 };
 
@@ -25,7 +35,8 @@ export const useUIStore = create<UIState>()(
 			viewer: '0',
 			numPlayers: 2,
 			botByPlayer: { '0': 'None', '1': 'None' },
-			matchID: null,
+			network: null,
+			playerName: '',
 			aiPaused: false,
 			setViewer: (v) => set({ viewer: v }),
 			setNumPlayers: (n) => set({ numPlayers: n }),
@@ -35,7 +46,8 @@ export const useUIStore = create<UIState>()(
 				for (let i = 0; i < count; i += 1) bots[String(i) as PlayerID] = 'None';
 				set({ botByPlayer: bots });
 			},
-			setMatchID: (id) => set({ matchID: id }),
+			setNetwork: (session) => set({ network: session }),
+			setPlayerName: (name) => set({ playerName: name }),
 			setAiPaused: (v) => set({ aiPaused: v }),
 		}),
 		{ name: 'ui-store' }

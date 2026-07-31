@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# boardgame.io FlatFile storage (USE_FLATFILE=1 dev mode)
+matches/
