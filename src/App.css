@@ -742,6 +742,250 @@
 	max-width: calc(100vw - 32px);
 }
 
+.network-name-input {
+	width: 100%;
+	padding: 8px 10px;
+	background: rgba(30, 30, 42, 0.8);
+	border: 1px solid var(--border-subtle);
+	border-radius: 8px;
+	color: var(--text-primary);
+	font-size: 0.9rem;
+}
+
+/* ── Waiting room (network match, seats not yet filled) ── */
+
+.waiting-room-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 300;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(10, 10, 16, 0.85);
+	backdrop-filter: blur(6px);
+}
+
+.waiting-room {
+	width: 420px;
+	max-width: calc(100vw - 32px);
+	padding: 24px;
+	background: rgba(22, 22, 31, 0.98);
+	border: 1px solid var(--border-subtle);
+	border-radius: 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.waiting-room h2 {
+	margin: 0;
+	font-size: 1.2rem;
+	color: var(--text-primary);
+}
+
+.waiting-room__match {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.waiting-room__match-label {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--text-muted);
+}
+
+.waiting-room__match code {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	padding: 4px 8px;
+	background: rgba(30, 30, 42, 0.8);
+	border-radius: 6px;
+	font-size: 0.85rem;
+	color: var(--text-primary);
+}
+
+.waiting-room__copy {
+	padding: 4px 10px;
+	font-size: 0.8rem;
+}
+
+/* Short match codes are the shareable artifact — make them legible. */
+.waiting-room__code {
+	font-size: 1.3rem;
+	font-weight: 700;
+	letter-spacing: 3px;
+	text-align: center;
+}
+
+.waiting-room__share {
+	padding: 10px 16px;
+	border-radius: 10px;
+	background: rgba(139, 92, 246, 0.2);
+	border: 1px solid rgba(139, 92, 246, 0.5);
+	color: var(--text-primary);
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.waiting-room__share:hover {
+	background: rgba(139, 92, 246, 0.3);
+}
+
+.waiting-room__seats {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.waiting-room__seat {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid var(--border-subtle);
+	background: rgba(30, 30, 42, 0.6);
+}
+
+.waiting-room__seat--open {
+	opacity: 0.65;
+	border-style: dashed;
+}
+
+.waiting-room__seat-id {
+	font-weight: 700;
+	font-size: 0.85rem;
+	color: var(--text-secondary);
+	min-width: 28px;
+}
+
+.waiting-room__seat-name {
+	flex: 1;
+	color: var(--text-primary);
+	font-size: 0.9rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.waiting-room__seat-status {
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--text-muted);
+}
+
+.waiting-room__seat-status--online {
+	color: var(--accent-success, #22c55e);
+}
+
+.waiting-room__seat-status--offline {
+	color: #f59e0b;
+}
+
+.waiting-room__hint {
+	margin: 0;
+	font-size: 0.8rem;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+/* ── Game-start banner ── */
+
+.game-start-banner {
+	position: fixed;
+	top: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 310;
+	padding: 10px 22px;
+	background: rgba(34, 197, 94, 0.15);
+	border: 1px solid rgba(34, 197, 94, 0.5);
+	border-radius: 999px;
+	color: #4ade80;
+	font-weight: 700;
+	font-size: 0.95rem;
+	animation: start-banner-pop 0.3s ease;
+	pointer-events: none;
+}
+
+@keyframes start-banner-pop {
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+}
+
+/* ── Your-turn pill (desktop; mobile has its own status bar badge) ── */
+
+.turn-pill {
+	position: fixed;
+	top: 14px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 90;
+	padding: 6px 16px;
+	background: rgba(139, 92, 246, 0.18);
+	border: 1px solid rgba(139, 92, 246, 0.5);
+	border-radius: 999px;
+	color: #c4b5fd;
+	font-weight: 700;
+	font-size: 0.85rem;
+	letter-spacing: 0.3px;
+	pointer-events: none;
+}
+
+@media (max-width: 768px) {
+	.turn-pill {
+		display: none;
+	}
+}
+
+/* ── Game-over rematch ── */
+
+.game-over-rematch {
+	padding: 10px 24px;
+	border-radius: 10px;
+	background: rgba(139, 92, 246, 0.2);
+	border: 1px solid rgba(139, 92, 246, 0.5);
+	color: var(--text-primary);
+	font-weight: 700;
+	cursor: pointer;
+	margin-bottom: 8px;
+}
+
+.game-over-rematch:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.game-over-error {
+	color: #f87171;
+	font-size: 0.85rem;
+	margin-bottom: 8px;
+}
+
+.player-card__name {
+	max-width: 90px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+}
+
 .network-section {
 	margin-bottom: 16px;
 }

@@ -10,6 +10,10 @@ type Props = {
 	score: number;
 	goals: { primary: Color; secondary: Color; tertiary: Color };
 	nightmareName?: string | null;
+	/** Display name from network match metadata; null/undefined in local games. */
+	name?: string | null;
+	/** Network games: bot seats are server-run, so the bot selector is hidden. */
+	botSelectable?: boolean;
 	botKind: BotKind;
 	onBotChange: (bot: BotKind) => void;
 	isViewer: boolean;
@@ -24,6 +28,8 @@ export const PlayerCard: React.FC<Props> = ({
 	score,
 	goals,
 	nightmareName,
+	name,
+	botSelectable = true,
 	botKind,
 	onBotChange,
 	isViewer,
@@ -41,6 +47,7 @@ export const PlayerCard: React.FC<Props> = ({
 			<div className="player-card__row">
 				<div className="player-card__left">
 					<span className="player-card__id">P{pid}</span>
+					{name && <span className="player-card__name" title={name}>{name}</span>}
 					{isTurn && <span className="player-card__turn-indicator">●</span>}
 					<span className="player-card__score">{score}</span>
 				</div>
@@ -83,20 +90,22 @@ export const PlayerCard: React.FC<Props> = ({
 					<span className="player-card__hand-count">{handSize}</span>
 				</div>
 			)}
-			<select
-				value={botKind}
-				onChange={(e) => {
-					e.stopPropagation();
-					onBotChange(e.target.value as BotKind);
-				}}
-				onClick={(e) => e.stopPropagation()}
-				className="player-card__bot-select"
-			>
-				<option value="None">Human</option>
-				<option value="Random">Random</option>
-				<option value="Evaluator">Evaluator</option>
-				<option value="EvaluatorPlus">Eval+</option>
-			</select>
+			{botSelectable ? (
+				<select
+					value={botKind}
+					onChange={(e) => {
+						e.stopPropagation();
+						onBotChange(e.target.value as BotKind);
+					}}
+					onClick={(e) => e.stopPropagation()}
+					className="player-card__bot-select"
+				>
+					<option value="None">Human</option>
+					<option value="Random">Random</option>
+					<option value="Evaluator">Evaluator</option>
+					<option value="EvaluatorPlus">Eval+</option>
+				</select>
+			) : null}
 		</div>
 	);
 };
