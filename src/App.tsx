@@ -1806,55 +1806,61 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								</select>
 							</label>
 						)}
-						{actionNeedsPrefs && (
-							<>
-								<label className="action-panel__field">
-									<span className="action-panel__label">Primary</span>
-									<select
-										className="action-panel__select"
-										value={actionPrefPrimary}
-										onChange={(e) => setActionPrefPrimary(e.target.value as Color)}
-									>
-										<option value="">Select</option>
-										{rules.COLORS.map((col) => (
-											<option key={`pp-${col}`} value={col}>
-												{col}
-											</option>
-										))}
-									</select>
-								</label>
-								<label className="action-panel__field">
-									<span className="action-panel__label">Secondary</span>
-									<select
-										className="action-panel__select"
-										value={actionPrefSecondary}
-										onChange={(e) => setActionPrefSecondary(e.target.value as Color)}
-									>
-										<option value="">Select</option>
-										{rules.COLORS.map((col) => (
-											<option key={`ps-${col}`} value={col}>
-												{col}
-											</option>
-										))}
-									</select>
-								</label>
-								<label className="action-panel__field">
-									<span className="action-panel__label">Tertiary</span>
-									<select
-										className="action-panel__select"
-										value={actionPrefTertiary}
-										onChange={(e) => setActionPrefTertiary(e.target.value as Color)}
-									>
-										<option value="">Select</option>
-										{rules.COLORS.map((col) => (
-											<option key={`pt-${col}`} value={col}>
-												{col}
-											</option>
-										))}
-									</select>
-								</label>
-							</>
-						)}
+						{actionNeedsPrefs && (() => {
+							// Reordering only shuffles your OWN three colors.
+							const ownColors: Color[] = viewerPrefs
+								? [viewerPrefs.primary, viewerPrefs.secondary, viewerPrefs.tertiary]
+								: [...rules.COLORS];
+							return (
+								<>
+									<label className="action-panel__field">
+										<span className="action-panel__label">Primary</span>
+										<select
+											className="action-panel__select"
+											value={actionPrefPrimary}
+											onChange={(e) => setActionPrefPrimary(e.target.value as Color)}
+										>
+											<option value="">Select</option>
+											{ownColors.map((col) => (
+												<option key={`pp-${col}`} value={col}>
+													{col}
+												</option>
+											))}
+										</select>
+									</label>
+									<label className="action-panel__field">
+										<span className="action-panel__label">Secondary</span>
+										<select
+											className="action-panel__select"
+											value={actionPrefSecondary}
+											onChange={(e) => setActionPrefSecondary(e.target.value as Color)}
+										>
+											<option value="">Select</option>
+											{ownColors.map((col) => (
+												<option key={`ps-${col}`} value={col}>
+													{col}
+												</option>
+											))}
+										</select>
+									</label>
+									<label className="action-panel__field">
+										<span className="action-panel__label">Tertiary</span>
+										<select
+											className="action-panel__select"
+											value={actionPrefTertiary}
+											onChange={(e) => setActionPrefTertiary(e.target.value as Color)}
+										>
+											<option value="">Select</option>
+											{ownColors.map((col) => (
+												<option key={`pt-${col}`} value={col}>
+													{col}
+												</option>
+											))}
+										</select>
+									</label>
+								</>
+							);
+						})()}
 						{actionNeedsRevealedPick && (
 							<label className="action-panel__field">
 								<span className="action-panel__label">Pick Index</span>

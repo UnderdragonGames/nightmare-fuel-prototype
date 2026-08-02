@@ -298,6 +298,13 @@ export const moveHex = (G: GState, from: Co, to: Co): void => {
 };
 
 export const reorderPlayerPrefs = (G: GState, playerId: PlayerID, order: PlayerPrefs): void => {
+	const current = G.players[playerId]?.prefs;
+	if (!current) return;
+	// A reorder shuffles the player's OWN three colors — swapping in a color
+	// they don't have (or duplicating one) would rewrite their scoring identity.
+	const own = [current.primary, current.secondary, current.tertiary].sort().join('');
+	const next = [order.primary, order.secondary, order.tertiary].sort().join('');
+	if (own !== next) return;
 	G.players[playerId]!.prefs = order;
 };
 
@@ -446,6 +453,18 @@ export const actionEffectsInvalidReason = (G: GState, effects: GameEffect[]): st
 			}
 			if (G.lanes[idx]!.color === effect.color) {
 				return 'The lane is already that color — pick a different one.';
+			}
+		}
+		if (effect.type === 'reorderPlayerPrefs') {
+			// "Switch around your priorities" — a reordering of your OWN three
+			// colors, not a way to adopt new ones (or duplicate one).
+			const current = G.players[effect.playerId]?.prefs;
+			if (current) {
+				const own = [current.primary, current.secondary, current.tertiary].sort().join('');
+				const next = [effect.order.primary, effect.order.secondary, effect.order.tertiary].sort().join('');
+				if (own !== next) {
+					return 'Priorities must be a reordering of your own three colors.';
+				}
 			}
 		}
 		if (effect.type === 'placeFreeLane') {
