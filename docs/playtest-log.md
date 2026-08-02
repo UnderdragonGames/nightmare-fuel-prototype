@@ -7,6 +7,13 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-02 — v0.4.0
+
+### [ux] Turn-alert push notifications (installable PWA)
+- **Feedback (Julian):** "I think we can do push notifications, right?"
+- **Change:** the app is now an installable PWA (manifest + icons + service worker), and a "Notify me on my turn" toggle in the network menu subscribes the device to web push for its match: it's-your-turn, Mystery Box your-pick, and place-your-drafted-card alerts, sent by the game server on its existing 3-second match scan. iOS requirement (Apple's rule): push only reaches apps **added to the Home Screen** (iOS 16.4+) — the toggle explains this when tapped in plain Safari. Subscriptions live in server memory and self-re-register on app load, so deploys self-heal; set `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` on Railway (the server logs a generated pair on first boot) to keep subscriptions valid across restarts.
+- **Known v1 edge:** alerts also fire on the device you're actively playing on (no presence detection yet) — the notification replaces rather than stacks, so it's mild; revisit if it annoys.
+
 ## 2026-08-02 — v0.3.0
 
 ### Randomized starting order

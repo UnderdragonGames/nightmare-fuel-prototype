@@ -21,6 +21,8 @@ export type UIState = {
 	playerName: string;
 	aiPaused: boolean;
 	soundMuted: boolean;
+	/** This device wants push notifications for its network matches. */
+	turnAlerts: boolean;
 	setViewer: (v: PlayerID) => void;
 	setNumPlayers: (n: number) => void;
 	setBotFor: (pid: PlayerID, bot: BotMode) => void;
@@ -29,6 +31,7 @@ export type UIState = {
 	setPlayerName: (name: string) => void;
 	setAiPaused: (v: boolean) => void;
 	setSoundMuted: (v: boolean) => void;
+	setTurnAlerts: (v: boolean) => void;
 };
 
 export const useUIStore = create<UIState>()(
@@ -41,6 +44,7 @@ export const useUIStore = create<UIState>()(
 			playerName: '',
 			aiPaused: false,
 			soundMuted: false,
+			turnAlerts: false,
 			setViewer: (v) => set({ viewer: v }),
 			setNumPlayers: (n) => set({ numPlayers: n }),
 			setBotFor: (pid, bot) => set({ botByPlayer: { ...get().botByPlayer, [pid]: bot } }),
@@ -53,6 +57,7 @@ export const useUIStore = create<UIState>()(
 			setPlayerName: (name) => set({ playerName: name }),
 			setAiPaused: (v) => set({ aiPaused: v }),
 			setSoundMuted: (v) => set({ soundMuted: v }),
+			setTurnAlerts: (v) => set({ turnAlerts: v }),
 		}),
 		{ name: 'ui-store' }
 	)

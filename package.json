@@ -1,7 +1,7 @@
 {
 	"name": "nightmare-fuel-prototype",
 	"private": true,
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
@@ -25,6 +25,7 @@
 		"react": "^19.1.1",
 		"react-dom": "^19.1.1",
 		"tsx": "^4.20.6",
+		"web-push": "^3.6.7",
 		"zustand": "^5.0.8"
 	},
 	"devDependencies": {
@@ -32,6 +33,7 @@
 		"@types/pg": "^8.15.6",
 		"@types/react": "^19.1.10",
 		"@types/react-dom": "^19.1.7",
+		"@types/web-push": "^3.6.4",
 		"@vitejs/plugin-react": "^5.0.0",
 		"@vitest/coverage-v8": "4.0.17",
 		"eslint": "^9.33.0",

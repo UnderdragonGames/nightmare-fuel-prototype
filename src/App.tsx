@@ -36,6 +36,7 @@ import {
 	playAgain,
 	shareInvite,
 } from './network/lobby';
+import { enableTurnAlerts, disableTurnAlerts, resyncTurnAlerts } from './network/push';
 import type { BotMode, NetworkSession } from './ui/useUIStore';
 import { playSfx, primeSfx, setSfxMuted } from './sound/sfx';
 
@@ -2200,11 +2201,40 @@ const NetworkModal: React.FC<{
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const playerName = useUIStore((s) => s.playerName);
 	const setPlayerName = useUIStore((s) => s.setPlayerName);
+	const turnAlerts = useUIStore((s) => s.turnAlerts);
+	const setTurnAlerts = useUIStore((s) => s.setTurnAlerts);
 	const [inputMatchID, setInputMatchID] = React.useState('');
 	const [busy, setBusy] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
 	const [shareState, setShareState] = React.useState<'idle' | 'copied'>('idle');
+	const [alertsBusy, setAlertsBusy] = React.useState(false);
+	const [alertsNote, setAlertsNote] = React.useState<string | null>(null);
 	const serverURL = getServerURL();
+
+	const handleToggleAlerts = async () => {
+		if (!network) return;
+		setAlertsBusy(true);
+		setAlertsNote(null);
+		try {
+			if (turnAlerts) {
+				await disableTurnAlerts(network);
+				setTurnAlerts(false);
+			} else {
+				const result = await enableTurnAlerts(network);
+				if (result === 'on') {
+					setTurnAlerts(true);
+				} else if (result === 'denied') {
+					setAlertsNote('Notifications are blocked for this site — allow them in your browser settings.');
+				} else if (result === 'unsupported') {
+					setAlertsNote('This browser can’t do push here. On iPhone: add the app to your Home Screen first (Share → Add to Home Screen), then enable alerts from inside it.');
+				} else {
+					setAlertsNote('Could not enable alerts — try again.');
+				}
+			}
+		} finally {
+			setAlertsBusy(false);
+		}
+	};
 
 	React.useEffect(() => {
 		if (prefill) {
@@ -2349,6 +2379,11 @@ const NetworkModal: React.FC<{
 							<button className="btn btn--primary" onClick={handleShare}>
 								{shareState === 'copied' ? 'Link copied!' : <><Icon name="share" size={15} /> Share Invite</>}
 							</button>
+							<button className="btn" onClick={handleToggleAlerts} disabled={alertsBusy}>
+								<Icon name="bell" size={15} />{' '}
+								{alertsBusy ? 'Working…' : turnAlerts ? 'Turn alerts: on' : 'Notify me on my turn'}
+							</button>
+							{alertsNote && <p className="network-hint">{alertsNote}</p>}
 							<button className="btn btn--danger" onClick={handleDisconnect}>
 								Leave Match
 							</button>
@@ -2464,6 +2499,13 @@ const App: React.FC = () => {
 			setNetworkModalOpen(true);
 		})();
 	}, [serverURL]);
+
+	// Turn-alert push subscriptions live in server memory — re-register on
+	// load so a server restart/deploy self-heals without a new prompt.
+	const turnAlertsOn = useUIStore((s) => s.turnAlerts);
+	React.useEffect(() => {
+		if (network && turnAlertsOn) void resyncTurnAlerts(network);
+	}, [network, turnAlertsOn]);
 
 	// Local games: the human is always seat "0" and bots run in-browser.
 	// Network games: the seat was claimed through the lobby (with credentials),
