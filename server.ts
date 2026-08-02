@@ -94,13 +94,19 @@ type MatchMetadata = {
 	players: Record<number, SeatMetadata>;
 	setupData?: { bots?: Record<string, BotKind> };
 	gameover?: unknown;
+	createdAt?: number;
 };
 
 type AsyncStorage = {
 	listMatches: (opts: { gameName: string; where: { isGameover: boolean } }) => Promise<string[]>;
 	fetch: (matchID: string, opts: { metadata: true }) => Promise<{ metadata?: MatchMetadata }>;
 	setMetadata: (matchID: string, metadata: MatchMetadata) => Promise<void>;
+	wipe: (matchID: string) => Promise<void>;
 };
+
+// Grace period before an all-humans-left bot match is wiped — covers the gap
+// between lobby create and the creator's join call.
+const ABANDON_GRACE_MS = 2 * 60 * 1000;
 
 const spawnBot = (matchID: string, seat: string, kind: BotKind, credentials: string, numPlayers: number): void => {
 	const key = `${matchID}:${seat}`;
@@ -158,6 +164,18 @@ const ensureServerBots = async (): Promise<void> => {
 		const bots = metadata?.setupData?.bots;
 		if (!metadata || !bots) continue;
 		const numPlayers = Object.keys(metadata.players).length;
+
+		// Abandoned bot match: every human seat unclaimed (humans leaving a
+		// bots-only match never triggers boardgame.io's own all-left wipe,
+		// because bot seats stay claimed). Wipe it instead of playing on.
+		const humanSeatClaimed = Object.entries(metadata.players)
+			.some(([seat, meta]) => !bots[seat] && !!meta.name);
+		const age = Date.now() - (metadata.createdAt ?? 0);
+		if (!humanSeatClaimed && age > ABANDON_GRACE_MS) {
+			await db.wipe(matchID);
+			console.log(`wiped abandoned bot match: ${matchID}`);
+			continue; // runners (if any) detach via the live-set sweep below
+		}
 
 		for (const [seat, kind] of Object.entries(bots)) {
 			if (kind === 'None' || !BOT_NAMES[kind]) continue;

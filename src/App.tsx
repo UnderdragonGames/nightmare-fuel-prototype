@@ -144,6 +144,19 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		}
 	};
 
+	// Leave frees only this seat; cancel ends the match for everyone (any
+	// seated player may cancel — the move works from the observing stage too).
+	const handleLeaveMatch = async () => {
+		if (network) {
+			await leaveMatch(getServerURL(), network.matchID, network.seat, network.credentials);
+		}
+		setNetwork(null);
+	};
+	const handleCancelMatch = () => {
+		if (!window.confirm('Cancel this match for everyone?')) return;
+		moves.cancelMatch?.();
+	};
+
 	// Game-start gate: in a network match the game technically starts at
 	// creation, but we hold the board behind a waiting room until every seat
 	// is claimed, then flash a start banner. Local() also supplies matchData
@@ -896,13 +909,24 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					)}
 				</div>
 				<div className="game-players__controls">
-					<button
-						className={`ai-pause-btn ${aiPaused ? 'ai-pause-btn--paused' : ''}`}
-						onClick={() => setAiPaused(!aiPaused)}
-						title={aiPaused ? 'Resume AI' : 'Pause AI'}
-					>
-						{aiPaused ? '▶ Resume AI' : '⏸ Pause AI'}
-					</button>
+					{!isNetworked && (
+						<button
+							className={`ai-pause-btn ${aiPaused ? 'ai-pause-btn--paused' : ''}`}
+							onClick={() => setAiPaused(!aiPaused)}
+							title={aiPaused ? 'Resume AI' : 'Pause AI'}
+						>
+							{aiPaused ? '▶ Resume AI' : '⏸ Pause AI'}
+						</button>
+					)}
+					{isNetworked && !ctx.gameover && (
+						<button
+							className="cancel-match-btn"
+							onClick={handleCancelMatch}
+							title="End this match for everyone"
+						>
+							✕ Cancel Match
+						</button>
+					)}
 				</div>
 			</aside>
 
@@ -1512,6 +1536,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							})}
 						</ul>
 						<p className="waiting-room__hint">The game starts once every seat is filled.</p>
+						<div className="waiting-room__actions">
+							<button className="waiting-room__leave" onClick={handleLeaveMatch}>
+								Leave
+							</button>
+							<button className="waiting-room__cancel" onClick={handleCancelMatch}>
+								Cancel Match
+							</button>
+						</div>
 					</div>
 				</div>
 			)}
@@ -1522,30 +1554,51 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			)}
 
 			{/* Game Over overlay */}
-			{ctx.gameover && !gameOverDismissed && (
-				<div className="game-over-overlay" onClick={() => setGameOverDismissed(true)}>
-					<div className="game-over-modal" onClick={(e) => e.stopPropagation()}>
-						<h2>Game Over</h2>
-						<ul className="game-over-scores">
-							{Object.entries((ctx.gameover as { scores: Record<PlayerID, number> }).scores).map(([pid2, s]) => (
-								<li key={`go-${pid2}`}>
-									<span className="game-over-scores__player">{nameOf(pid2 as PlayerID) ?? `P${pid2}`}</span>
-									<span className="game-over-scores__value">{s}</span>
-								</li>
-							))}
-						</ul>
-						{isNetworked && (
-							<button className="game-over-rematch" onClick={handleRematch} disabled={rematchBusy}>
-								{rematchBusy ? 'Setting up rematch…' : 'Rematch'}
+			{ctx.gameover && !gameOverDismissed && (() => {
+				const gameover = ctx.gameover as { scores?: Record<PlayerID, number>; cancelled?: boolean; by?: PlayerID };
+				return (
+					<div className="game-over-overlay" onClick={() => setGameOverDismissed(true)}>
+						<div className="game-over-modal" onClick={(e) => e.stopPropagation()}>
+							<h2>{gameover.cancelled ? 'Match Cancelled' : 'Game Over'}</h2>
+							{gameover.cancelled && gameover.by !== undefined && (
+								<p className="game-over-cancelled-by">
+									Cancelled by {nameOf(gameover.by) ?? `P${gameover.by}`}
+								</p>
+							)}
+							{!gameover.cancelled && (
+								<ul className="game-over-scores">
+									{Object.entries(gameover.scores ?? {}).map(([pid2, s]) => (
+										<li key={`go-${pid2}`}>
+											<span className="game-over-scores__player">{nameOf(pid2 as PlayerID) ?? `P${pid2}`}</span>
+											<span className="game-over-scores__value">{s}</span>
+										</li>
+									))}
+								</ul>
+							)}
+							{isNetworked && (
+								<button className="game-over-rematch" onClick={handleRematch} disabled={rematchBusy}>
+									{rematchBusy ? 'Setting up rematch…' : 'Rematch'}
+								</button>
+							)}
+							{rematchError && <div className="game-over-error">{rematchError}</div>}
+							{isNetworked && (
+								<button
+									className="game-over-leave"
+									onClick={() => {
+										void handleLeaveMatch();
+										setGameOverDismissed(true);
+									}}
+								>
+									Leave Match
+								</button>
+							)}
+							<button className="game-over-dismiss" onClick={() => setGameOverDismissed(true)}>
+								Continue
 							</button>
-						)}
-						{rematchError && <div className="game-over-error">{rematchError}</div>}
-						<button className="game-over-dismiss" onClick={() => setGameOverDismissed(true)}>
-							Continue
-						</button>
+						</div>
 					</div>
-				</div>
-			)}
+				);
+			})()}
 		</div>
 	);
 };

@@ -898,6 +898,60 @@
 	text-align: center;
 }
 
+.waiting-room__actions {
+	display: flex;
+	gap: 10px;
+}
+
+.waiting-room__leave,
+.waiting-room__cancel {
+	flex: 1;
+	padding: 9px 12px;
+	border-radius: 10px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.waiting-room__leave {
+	background: rgba(30, 30, 42, 0.8);
+	border: 1px solid var(--border-subtle);
+	color: var(--text-secondary);
+}
+
+.waiting-room__cancel {
+	background: rgba(239, 68, 68, 0.12);
+	border: 1px solid rgba(239, 68, 68, 0.45);
+	color: #f87171;
+}
+
+.cancel-match-btn {
+	width: 100%;
+	padding: 8px 12px;
+	border-radius: 10px;
+	background: rgba(239, 68, 68, 0.12);
+	border: 1px solid rgba(239, 68, 68, 0.45);
+	color: #f87171;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.game-over-leave {
+	padding: 10px 24px;
+	border-radius: 10px;
+	background: rgba(30, 30, 42, 0.8);
+	border: 1px solid var(--border-subtle);
+	color: var(--text-secondary);
+	font-weight: 700;
+	cursor: pointer;
+	margin-bottom: 8px;
+}
+
+.game-over-cancelled-by {
+	margin: 0 0 12px;
+	color: var(--text-muted);
+	font-size: 0.9rem;
+}
+
 /* ── Game-start banner ── */
 
 .game-start-banner {

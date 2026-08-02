@@ -184,6 +184,11 @@ const filterOpponentState = (rules: Rules, state: PlayerState): PlayerState => {
 	return visible;
 };
 
+// Any seated player may cancel; endIf turns the flag into a gameover.
+const cancelMatchMove = (context: { G: GState; ctx: Ctx; playerID?: string }): void => {
+	context.G.meta.cancelledBy = context.playerID ?? context.ctx.currentPlayer;
+};
+
 export const HexStringsGame: Game<GState> = {
 	name: 'hex-strings',
 	setup: (context) => {
@@ -257,10 +262,13 @@ export const HexStringsGame: Game<GState> = {
 				events?.endTurn?.();
 			}
 		},
-		activePlayers: { currentPlayer: 'active' },
+		// Non-current players sit in 'observing' so they can still cancel the
+		// match at any time (a match belongs to everyone seated in it).
+		activePlayers: { currentPlayer: 'active', others: 'observing' },
 		stages: {
 			active: {
 				moves: {
+					cancelMatch: cancelMatchMove,
 					playCard: {
 						noLimit: true,
 						move: (context, args: MovePlayCardArgs) => {
@@ -494,12 +502,19 @@ export const HexStringsGame: Game<GState> = {
 					},
 				},
 			},
+			observing: { moves: { cancelMatch: cancelMatchMove } },
 			inactive: { moves: {} },
 		},
 	},
 	endIf: (context) => {
 		const { G, ctx } = context;
 		const rules = G.rules;
+
+		// A player cancelled the match: end it for everyone, via the normal
+		// gameover channel so remote clients and server bots all see it.
+		if (G.meta.cancelledBy !== undefined && G.meta.cancelledBy !== null) {
+			return { cancelled: true, by: G.meta.cancelledBy, scores: computeScores(G) };
+		}
 
 		// CONSOLIDATION_END: Game ends when enough continuous same-color paths reach from rim to center
 		if (rules.PLACEMENT.CONSOLIDATION_END > 0) {
