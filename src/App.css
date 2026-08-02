@@ -573,12 +573,14 @@
 	white-space: nowrap;
 }
 
+/* On very tight screens only Undo/Stash collapse to icons; End Turn (the
+   primary action) keeps its label so it stays unmistakable. */
 @media (max-width: 380px) {
-	.floating-action__label {
+	.floating-action--pill:not(.floating-action--primary) .floating-action__label {
 		display: none;
 	}
 
-	.floating-action.floating-action--pill {
+	.floating-action.floating-action--pill:not(.floating-action--primary) {
 		width: 40px;
 		padding: 0;
 		border-radius: 10px;
@@ -594,6 +596,20 @@
 .floating-action--primary:hover:not(:disabled) {
 	background: #7c3aed;
 	box-shadow: 0 0 16px rgba(139, 92, 246, 0.5);
+}
+
+/* Nudge toward End Turn when the player has no playable move left. */
+.floating-action--glow {
+	animation: end-turn-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes end-turn-glow {
+	0%, 100% {
+		box-shadow: 0 0 6px rgba(139, 92, 246, 0.35);
+	}
+	50% {
+		box-shadow: 0 0 22px rgba(139, 92, 246, 0.85);
+	}
 }
 
 /* === FLOATING TREASURE === */
@@ -1139,11 +1155,33 @@ button .icon {
 	transform: translateX(-50%);
 	z-index: 70;
 	display: flex;
-	align-items: flex-end;
-	gap: 18px;
-	padding: 14px 22px 12px;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 22px 12px;
 	background: linear-gradient(to top, rgba(18, 18, 27, 0.97), rgba(18, 18, 27, 0.8) 70%, transparent);
 	border-radius: 18px 18px 0 0;
+}
+
+.shelf__row {
+	display: flex;
+	align-items: flex-end;
+	gap: 18px;
+}
+
+.shelf__top {
+	display: flex;
+	justify-content: center;
+}
+
+/* Docked inside the shelf, the mode strip stops floating over the board. */
+.shelf .action-strip {
+	position: static;
+	transform: none;
+	flex-direction: row;
+	align-items: center;
+	gap: 10px;
+	pointer-events: auto;
 }
 
 .shelf__piles {

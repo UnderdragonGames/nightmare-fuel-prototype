@@ -1038,6 +1038,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 	shortcutRef.current = { undo: handleUndo, endTurn: onEndTurn, isMyTurn };
 
+	// Hearthstone-style cue: End Turn glows when nothing in hand can be
+	// placed anywhere, so it's clearly time to pass.
+	const hasAnyPlay = React.useMemo(() => {
+		if (!isMyTurn || locked) return true; // no glow when it isn't your decision
+		if (!isPathMode) return true;
+		const coords = buildAllCoords(G.radius);
+		for (const card of myHand) {
+			if (card.isAction) return true; // an action card is always a potential play
+			for (const source of coords) {
+				if (getValidDestinations(source, card.colors as Color[]).length > 0) return true;
+			}
+		}
+		return false;
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- getValidDestinations captures only listed deps
+	}, [G, isMyTurn, isPathMode, locked, myHand]);
+
 	// Undo / stash / end-turn toolbar. Mobile: floating bar. Desktop: docked
 	// into the shelf's right end.
 	const floatingToolbar = (
@@ -1061,7 +1077,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<span className="floating-action__label">Stash</span>
 			</button>
 			<button
-				className="floating-action floating-action--pill floating-action--primary"
+				className={`floating-action floating-action--pill floating-action--primary ${isMyTurn && !hasAnyPlay ? 'floating-action--glow' : ''}`}
 				onClick={onEndTurn}
 				disabled={!isMyTurn}
 				title={isMyTurn ? 'End your turn and refill your hand (E)' : 'Wait for your turn'}
@@ -1317,6 +1333,20 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						deckCount={G.deckSize ?? G.secret.deck.length}
 						discardCount={G.discard.length}
 						onOpenDiscard={() => setDiscardModalOpen(true)}
+						topSlot={
+							<ActionModeStrip
+								mode={actionMode}
+								onModeChange={handleModeChange}
+								canRotate={canRotateRule}
+								canBlock={canBlockRule}
+								rotateCost={rotateCost}
+								blockCost={blockCost}
+								disabled={!isMyTurn || locked}
+								discardCount={discardSelection.length}
+								discardNeeded={discardNeeded}
+								handSize={myHand.length}
+							/>
+						}
 					>
 						{floatingToolbar}
 					</Shelf>
@@ -1831,19 +1861,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				/>
 			)}
 
-			{/* ACTION MODE STRIP — above hand zone */}
-			<ActionModeStrip
-				mode={actionMode}
-				onModeChange={handleModeChange}
-				canRotate={canRotateRule}
-				canBlock={canBlockRule}
-				rotateCost={rotateCost}
-				blockCost={blockCost}
-				disabled={!isMyTurn || locked}
-				discardCount={discardSelection.length}
-				discardNeeded={discardNeeded}
-				handSize={myHand.length}
-			/>
+			{/* ACTION MODE STRIP — mobile keeps the floating strip; desktop docks
+			    it into the shelf (modes are hand-actions). */}
+			{isMobile && (
+				<ActionModeStrip
+					mode={actionMode}
+					onModeChange={handleModeChange}
+					canRotate={canRotateRule}
+					canBlock={canBlockRule}
+					rotateCost={rotateCost}
+					blockCost={blockCost}
+					disabled={!isMyTurn || locked}
+					discardCount={discardSelection.length}
+					discardNeeded={discardNeeded}
+					handSize={myHand.length}
+				/>
+			)}
 
 			{/* FLOATING ACTIONS TOOLBAR (mobile; desktop docks it in the shelf) */}
 			{isMobile && floatingToolbar}

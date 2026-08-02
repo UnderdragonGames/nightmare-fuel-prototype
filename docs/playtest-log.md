@@ -9,6 +9,15 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-02 — v0.2.0 (PR #6)
 
+### Orange separated from yellow
+- **Feedback (Julian):** "The orange color needs to be a little more distinct from the yellow, they are too close in value and Hue."
+- **Change:** orange lane/arrow color moved from `#ffbb33` (amber, hue 38°) to `#f97316` (true orange, hue 25°) — darker in value and further in hue from yellow's `#ffee55`.
+- **Outcome:** _pending — check O vs Y readability on the board next playtest._
+
+### [ux] Mode strip docked into the desktop shelf; End Turn nudge
+- **Feedback (Julian):** approved the guidance ("I like") to dock the Place/Rotate/Block strip into the shelf and nudge toward End Turn; also asked whether the labeled pills work on mobile ("that takes up a lot of horizontal room").
+- **Change:** on desktop the Place/Rotate/Block strip now sits inside the hand shelf (one control surface instead of a floating box over the board); mobile keeps the floating strip. End Turn pulses gently when it's your turn and you have no playable card/placement left. Mobile widths verified: all three labeled pills fit at 390px; below 380px Undo/Stash collapse to icons while End Turn keeps its label.
+
 ### [ux] Turn-end drama + your-turn bell
 - **Feedback (Julian):** "we need a dramatic sound for whenever a turn has ended and a chime of some kind when it's your turn."
 - **Change:** new timpani-style turn-end hit plays for everyone whenever any turn ends; the your-turn sound is now a proper two-strike bell chime (inharmonic partials, long decay) that rings a beat after the turn-end hit when the turn is yours.

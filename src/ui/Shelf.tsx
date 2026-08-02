@@ -23,6 +23,8 @@ export const Shelf: React.FC<{
 	onOpenDiscard: () => void;
 	/** Docked on the right end of the shelf (undo / end-turn toolbar). */
 	children?: React.ReactNode;
+	/** Docked above the cards (the place/rotate/block mode strip). */
+	topSlot?: React.ReactNode;
 }> = ({
 	rules,
 	cards,
@@ -35,11 +37,14 @@ export const Shelf: React.FC<{
 	discardCount,
 	onOpenDiscard,
 	children,
+	topSlot,
 }) => {
 	const [hovered, setHovered] = React.useState<number | null>(null);
 
 	return (
 		<div className="shelf">
+			{topSlot && <div className="shelf__top">{topSlot}</div>}
+			<div className="shelf__row">
 			<div className="shelf__piles">
 				<div className="shelf__pile" title="Cards left in the deck">
 					<b>{deckCount}</b>
@@ -108,6 +113,7 @@ export const Shelf: React.FC<{
 			</div>
 
 			{children && <div className="shelf__tools">{children}</div>}
+			</div>
 		</div>
 	);
 };
