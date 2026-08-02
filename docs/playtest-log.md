@@ -37,6 +37,8 @@ later playtest confirms or refutes the change.
 - **Feedback (Julian):** "The orange color needs to be a little more distinct from the yellow, they are too close in value and Hue."
 - **Change:** orange lane/arrow color moved from `#ffbb33` (amber, hue 38°) to `#f97316` (true orange, hue 25°) — darker in value and further in hue from yellow's `#ffee55`.
 - **Outcome:** _pending — check O vs Y readability on the board next playtest._
+- **Follow-up feedback (Julian, 2026-08-02, playing a version predating the fix):** "Potentially use more distinct colors, such as black or white. This is not an instruction, just to be added to the feedback section because yellow and orange are confusingly similar."
+- **Design note:** if the new orange still isn't distinct enough in play, the next lever is replacing one of the pair with something categorically different (white is viable on the dark board; black would need an outline treatment). No change made — awaiting a playtest on the new palette first.
 
 ### [ux] Mode strip docked into the desktop shelf; End Turn nudge
 - **Feedback (Julian):** approved the guidance ("I like") to dock the Place/Rotate/Block strip into the shelf and nudge toward End Turn; also asked whether the labeled pills work on mobile ("that takes up a lot of horizontal room").
