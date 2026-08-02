@@ -1555,12 +1555,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					⬇
 				</button>
 				<button
-					className="floating-action floating-action--primary"
+					className="floating-action floating-action--primary floating-action--end-turn"
 					onClick={onEndTurn}
 					disabled={!isMyTurn}
 					title="End Turn"
 				>
-					✓
+					<span aria-hidden="true">⏳</span>
+					<span className="floating-action__label">End Turn</span>
 				</button>
 					</div>
 				);

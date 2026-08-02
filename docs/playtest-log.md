@@ -9,6 +9,12 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-02 — v0.1.0 (PR #5)
 
+### Design caution: turn loss feels very harsh
+- **Feedback (Julian):** "losing a turn, felt very harsh, we should be very careful with that."
+- **Current sources of turn loss:** Sabotage (#89) registers a skip-turn hook (a blocked turn start auto-ends the turn).
+- **Action:** none yet — recorded as a design principle: prefer weakening or limiting effects (skip a placement, discard a card) over full turn denial when adding or tuning cards.
+- **Outcome:** _pending decision on softening Sabotage._
+
 ### [ux] Undo for moves (not action cards)
 - **Change:** per-turn undo made to actually work in network games (it was broken by the cancel feature's observing stage — boardgame.io only allows multiplayer undo with exactly one active player; cancel now routes through a server endpoint instead). Action cards and cancel are explicitly not undoable; the button enables only when something is undoable.
 - **Reason (Julian):** "We also need an undo button, for moves made on your turn (maybe just moves, as actions are complicated to undo)."
