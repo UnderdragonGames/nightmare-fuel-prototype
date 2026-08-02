@@ -124,7 +124,8 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 			viewBox={`${-marginX} ${-marginY} ${marginX * 2} ${marginY * 2}`}
 			preserveAspectRatio="xMidYMid meet"
 		>
-			{/* Corner circles indicating color directions (core mechanic; applies in path mode too) */}
+			{/* Corner arrows indicating color directions (core mechanic; applies in
+			    path mode too). Each arrow points the way its color travels. */}
 			<g>
 				{(rules.COLORS as Color[]).map((col) => {
 					const dir = rules.COLOR_TO_DIR[col];
@@ -135,8 +136,17 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 					const r = Math.max(marginX, marginY) - size * 1.2;
 					const cx = ux * r;
 					const cy = uy * r;
+					const angle = (Math.atan2(uy, ux) * 180) / Math.PI;
 					return (
-						<circle key={`dir-${col}`} cx={cx} cy={cy} r={8} fill={asVisibleColor(col)} stroke="#111827" strokeWidth={0.75} />
+						<g key={`dir-${col}`} transform={`translate(${cx}, ${cy}) rotate(${angle})`}>
+							<path
+								d="M -9 -2.4 L 1 -2.4 L 1 -6 L 10 0 L 1 6 L 1 2.4 L -9 2.4 Z"
+								fill={asVisibleColor(col)}
+								stroke="#111827"
+								strokeWidth={0.75}
+								strokeLinejoin="round"
+							/>
+						</g>
 					);
 				})}
 			</g>
