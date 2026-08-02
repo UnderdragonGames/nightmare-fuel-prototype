@@ -184,6 +184,20 @@ const filterOpponentState = (rules: Rules, state: PlayerState): PlayerState => {
 	return visible;
 };
 
+// Any seated player may cancel; endIf turns the flag into a gameover. The
+// move itself runs as the CURRENT player (non-current players are routed
+// through the server's /cancel endpoint, which performs it on their behalf —
+// keeping activePlayers to a single entry so boardgame.io's undo still works
+// in multiplayer). `args.by` attributes the cancellation to the requester.
+const cancelMatchMove = (
+	context: { G: GState; ctx: Ctx; playerID?: string },
+	args?: { by?: string },
+): void => {
+	const by = args?.by;
+	const valid = by !== undefined && (context.ctx.playOrder as string[]).includes(by);
+	context.G.meta.cancelledBy = valid ? by : (context.playerID ?? context.ctx.currentPlayer);
+};
+
 export const HexStringsGame: Game<GState> = {
 	name: 'hex-strings',
 	setup: (context) => {
@@ -257,10 +271,14 @@ export const HexStringsGame: Game<GState> = {
 				events?.endTurn?.();
 			}
 		},
+		// Exactly one active player: boardgame.io's multiplayer undo requires it
+		// (any second activePlayers entry disables undo server-side). Non-current
+		// players cancel via the server's /cancel endpoint instead of a stage.
 		activePlayers: { currentPlayer: 'active' },
 		stages: {
 			active: {
 				moves: {
+					cancelMatch: { move: cancelMatchMove, undoable: false },
 					playCard: {
 						noLimit: true,
 						move: (context, args: MovePlayCardArgs) => {
@@ -306,6 +324,9 @@ export const HexStringsGame: Game<GState> = {
 					},
 					playActionCard: {
 						noLimit: true,
+						// Action cards resolve effects (some random, some revealing
+						// hidden information) — undoing them is not supported.
+						undoable: false,
 						move: (context, args: MovePlayActionArgs) => {
 							const { G, ctx } = context;
 							const pid = ctx.currentPlayer;
@@ -500,6 +521,12 @@ export const HexStringsGame: Game<GState> = {
 	endIf: (context) => {
 		const { G, ctx } = context;
 		const rules = G.rules;
+
+		// A player cancelled the match: end it for everyone, via the normal
+		// gameover channel so remote clients and server bots all see it.
+		if (G.meta.cancelledBy !== undefined && G.meta.cancelledBy !== null) {
+			return { cancelled: true, by: G.meta.cancelledBy, scores: computeScores(G) };
+		}
 
 		// CONSOLIDATION_END: Game ends when enough continuous same-color paths reach from rim to center
 		if (rules.PLACEMENT.CONSOLIDATION_END > 0) {

@@ -12,6 +12,9 @@ import type { GState } from './src/game/types.js';
 
 const GAME_NAME = 'hex-strings';
 
+const rootDir = resolve(new URL('.', import.meta.url).pathname);
+const APP_VERSION = (JSON.parse(await readFile(resolve(rootDir, 'package.json'), 'utf-8')) as { version: string }).version;
+
 // USE_FLATFILE=1 runs without Postgres (local dev / tests); production uses
 // DATABASE_URL or the DB_* variables.
 const dbUrl = process.env.DATABASE_URL;
@@ -50,6 +53,50 @@ const server = Server({
 });
 
 const distDir = resolve(new URL('.', import.meta.url).pathname, 'dist');
+
+// ─── Cancel endpoint ────────────────────────────────────────────────────────
+//
+// Any seated player may cancel a match, but boardgame.io only lets the
+// CURRENT player make moves (and its multiplayer undo requires exactly one
+// active player, so we can't give observers a stage). This endpoint verifies
+// the requester's seat credentials, then performs the cancelMatch move as the
+// current player through a short-lived headless client — the resulting
+// gameover reaches every client through the normal state channel.
+server.app.use(async (ctx, next) => {
+	const match = ctx.path.match(new RegExp(`^/games/${GAME_NAME}/([^/]+)/cancel$`));
+	if (!match || ctx.method !== 'POST') {
+		await next();
+		return;
+	}
+	const matchID = match[1]!;
+	try {
+		const chunks: Uint8Array[] = [];
+		for await (const chunk of ctx.req) chunks.push(chunk as Uint8Array);
+		const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}') as { playerID?: string; credentials?: string };
+
+		const db = dbConfig as unknown as AsyncStorage;
+		const { metadata } = await db.fetch(matchID, { metadata: true });
+		if (!metadata) {
+			ctx.status = 404;
+			ctx.body = { error: 'match not found' };
+			return;
+		}
+		const seat = body.playerID !== undefined ? metadata.players[Number(body.playerID)] : undefined;
+		if (!seat || !seat.credentials || seat.credentials !== body.credentials) {
+			ctx.status = 403;
+			ctx.body = { error: 'invalid credentials' };
+			return;
+		}
+
+		const ok = await cancelAsCurrentPlayer(matchID, body.playerID!);
+		ctx.status = ok ? 200 : 500;
+		ctx.body = ok ? { cancelled: true } : { error: 'cancel did not apply' };
+	} catch (err) {
+		console.error(`cancel ${matchID} failed:`, err);
+		ctx.status = 500;
+		ctx.body = { error: 'cancel failed' };
+	}
+});
 
 // Serve static files from Vite build output
 server.app.use(serve(distDir));
@@ -91,12 +138,68 @@ type MatchMetadata = {
 	players: Record<number, SeatMetadata>;
 	setupData?: { bots?: Record<string, BotKind> };
 	gameover?: unknown;
+	createdAt?: number;
 };
 
 type AsyncStorage = {
 	listMatches: (opts: { gameName: string; where: { isGameover: boolean } }) => Promise<string[]>;
 	fetch: (matchID: string, opts: { metadata: true }) => Promise<{ metadata?: MatchMetadata }>;
 	setMetadata: (matchID: string, metadata: MatchMetadata) => Promise<void>;
+	wipe: (matchID: string) => Promise<void>;
+};
+
+// Grace period before an all-humans-left bot match is wiped — covers the gap
+// between lobby create and the creator's join call.
+const ABANDON_GRACE_MS = 2 * 60 * 1000;
+
+// Perform cancelMatch as the current player via a short-lived headless client.
+// Resolves true once the gameover is observed in the synced state.
+const cancelAsCurrentPlayer = async (matchID: string, requestedBy: string): Promise<boolean> => {
+	const db = dbConfig as unknown as AsyncStorage & {
+		fetch: (id: string, opts: { state: true; metadata: true }) => Promise<{
+			state?: { ctx: { currentPlayer: string } };
+			metadata?: MatchMetadata;
+		}>;
+	};
+	const { state, metadata } = await db.fetch(matchID, { state: true, metadata: true });
+	if (!state || !metadata) return false;
+	const current = state.ctx.currentPlayer;
+	const credentials = metadata.players[Number(current)]?.credentials;
+
+	return new Promise<boolean>((resolvePromise) => {
+		const client = Client<GState>({
+			game: HexStringsGame,
+			numPlayers: Object.keys(metadata.players).length,
+			playerID: current,
+			matchID,
+			credentials,
+			multiplayer: SocketIO({ server: `http://localhost:${port}` }),
+			debug: false,
+		});
+		let done = false;
+		const finish = (ok: boolean): void => {
+			if (done) return;
+			done = true;
+			unsubscribe();
+			client.stop();
+			resolvePromise(ok);
+		};
+		const timeout = setTimeout(() => finish(false), 5000);
+		let moveSent = false;
+		const unsubscribe = client.subscribe((s) => {
+			if (!s) return;
+			if (s.ctx.gameover) {
+				clearTimeout(timeout);
+				finish(true);
+				return;
+			}
+			if (!moveSent) {
+				moveSent = true;
+				(client.moves as { cancelMatch: (a: { by: string }) => void }).cancelMatch({ by: requestedBy });
+			}
+		});
+		client.start();
+	});
 };
 
 const spawnBot = (matchID: string, seat: string, kind: BotKind, credentials: string, numPlayers: number): void => {
@@ -156,6 +259,18 @@ const ensureServerBots = async (): Promise<void> => {
 		if (!metadata || !bots) continue;
 		const numPlayers = Object.keys(metadata.players).length;
 
+		// Abandoned bot match: every human seat unclaimed (humans leaving a
+		// bots-only match never triggers boardgame.io's own all-left wipe,
+		// because bot seats stay claimed). Wipe it instead of playing on.
+		const humanSeatClaimed = Object.entries(metadata.players)
+			.some(([seat, meta]) => !bots[seat] && !!meta.name);
+		const age = Date.now() - (metadata.createdAt ?? 0);
+		if (!humanSeatClaimed && age > ABANDON_GRACE_MS) {
+			await db.wipe(matchID);
+			console.log(`wiped abandoned bot match: ${matchID}`);
+			continue; // runners (if any) detach via the live-set sweep below
+		}
+
 		for (const [seat, kind] of Object.entries(bots)) {
 			if (kind === 'None' || !BOT_NAMES[kind]) continue;
 			const seatMeta = metadata.players[Number(seat)];
@@ -189,7 +304,7 @@ const ensureServerBots = async (): Promise<void> => {
 };
 
 server.run(port, () => {
-	console.log(`Server running on port ${port}`);
+	console.log(`Server running on port ${port} — nightmare-fuel-prototype v${APP_VERSION}`);
 	setInterval(() => {
 		ensureServerBots().catch((err) => console.error('bot scan failed:', err));
 	}, 3000);

@@ -17,6 +17,9 @@ const makeRules = (radius: number) => ({
 	RANDOM_CARDINAL_DIRECTIONS: false,
 	EDGE_COLORS,
 	COLOR_TO_DIR: buildColorToDir(EDGE_COLORS),
+	// These tests exercise the support mechanic itself, regardless of the
+	// shipping default (off since playtests found forking too hard).
+	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, FORK_SUPPORT: true },
 });
 
 const makeG = (radius: number, lanes: PathLane[]): GState => ({

@@ -86,6 +86,20 @@ export const leaveMatch = async (
 	}
 };
 
+/**
+ * Cancel the match for everyone. Server-verified against the seat's
+ * credentials; works for any seated player regardless of whose turn it is.
+ */
+export const cancelMatchRemote = async (
+	serverURL: string,
+	matchID: string,
+	playerID: PlayerID,
+	credentials: string,
+): Promise<void> => {
+	const res = await post(`${serverURL}/games/${GAME_NAME}/${matchID}/cancel`, { playerID, credentials });
+	if (!res.ok) throw new Error('Failed to cancel the match.');
+};
+
 export const playAgain = async (
 	serverURL: string,
 	matchID: string,

@@ -23,6 +23,7 @@ import { useIsMobile } from './ui/useIsMobile';
 import { ZoneTabBar } from './ui/ZoneTabBar';
 import { ActionModeStrip, type ActionMode } from './ui/ActionModeStrip';
 import {
+	cancelMatchRemote,
 	createMatch,
 	findMatchByCode,
 	firstFreeSeat,
@@ -141,6 +142,29 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (result === 'copied') {
 			setInviteShared('copied');
 			setTimeout(() => setInviteShared('idle'), 1500);
+		}
+	};
+
+	// Leave frees only this seat; cancel ends the match for everyone. On your
+	// turn cancel is a direct move; otherwise the server performs it for you
+	// (credential-checked) so undo can stay single-active-player.
+	const handleLeaveMatch = async () => {
+		if (network) {
+			await leaveMatch(getServerURL(), network.matchID, network.seat, network.credentials);
+		}
+		setNetwork(null);
+	};
+	const handleCancelMatch = async () => {
+		if (!window.confirm('Cancel this match for everyone?')) return;
+		if (isMyTurn) {
+			moves.cancelMatch?.({ by: playerID });
+			return;
+		}
+		if (!network) return;
+		try {
+			await cancelMatchRemote(getServerURL(), network.matchID, network.seat, network.credentials);
+		} catch (err) {
+			console.warn('cancel failed:', err);
 		}
 	};
 
@@ -327,12 +351,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				}
 			}
 
-			// Also check all neighbors for consolidation CONVERSIONS (recolor an existing lane).
-			// When a color is explicitly selected, only check that color; otherwise check all card colors.
-			const colorsToCheck = selectedColor && cardColors.includes(selectedColor)
-				? [selectedColor]
-				: cardColors;
-			for (const col of colorsToCheck) {
+			// Also check all neighbors for consolidation CONVERSIONS (recolor an
+			// existing lane) and the origin FINISHING move. Check ALL card colors:
+			// the click handler tries every card color, and narrowing to the
+			// (auto-picked) selectedColor previously hid legal finishing spots —
+			// e.g. a rim-connected green path couldn't see its move into the
+			// center because the card's first color wasn't green.
+			for (const col of cardColors) {
 				for (const dest of neighbors(source)) {
 					if (dests.some((d) => d.q === dest.q && d.r === dest.r)) continue;
 					if (findConvertibleColor(source, dest, col)) {
@@ -386,6 +411,69 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 		return moves;
 	}, [G, isMyTurn, isPathMode, locked, myHand, rules, selectedCard, selectedColor, selectedSourceDot]);
+
+	// Per-spot highlight colors: each potential placement is tinted with the
+	// color the move would actually play there (in path mode the direction
+	// dictates the color), instead of one uniform highlight.
+	const highlightColorByCoord = React.useMemo(() => {
+		if (!isMyTurn || locked || selectedCard === null || actionMode !== 'place') return undefined;
+		const card = myHand[selectedCard];
+		if (!card) return undefined;
+		const map: Record<string, string> = {};
+
+		if (isPathMode) {
+			// Colors a click on `dest` could play from `source`, in the same
+			// priority order the click handler uses (direction color first,
+			// then conversion / origin-finishing candidates).
+			const colorsForMove = (source: Co, dest: Co): Color[] => {
+				const out: Color[] = [];
+				const dirColor = getColorForDirection(source, dest);
+				if (dirColor && card.colors.includes(dirColor) && canPlacePath(G, source, dest, dirColor, rules)) {
+					out.push(dirColor);
+				}
+				const candidates: Color[] = selectedColor && card.colors.includes(selectedColor)
+					? [selectedColor, ...(card.colors as Color[])]
+					: (card.colors as Color[]);
+				for (const col of candidates) {
+					if (out.includes(col)) continue;
+					if (col !== dirColor && isOriginCoord(dest) && canPlacePath(G, source, dest, col, rules)) out.push(col);
+					else if (findConvertibleColor(source, dest, col)) out.push(col);
+				}
+				return out;
+			};
+
+			if (selectedSourceDot) {
+				for (const dest of availableMoveCoords) {
+					const cols = colorsForMove(selectedSourceDot, dest);
+					if (cols.length > 0) map[key(dest)] = asVisibleColor(cols[0]!);
+				}
+			} else {
+				// Source dots: tint only when every move from that dot plays a
+				// single color; ambiguous sources keep the neutral highlight.
+				for (const source of availableMoveCoords) {
+					const colSet = new Set<Color>();
+					for (const dest of getValidDestinations(source, card.colors as Color[])) {
+						for (const col of colorsForMove(source, dest)) colSet.add(col);
+					}
+					if (colSet.size === 1) map[key(source)] = asVisibleColor([...colSet][0]!);
+				}
+			}
+			return map;
+		}
+
+		// Hex mode: tint each spot with the color a click would place there.
+		const colors: Color[] = selectedColor ? [selectedColor] : (card.colors as Color[]);
+		for (const coord of availableMoveCoords) {
+			for (const color of colors) {
+				if (canPlace(G, coord, color, rules)) {
+					map[key(coord)] = asVisibleColor(color);
+					break;
+				}
+			}
+		}
+		return map;
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- helper fns capture only listed deps
+	}, [G, actionMode, availableMoveCoords, isMyTurn, isPathMode, locked, myHand, rules, selectedCard, selectedColor, selectedSourceDot]);
 
 	const blockableCoords = React.useMemo(() => {
 		if (actionMode !== 'block' || !isMyTurn || locked) return [];
@@ -896,13 +984,24 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					)}
 				</div>
 				<div className="game-players__controls">
-					<button
-						className={`ai-pause-btn ${aiPaused ? 'ai-pause-btn--paused' : ''}`}
-						onClick={() => setAiPaused(!aiPaused)}
-						title={aiPaused ? 'Resume AI' : 'Pause AI'}
-					>
-						{aiPaused ? '▶ Resume AI' : '⏸ Pause AI'}
-					</button>
+					{!isNetworked && (
+						<button
+							className={`ai-pause-btn ${aiPaused ? 'ai-pause-btn--paused' : ''}`}
+							onClick={() => setAiPaused(!aiPaused)}
+							title={aiPaused ? 'Resume AI' : 'Pause AI'}
+						>
+							{aiPaused ? '▶ Resume AI' : '⏸ Pause AI'}
+						</button>
+					)}
+					{isNetworked && !ctx.gameover && (
+						<button
+							className="cancel-match-btn"
+							onClick={handleCancelMatch}
+							title="End this match for everyone"
+						>
+							✕ Cancel Match
+						</button>
+					)}
 				</div>
 			</aside>
 
@@ -925,6 +1024,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					onHexClick={onHexClick}
 					highlightCoords={actionMode === 'rotate' ? rotatable : actionMode === 'block' ? blockableCoords : availableMoveCoords}
 					highlightColor={actionMode === 'rotate' ? '#8b5cf6' : actionMode === 'block' ? '#ef4444' : (selectedColor ? asVisibleColor(selectedColor) : '#8b5cf6')}
+					highlightColorByCoord={actionMode === 'place' ? highlightColorByCoord : undefined}
 					highlightIsRotation={actionMode === 'rotate'}
 					origins={G.origins}
 					pendingRotationTile={pendingRotationTile}
@@ -1413,23 +1513,39 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			/>
 
 			{/* FLOATING ACTIONS TOOLBAR */}
-			<div className="floating-toolbar">
-				<button
-					className="floating-action"
-					onClick={() => {
-						undo();
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setPendingRotationTile(null);
-						setRotatable([]);
-						setActionMode('place');
-						setDiscardSelection([]);
-					}}
-					disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
-					title="Undo"
-				>
-					⟲
-				</button>
+			{(() => {
+				// Undo is enabled only when a move remains to undo this turn and the
+				// last remaining one is undoable — a non-undoable move (an action
+				// card) also locks everything played before it. Undone moves stay
+				// in the log with an UNDO entry appended, so remaining = moves − undos.
+				const thisTurn = Array.isArray(log)
+					? (log as Array<{ turn?: number; action?: { type?: string; payload?: { type?: string } } }>).filter(
+							(e) => e.turn === ctx.turn,
+						)
+					: [];
+				const movesMade = thisTurn.filter((e) => e.action?.type === 'MAKE_MOVE');
+				const undosDone = thisTurn.filter((e) => e.action?.type === 'UNDO').length;
+				const remaining = movesMade.slice(0, Math.max(0, movesMade.length - undosDone));
+				const lastMove = remaining[remaining.length - 1]?.action?.payload?.type;
+				const canUndo = isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
+				return (
+					<div className="floating-toolbar">
+						<button
+							className="floating-action"
+							onClick={() => {
+								undo();
+								setSelectedCard(null);
+								setSelectedColor(null);
+								setPendingRotationTile(null);
+								setRotatable([]);
+								setActionMode('place');
+								setDiscardSelection([]);
+							}}
+							disabled={!canUndo}
+							title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
+						>
+							⟲
+						</button>
 				<button
 					className="floating-action"
 					onClick={onStash}
@@ -1439,14 +1555,17 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					⬇
 				</button>
 				<button
-					className="floating-action floating-action--primary"
+					className="floating-action floating-action--primary floating-action--end-turn"
 					onClick={onEndTurn}
 					disabled={!isMyTurn}
 					title="End Turn"
 				>
-					✓
+					<span aria-hidden="true">⏳</span>
+					<span className="floating-action__label">End Turn</span>
 				</button>
-			</div>
+					</div>
+				);
+			})()}
 
 			{/* Secret export state button */}
 			<button
@@ -1512,6 +1631,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							})}
 						</ul>
 						<p className="waiting-room__hint">The game starts once every seat is filled.</p>
+						<div className="waiting-room__actions">
+							<button className="waiting-room__leave" onClick={handleLeaveMatch}>
+								Leave
+							</button>
+							<button className="waiting-room__cancel" onClick={handleCancelMatch}>
+								Cancel Match
+							</button>
+						</div>
 					</div>
 				</div>
 			)}
@@ -1522,30 +1649,51 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			)}
 
 			{/* Game Over overlay */}
-			{ctx.gameover && !gameOverDismissed && (
-				<div className="game-over-overlay" onClick={() => setGameOverDismissed(true)}>
-					<div className="game-over-modal" onClick={(e) => e.stopPropagation()}>
-						<h2>Game Over</h2>
-						<ul className="game-over-scores">
-							{Object.entries((ctx.gameover as { scores: Record<PlayerID, number> }).scores).map(([pid2, s]) => (
-								<li key={`go-${pid2}`}>
-									<span className="game-over-scores__player">{nameOf(pid2 as PlayerID) ?? `P${pid2}`}</span>
-									<span className="game-over-scores__value">{s}</span>
-								</li>
-							))}
-						</ul>
-						{isNetworked && (
-							<button className="game-over-rematch" onClick={handleRematch} disabled={rematchBusy}>
-								{rematchBusy ? 'Setting up rematch…' : 'Rematch'}
+			{ctx.gameover && !gameOverDismissed && (() => {
+				const gameover = ctx.gameover as { scores?: Record<PlayerID, number>; cancelled?: boolean; by?: PlayerID };
+				return (
+					<div className="game-over-overlay" onClick={() => setGameOverDismissed(true)}>
+						<div className="game-over-modal" onClick={(e) => e.stopPropagation()}>
+							<h2>{gameover.cancelled ? 'Match Cancelled' : 'Game Over'}</h2>
+							{gameover.cancelled && gameover.by !== undefined && (
+								<p className="game-over-cancelled-by">
+									Cancelled by {nameOf(gameover.by) ?? `P${gameover.by}`}
+								</p>
+							)}
+							{!gameover.cancelled && (
+								<ul className="game-over-scores">
+									{Object.entries(gameover.scores ?? {}).map(([pid2, s]) => (
+										<li key={`go-${pid2}`}>
+											<span className="game-over-scores__player">{nameOf(pid2 as PlayerID) ?? `P${pid2}`}</span>
+											<span className="game-over-scores__value">{s}</span>
+										</li>
+									))}
+								</ul>
+							)}
+							{isNetworked && (
+								<button className="game-over-rematch" onClick={handleRematch} disabled={rematchBusy}>
+									{rematchBusy ? 'Setting up rematch…' : 'Rematch'}
+								</button>
+							)}
+							{rematchError && <div className="game-over-error">{rematchError}</div>}
+							{isNetworked && (
+								<button
+									className="game-over-leave"
+									onClick={() => {
+										void handleLeaveMatch();
+										setGameOverDismissed(true);
+									}}
+								>
+									Leave Match
+								</button>
+							)}
+							<button className="game-over-dismiss" onClick={() => setGameOverDismissed(true)}>
+								Continue
 							</button>
-						)}
-						{rematchError && <div className="game-over-error">{rematchError}</div>}
-						<button className="game-over-dismiss" onClick={() => setGameOverDismissed(true)}>
-							Continue
-						</button>
+						</div>
 					</div>
-				</div>
-			)}
+				);
+			})()}
 		</div>
 	);
 };
@@ -1554,8 +1702,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 const NetworkModal: React.FC<{
 	isOpen: boolean;
 	onClose: () => void;
-	/** Seed from a ?join= invite link that could not auto-join. */
-	prefill?: { code: string; error: string | null } | null;
+	/** Seed from a ?join= invite link: focused join prompt with name entry. */
+	prefill?: { code: string; error: string | null; invited?: boolean } | null;
 }> = ({ isOpen, onClose, prefill = null }) => {
 	const network = useUIStore((s) => s.network);
 	const setNetwork = useUIStore((s) => s.setNetwork);
@@ -1626,6 +1774,10 @@ const NetworkModal: React.FC<{
 			if (seat === null) {
 				throw new Error('Match is full — every seat is taken.');
 			}
+			// Following an invite while seated elsewhere: free the old seat.
+			if (network && network.matchID !== match.matchID) {
+				await leaveMatch(serverURL, network.matchID, network.seat, network.credentials);
+			}
 			const credentials = await joinMatch(serverURL, match.matchID, seat, nameFor(seat));
 			setNetwork({ matchID: match.matchID, seat, credentials, numPlayers: match.players.length });
 			onClose();
@@ -1663,7 +1815,28 @@ const NetworkModal: React.FC<{
 				</div>
 
 				<div className="modal-body">
-					{network ? (
+					{prefill?.invited && (!network || network.matchID !== prefill.code) ? (
+						<div className="network-section">
+							<h3>You're invited!</h3>
+							<p className="network-hint">
+								Join match <code className="network-invite-code">{inputMatchID}</code>
+								{network ? ' — you will leave your current match' : ''}. Set your name first:
+							</p>
+							<input
+								type="text"
+								className="network-name-input"
+								placeholder="Player"
+								maxLength={24}
+								autoFocus
+								value={playerName}
+								onChange={(e) => setPlayerName(e.target.value)}
+								onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+							/>
+							<button className="btn btn--primary network-invite-join" onClick={handleJoin} disabled={busy}>
+								{busy ? 'Joining…' : 'Join Match'}
+							</button>
+						</div>
+					) : network ? (
 						<div className="network-status">
 							<div className="network-status__connected">
 								<span className="network-status__dot" />
@@ -1747,6 +1920,9 @@ const NetworkModal: React.FC<{
 					)}
 
 					{error && <div className="network-error">{error}</div>}
+					<div className="network-version">
+						v{__APP_VERSION__} ({__APP_COMMIT__}) · built {__APP_BUILT_AT__.slice(0, 10)}
+					</div>
 				</div>
 			</div>
 		</div>
@@ -1764,11 +1940,12 @@ const App: React.FC = () => {
 	const serverURL = getServerURL();
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 	const [isLabRoute, setIsLabRoute] = React.useState(false);
-	const [joinPrefill, setJoinPrefill] = React.useState<{ code: string; error: string | null } | null>(null);
+	const [joinPrefill, setJoinPrefill] = React.useState<{ code: string; error: string | null; invited?: boolean } | null>(null);
 	const joinLinkHandled = React.useRef(false);
 
-	// Invite links: /?join=<code> auto-claims a free seat. On failure (full,
-	// not found, server down) the network modal opens seeded with the code.
+	// Invite links: /?join=<code> opens a join prompt seeded with the code so
+	// the incoming player can set their name before claiming a seat. Any
+	// lookup error (full, not found, server down) shows in the same prompt.
 	React.useEffect(() => {
 		if (joinLinkHandled.current) return;
 		const code = new URLSearchParams(window.location.search).get('join');
@@ -1776,20 +1953,16 @@ const App: React.FC = () => {
 		joinLinkHandled.current = true;
 		window.history.replaceState(null, '', window.location.pathname + window.location.hash);
 		(async () => {
-			const { network: current, playerName, setNetwork } = useUIStore.getState();
+			const { network: current } = useUIStore.getState();
 			try {
 				const match = await findMatchByCode(serverURL, code);
 				if (current?.matchID === match.matchID) return; // already seated here
-				const seat = firstFreeSeat(match);
-				if (seat === null) throw new Error('Match is full — every seat is taken.');
-				// Following an invite means switching matches: free the old seat.
-				if (current) await leaveMatch(serverURL, current.matchID, current.seat, current.credentials);
-				const credentials = await joinMatch(serverURL, match.matchID, seat, playerName.trim() || `Player ${seat}`);
-				setNetwork({ matchID: match.matchID, seat, credentials, numPlayers: match.players.length });
+				if (firstFreeSeat(match) === null) throw new Error('Match is full — every seat is taken.');
+				setJoinPrefill({ code: match.matchID, error: null, invited: true });
 			} catch (e) {
-				setJoinPrefill({ code, error: e instanceof Error ? e.message : 'Failed to join match' });
-				setNetworkModalOpen(true);
+				setJoinPrefill({ code, error: e instanceof Error ? e.message : 'Failed to join match', invited: true });
 			}
+			setNetworkModalOpen(true);
 		})();
 	}, [serverURL]);
 
@@ -1872,6 +2045,12 @@ const App: React.FC = () => {
 					prefill={joinPrefill}
 				/>
 			)}
+			<div
+				className="version-badge"
+				title={`Built ${__APP_BUILT_AT__} from commit ${__APP_COMMIT__}`}
+			>
+				v{__APP_VERSION__} ({__APP_COMMIT__})
+			</div>
 		</div>
 	);
 };

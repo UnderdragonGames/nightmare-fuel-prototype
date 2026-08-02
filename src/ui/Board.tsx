@@ -1,5 +1,5 @@
 import React from 'react';
-import { axialToPixel, asVisibleColor, buildAllCoords, key, edgeIndexToColor, ringIndex } from '../game/helpers';
+import { axialToPixel, asVisibleColor, buildAllCoords, key, edgeIndexToColor, ringIndex, dirToColor, rotateNeighbor } from '../game/helpers';
 import { Hex } from './Hex';
 import type { Color, Co, HexTile, Rules, PathLane } from '../game/types';
 
@@ -14,6 +14,9 @@ type Props = {
 	onHexClick: (coord: Co) => void;
 	highlightCoords?: Co[];
 	highlightColor?: string;
+	/** Per-coord override of highlightColor (key(coord) → css color) so each
+	 *  potential spot can show the color the move would actually play. */
+	highlightColorByCoord?: Record<string, string>;
 	highlightIsRotation?: boolean;
 	origins?: Co[];
 	pendingRotationTile?: Co | null;
@@ -23,7 +26,7 @@ type Props = {
 	showCoords?: boolean;
 };
 
-export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes = [], phantomOpacity = 0.35, phantomDash = '6,4', radius, onHexClick, highlightCoords = [], highlightColor = '#000000', highlightIsRotation = false, origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null, showCoords = false }) => {
+export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes = [], phantomOpacity = 0.35, phantomDash = '6,4', radius, onHexClick, highlightCoords = [], highlightColor = '#000000', highlightColorByCoord, highlightIsRotation = false, origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null, showCoords = false }) => {
 	const size = rules.UI.HEX_SIZE;
 	const coords = buildAllCoords(radius);
 	const width = size * 3 * (radius + 1);
@@ -32,6 +35,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 	const marginY = height / 2 + size * 2;
 	const highlightSet = new Set(highlightCoords.map((c) => key(c)));
 	const originSet = new Set(origins.map((c) => key(c)));
+	const colorFor = (c: Co): string => highlightColorByCoord?.[key(c)] ?? highlightColor;
 	
 	const isPathMode = rules.MODE === 'path';
 	
@@ -120,7 +124,8 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 			viewBox={`${-marginX} ${-marginY} ${marginX * 2} ${marginY * 2}`}
 			preserveAspectRatio="xMidYMid meet"
 		>
-			{/* Corner circles indicating color directions (core mechanic; applies in path mode too) */}
+			{/* Corner arrows indicating color directions (core mechanic; applies in
+			    path mode too). Each arrow points the way its color travels. */}
 			<g>
 				{(rules.COLORS as Color[]).map((col) => {
 					const dir = rules.COLOR_TO_DIR[col];
@@ -131,8 +136,17 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 					const r = Math.max(marginX, marginY) - size * 1.2;
 					const cx = ux * r;
 					const cy = uy * r;
+					const angle = (Math.atan2(uy, ux) * 180) / Math.PI;
 					return (
-						<circle key={`dir-${col}`} cx={cx} cy={cy} r={8} fill={asVisibleColor(col)} stroke="#111827" strokeWidth={0.75} />
+						<g key={`dir-${col}`} transform={`translate(${cx}, ${cy}) rotate(${angle})`}>
+							<path
+								d="M -9 -2.4 L 1 -2.4 L 1 -6 L 10 0 L 1 6 L 1 2.4 L -9 2.4 Z"
+								fill={asVisibleColor(col)}
+								stroke="#111827"
+								strokeWidth={0.75}
+								strokeLinejoin="round"
+							/>
+						</g>
 					);
 				})}
 			</g>
@@ -161,8 +175,8 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				const hexFill = isDead || isInnerRing
 					? '#0a0a0e'
 					: isPathMode
-						? (isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24')
-						: (sortedOccupants[0] ? asVisibleColor(sortedOccupants[0]) : isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24');
+						? (isHighlight ? colorFor(c) : isOrigin ? '#2a1a2e' : '#1a1a24')
+						: (sortedOccupants[0] ? asVisibleColor(sortedOccupants[0]) : isHighlight ? colorFor(c) : isOrigin ? '#2a1a2e' : '#1a1a24');
 				
 				return (
 					<g key={key(c)}>
@@ -172,7 +186,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							fill={hexFill}
 							splitFills={isDead ? undefined : (split ?? undefined)}
 							fillOpacity={isDead ? 1 : (isHighlight ? 0.35 : (isRotatable ? 0.7 : 1))}
-							stroke={isDead ? '#1a1020' : (isRotatable ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#bb88ee' : '#2a2a3d')))}
+							stroke={isDead ? '#1a1020' : (isRotatable ? highlightColor : (showMoveStroke ? colorFor(c) : (isOrigin ? '#bb88ee' : '#2a2a3d')))}
 							strokeWidth={isDead ? 2 : (isRotatable ? 3 : (showMoveStroke ? 2 : (isOrigin ? 2 : 1)))}
 							onClick={() => !isPathMode && onHexClick(c)}
 						>
@@ -291,7 +305,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 								y1={y1}
 								x2={x2}
 								y2={y2}
-								stroke={asVisibleColor(selectedColor)}
+								stroke={colorFor(c)}
 								strokeWidth={laneWidth}
 								strokeLinecap="round"
 								strokeDasharray="4,3"
@@ -345,7 +359,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 								cy={center.y}
 								r={size * 0.25}
 								fill="none"
-								stroke={highlightColor}
+								stroke={colorFor(c)}
 								strokeWidth={1.5}
 								strokeDasharray="3,2"
 							/>
@@ -387,63 +401,94 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				</g>
 			)}
 
-			{/* Layer 5: Rotation picker — topmost layer, above dots/lanes/everything */}
+			{/* Layer 5: Rotation picker — topmost layer. No dial, no labels: ghost
+			    previews sit at the neighbor spots the piece can rotate toward,
+			    and clicking one rotates it there. */}
 			{pendingRotationTile && onRotationSelect && (() => {
 				const c = pendingRotationTile;
 				const center = axialToPixel(c, size);
-				const ringR = size * 1.4;
-				const btnR = size * 0.48;
-				// 5 rotation amounts: CW right side, CCW left side, 180° bottom
-				const options: Array<{ rot: number; label: string; symbol: string; angleDeg: number; color: string }> = [
-					{ rot: 5, label: '60°',  symbol: '↺', angleDeg: -144, color: '#a855f7' },  // CCW 60° — upper-left
-					{ rot: 1, label: '60°',  symbol: '↻', angleDeg: -36,  color: '#3b82f6' },  // CW 60°  — upper-right
-					{ rot: 2, label: '120°', symbol: '↻', angleDeg: 18,   color: '#3b82f6' },  // CW 120° — right
-					{ rot: 3, label: '180°', symbol: '↔', angleDeg: 90,   color: '#6b7280' },  // 180°    — bottom
-					{ rot: 4, label: '120°', symbol: '↺', angleDeg: 162,  color: '#a855f7' },  // CCW 120° — left
-				];
+				const ghostR = size * 0.34;
+				// 180° (rotation 3) is not a legal rotation, so it is never offered.
+				const ROTS = [1, 2, 4, 5];
+				type Ghost = { rot: number; target: Co; color: string };
+				const ghosts: Ghost[] = [];
+
+				if (isPathMode) {
+					// Reference piece = first outgoing lane; a click on a ghost puts
+					// it there (all lanes at the node rotate together).
+					const outgoing = lanes.filter((l) => key(l.from) === key(c));
+					if (outgoing.length > 0) {
+						const ref = outgoing[0]!;
+						const refDirColor = dirToColor(rules, { q: ref.to.q - c.q, r: ref.to.r - c.r });
+						const refConverted = ref.color !== refDirColor;
+						for (const rot of ROTS) {
+							// Offer only rotations every lane at this node can legally make.
+							let ok = true;
+							for (const lane of outgoing) {
+								const newTo = rotateNeighbor(c, lane.to, rot);
+								if (!dirToColor(rules, { q: newTo.q - c.q, r: newTo.r - c.r })) { ok = false; break; }
+								const k = key(newTo);
+								if (!board[k] || board[k]!.dead || originSet.has(k)) { ok = false; break; }
+							}
+							if (!ok) continue;
+							const target = rotateNeighbor(c, ref.to, rot);
+							const newColor = refConverted
+								? ref.color
+								: dirToColor(rules, { q: target.q - c.q, r: target.r - c.r })!;
+							ghosts.push({ rot, target, color: asVisibleColor(newColor) });
+						}
+					}
+				} else {
+					// Hex mode: reference = the tile's first color; ghosts mark the
+					// edge directions that color can rotate to face.
+					const tile = board[key(c)];
+					const refColor = tile?.colors[0];
+					if (tile && refColor) {
+						let refEdge = -1;
+						for (let i = 0; i < 6; i += 1) {
+							if (edgeIndexToColor(i, tile.rotation, rules) === refColor) { refEdge = i; break; }
+						}
+						if (refEdge >= 0) {
+							for (const rot of ROTS) {
+								const edge = (refEdge + rot) % 6;
+								const dir = rules.COLOR_TO_DIR[rules.EDGE_COLORS[edge] as Color];
+								ghosts.push({
+									rot,
+									target: { q: c.q + dir.q, r: c.r + dir.r },
+									color: asVisibleColor(refColor),
+								});
+							}
+						}
+					}
+				}
+
 				return (
 					<g>
-						{/* Subtle ring connecting buttons */}
-						<circle cx={center.x} cy={center.y} r={ringR} fill="none" stroke="#ffffff" strokeWidth={0.5} opacity={0.12} />
-						{/* Highlight the selected node */}
-						<circle cx={center.x} cy={center.y} r={size * 0.4} fill="#f59e0b" opacity={0.25} />
-						{options.map(({ rot, label, symbol, angleDeg, color }) => {
-							const rad = (angleDeg * Math.PI) / 180;
-							const bx = center.x + ringR * Math.cos(rad);
-							const by = center.y + ringR * Math.sin(rad);
+						{/* Mark the piece being rotated */}
+						<circle cx={center.x} cy={center.y} r={size * 0.4} fill="#f59e0b" opacity={0.3} />
+						{ghosts.map(({ rot, target, color }) => {
+							const t = axialToPixel(target, size);
+							const dx = t.x - center.x;
+							const dy = t.y - center.y;
 							return (
 								<g
 									key={`rot-pick-${rot}`}
 									onClick={(e) => { e.stopPropagation(); onRotationSelect(rot); }}
 									style={{ cursor: 'pointer' }}
 								>
-									{/* Button background */}
-									<circle cx={bx} cy={by} r={btnR} fill={color} stroke="white" strokeWidth={1.5} opacity={0.92} />
-									{/* Direction symbol */}
-									<text
-										x={bx}
-										y={by - btnR * 0.1}
-										fontSize={btnR * 1.1}
-										textAnchor="middle"
-										dominantBaseline="central"
-										fill="white"
-										fontWeight="bold"
-										style={{ pointerEvents: 'none', userSelect: 'none' }}
-									>
-										{symbol}
-									</text>
-									{/* Degree label */}
-									<text
-										x={bx}
-										y={by + btnR * 0.65}
-										fontSize={btnR * 0.52}
-										textAnchor="middle"
-										fill="white"
-										fontWeight="bold"
-										style={{ pointerEvents: 'none', userSelect: 'none' }}
-									>
-										{label}
-									</text>
+									{/* Ghost of the rotated piece pointing at the spot */}
+									<line
+										x1={center.x + dx * 0.2}
+										y1={center.y + dy * 0.2}
+										x2={center.x + dx * 0.78}
+										y2={center.y + dy * 0.78}
+										stroke={color}
+										strokeWidth={laneWidth}
+										strokeLinecap="round"
+										strokeDasharray="4,3"
+										opacity={0.55}
+									/>
+									<circle cx={t.x} cy={t.y} r={ghostR} fill={color} stroke="#ffffff" strokeWidth={1.5} opacity={0.9} />
 								</g>
 							);
 						})}

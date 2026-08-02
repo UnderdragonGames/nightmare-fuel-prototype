@@ -184,6 +184,8 @@ export type GState = {
 		// Current boardgame.io turn index, synced in turn.onBegin so effect
 		// resolution can reference the round without a ctx (AI simulation has none).
 		turn?: number;
+		// Set by the cancelMatch move; endIf converts it into a gameover.
+		cancelledBy?: PlayerID | null;
 	};
 	origins: Co[]; // starting places for scoring (center or random)
 	action: ActionState;
