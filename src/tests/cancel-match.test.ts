@@ -3,7 +3,7 @@ import type { Ctx } from 'boardgame.io';
 import { HexStringsGame } from '../game/game';
 import type { GState } from '../game/types';
 
-type MoveFn = (context: { G: GState; ctx: Ctx; playerID?: string }) => unknown;
+type MoveFn = (context: { G: GState; ctx: Ctx; playerID?: string }, args?: { by?: string }) => unknown;
 
 const makeCtx = (currentPlayer = '0'): Ctx =>
 	({ currentPlayer, playOrder: ['0', '1'], numPlayers: 2, turn: 3 }) as unknown as Ctx;
@@ -13,31 +13,31 @@ const setupGame = (): GState =>
 
 const turnConfig = HexStringsGame.turn as unknown as {
 	activePlayers: Record<string, string>;
-	stages: Record<string, { moves: Record<string, MoveFn | { move: MoveFn }> }>;
+	stages: Record<string, { moves: Record<string, MoveFn | { move: MoveFn; undoable?: boolean }> }>;
 };
 
-const stageMove = (stage: string, name: string): MoveFn => {
-	const entry = turnConfig.stages[stage]!.moves[name]!;
-	return typeof entry === 'function' ? entry : entry.move;
-};
+const cancelEntry = turnConfig.stages.active!.moves.cancelMatch!;
+const cancelMove: MoveFn = typeof cancelEntry === 'function' ? cancelEntry : cancelEntry.move;
 
 const endIf = HexStringsGame.endIf as (c: { G: GState; ctx: Ctx }) => { cancelled?: boolean; by?: string } | undefined;
 
 describe('cancelMatch', () => {
-	it('is available to both the active player and observers', () => {
-		expect(turnConfig.stages.active!.moves.cancelMatch).toBeDefined();
-		expect(turnConfig.stages.observing!.moves.cancelMatch).toBeDefined();
-		// Non-current players must be placed in the observing stage to use it.
-		expect(turnConfig.activePlayers).toEqual({ currentPlayer: 'active', others: 'observing' });
+	it('keeps exactly one active player so multiplayer undo stays available', () => {
+		// boardgame.io rejects UNDO server-side whenever more than one player is
+		// in activePlayers — non-current players cancel via the server endpoint.
+		expect(turnConfig.activePlayers).toEqual({ currentPlayer: 'active' });
+		expect(cancelEntry).toBeDefined();
+		expect(typeof cancelEntry === 'object' && cancelEntry.undoable).toBe(false);
 	});
 
 	it('records the cancelling player and ends the game via endIf', () => {
 		const G = setupGame();
-		const ctx = makeCtx();
+		const ctx = makeCtx('0');
 		expect(endIf({ G, ctx })).toBeUndefined();
 
-		// A non-current player cancels from the observing stage.
-		stageMove('observing', 'cancelMatch')({ G, ctx, playerID: '1' });
+		// Server endpoint path: current player performs the move on behalf of
+		// the non-current requester, attributed via args.by.
+		cancelMove({ G, ctx, playerID: '0' }, { by: '1' });
 		expect(G.meta.cancelledBy).toBe('1');
 
 		const result = endIf({ G, ctx });
@@ -45,10 +45,13 @@ describe('cancelMatch', () => {
 		expect(result?.by).toBe('1');
 	});
 
-	it('falls back to the current player when the move context has no playerID', () => {
+	it('falls back to the acting player when no valid attribution is given', () => {
 		const G = setupGame();
-		const ctx = makeCtx('0');
-		stageMove('active', 'cancelMatch')({ G, ctx });
+		cancelMove({ G, ctx: makeCtx('0'), playerID: '0' }, { by: 'not-a-player' });
 		expect(G.meta.cancelledBy).toBe('0');
+
+		const G2 = setupGame();
+		cancelMove({ G: G2, ctx: makeCtx('0') });
+		expect(G2.meta.cancelledBy).toBe('0');
 	});
 });

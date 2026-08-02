@@ -9,6 +9,10 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-02 — v0.1.0 (PR #5)
 
+### [ux] Undo for moves (not action cards)
+- **Change:** per-turn undo made to actually work in network games (it was broken by the cancel feature's observing stage — boardgame.io only allows multiplayer undo with exactly one active player; cancel now routes through a server endpoint instead). Action cards and cancel are explicitly not undoable; the button enables only when something is undoable.
+- **Reason (Julian):** "We also need an undo button, for moves made on your turn (maybe just moves, as actions are complicated to undo)."
+
 ### FORK_SUPPORT off by default
 - **Change:** support-tree fork constraints disabled (`VITE_FORK_SUPPORT` knob added; default `0`).
 - **Reason (Julian):** "it's a little too hard to fork. […] there's very little branching happening, which means that all the focus goes onto either rotating or blocking a single path, rather than building and keeping track of multiple paths, which is undesirable."

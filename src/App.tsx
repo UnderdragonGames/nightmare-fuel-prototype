@@ -23,6 +23,7 @@ import { useIsMobile } from './ui/useIsMobile';
 import { ZoneTabBar } from './ui/ZoneTabBar';
 import { ActionModeStrip, type ActionMode } from './ui/ActionModeStrip';
 import {
+	cancelMatchRemote,
 	createMatch,
 	findMatchByCode,
 	firstFreeSeat,
@@ -144,17 +145,27 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		}
 	};
 
-	// Leave frees only this seat; cancel ends the match for everyone (any
-	// seated player may cancel — the move works from the observing stage too).
+	// Leave frees only this seat; cancel ends the match for everyone. On your
+	// turn cancel is a direct move; otherwise the server performs it for you
+	// (credential-checked) so undo can stay single-active-player.
 	const handleLeaveMatch = async () => {
 		if (network) {
 			await leaveMatch(getServerURL(), network.matchID, network.seat, network.credentials);
 		}
 		setNetwork(null);
 	};
-	const handleCancelMatch = () => {
+	const handleCancelMatch = async () => {
 		if (!window.confirm('Cancel this match for everyone?')) return;
-		moves.cancelMatch?.();
+		if (isMyTurn) {
+			moves.cancelMatch?.({ by: playerID });
+			return;
+		}
+		if (!network) return;
+		try {
+			await cancelMatchRemote(getServerURL(), network.matchID, network.seat, network.credentials);
+		} catch (err) {
+			console.warn('cancel failed:', err);
+		}
 	};
 
 	// Game-start gate: in a network match the game technically starts at
@@ -1502,23 +1513,39 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			/>
 
 			{/* FLOATING ACTIONS TOOLBAR */}
-			<div className="floating-toolbar">
-				<button
-					className="floating-action"
-					onClick={() => {
-						undo();
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setPendingRotationTile(null);
-						setRotatable([]);
-						setActionMode('place');
-						setDiscardSelection([]);
-					}}
-					disabled={!isMyTurn || !Array.isArray(log) || log.length === 0}
-					title="Undo"
-				>
-					⟲
-				</button>
+			{(() => {
+				// Undo is enabled only when a move remains to undo this turn and the
+				// last remaining one is undoable — a non-undoable move (an action
+				// card) also locks everything played before it. Undone moves stay
+				// in the log with an UNDO entry appended, so remaining = moves − undos.
+				const thisTurn = Array.isArray(log)
+					? (log as Array<{ turn?: number; action?: { type?: string; payload?: { type?: string } } }>).filter(
+							(e) => e.turn === ctx.turn,
+						)
+					: [];
+				const movesMade = thisTurn.filter((e) => e.action?.type === 'MAKE_MOVE');
+				const undosDone = thisTurn.filter((e) => e.action?.type === 'UNDO').length;
+				const remaining = movesMade.slice(0, Math.max(0, movesMade.length - undosDone));
+				const lastMove = remaining[remaining.length - 1]?.action?.payload?.type;
+				const canUndo = isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
+				return (
+					<div className="floating-toolbar">
+						<button
+							className="floating-action"
+							onClick={() => {
+								undo();
+								setSelectedCard(null);
+								setSelectedColor(null);
+								setPendingRotationTile(null);
+								setRotatable([]);
+								setActionMode('place');
+								setDiscardSelection([]);
+							}}
+							disabled={!canUndo}
+							title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
+						>
+							⟲
+						</button>
 				<button
 					className="floating-action"
 					onClick={onStash}
@@ -1535,7 +1562,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				>
 					✓
 				</button>
-			</div>
+					</div>
+				);
+			})()}
 
 			{/* Secret export state button */}
 			<button

@@ -184,9 +184,18 @@ const filterOpponentState = (rules: Rules, state: PlayerState): PlayerState => {
 	return visible;
 };
 
-// Any seated player may cancel; endIf turns the flag into a gameover.
-const cancelMatchMove = (context: { G: GState; ctx: Ctx; playerID?: string }): void => {
-	context.G.meta.cancelledBy = context.playerID ?? context.ctx.currentPlayer;
+// Any seated player may cancel; endIf turns the flag into a gameover. The
+// move itself runs as the CURRENT player (non-current players are routed
+// through the server's /cancel endpoint, which performs it on their behalf —
+// keeping activePlayers to a single entry so boardgame.io's undo still works
+// in multiplayer). `args.by` attributes the cancellation to the requester.
+const cancelMatchMove = (
+	context: { G: GState; ctx: Ctx; playerID?: string },
+	args?: { by?: string },
+): void => {
+	const by = args?.by;
+	const valid = by !== undefined && (context.ctx.playOrder as string[]).includes(by);
+	context.G.meta.cancelledBy = valid ? by : (context.playerID ?? context.ctx.currentPlayer);
 };
 
 export const HexStringsGame: Game<GState> = {
@@ -262,13 +271,14 @@ export const HexStringsGame: Game<GState> = {
 				events?.endTurn?.();
 			}
 		},
-		// Non-current players sit in 'observing' so they can still cancel the
-		// match at any time (a match belongs to everyone seated in it).
-		activePlayers: { currentPlayer: 'active', others: 'observing' },
+		// Exactly one active player: boardgame.io's multiplayer undo requires it
+		// (any second activePlayers entry disables undo server-side). Non-current
+		// players cancel via the server's /cancel endpoint instead of a stage.
+		activePlayers: { currentPlayer: 'active' },
 		stages: {
 			active: {
 				moves: {
-					cancelMatch: cancelMatchMove,
+					cancelMatch: { move: cancelMatchMove, undoable: false },
 					playCard: {
 						noLimit: true,
 						move: (context, args: MovePlayCardArgs) => {
@@ -314,6 +324,9 @@ export const HexStringsGame: Game<GState> = {
 					},
 					playActionCard: {
 						noLimit: true,
+						// Action cards resolve effects (some random, some revealing
+						// hidden information) — undoing them is not supported.
+						undoable: false,
 						move: (context, args: MovePlayActionArgs) => {
 							const { G, ctx } = context;
 							const pid = ctx.currentPlayer;
@@ -502,7 +515,6 @@ export const HexStringsGame: Game<GState> = {
 					},
 				},
 			},
-			observing: { moves: { cancelMatch: cancelMatchMove } },
 			inactive: { moves: {} },
 		},
 	},
