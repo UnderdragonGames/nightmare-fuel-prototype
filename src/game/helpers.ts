@@ -606,7 +606,7 @@ export const asVisibleColor = (c: Color): string => {
 		case 'R':
 			return '#dd5566'; // Mid-bright red (L≈128)
 		case 'O':
-			return '#ffbb33'; // Bright orange (L≈192)
+			return '#f97316'; // True orange — separated from Y in hue and value
 		case 'Y':
 			return '#ffee55'; // Bright yellow (L≈226)
 		case 'G':

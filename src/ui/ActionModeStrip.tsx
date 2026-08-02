@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from './Icon';
 
 export type ActionMode = 'place' | 'rotate' | 'block';
 
@@ -39,7 +40,7 @@ export const ActionModeStrip: React.FC<Props> = ({
 					onClick={() => onModeChange('place')}
 					disabled={disabled}
 				>
-					<span className="action-strip__icon">◆</span>
+					<span className="action-strip__icon"><Icon name="diamond" size={13} /></span>
 					<span className="action-strip__label">Place</span>
 				</button>
 
@@ -50,7 +51,7 @@ export const ActionModeStrip: React.FC<Props> = ({
 						disabled={disabled || costTooHigh(rotateCost)}
 						title={costTooHigh(rotateCost) ? `Need ${rotateCost} card(s)` : `Discard ${rotateCost} to rotate`}
 					>
-						<span className="action-strip__icon">↻</span>
+						<span className="action-strip__icon"><Icon name="rotate" size={13} /></span>
 						<span className="action-strip__label">Rotate</span>
 						<span className="action-strip__cost">{rotateCost}</span>
 					</button>
@@ -63,7 +64,7 @@ export const ActionModeStrip: React.FC<Props> = ({
 						disabled={disabled || costTooHigh(blockCost)}
 						title={costTooHigh(blockCost) ? `Need ${blockCost} card(s)` : `Discard ${blockCost} to block`}
 					>
-						<span className="action-strip__icon">✕</span>
+						<span className="action-strip__icon"><Icon name="ban" size={13} /></span>
 						<span className="action-strip__label">Block</span>
 						<span className="action-strip__cost">{blockCost}</span>
 					</button>

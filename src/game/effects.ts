@@ -263,12 +263,23 @@ export const replaceHexColor = (G: GState, coord: Co, color: Color): void => {
 	G.board[k] = { colors: [color], rotation, dead: false };
 };
 
-export const replaceLaneColor = (G: GState, from: Co, to: Co, color: Color): void => {
-	const idx = G.lanes.findIndex(
-		(ln) => key(ln.from) === key(from) && key(ln.to) === key(to),
-	);
-	if (idx === -1) return;
+// Lanes are stored directed but are undirected for targeting: accept either
+// endpoint order (This Prey is Mine silently no-oped on reversed picks).
+export const findLaneIndex = (G: GState, from: Co, to: Co): number => {
+	const fk = key(from);
+	const tk = key(to);
+	return G.lanes.findIndex((ln) => {
+		const a = key(ln.from);
+		const b = key(ln.to);
+		return (a === fk && b === tk) || (a === tk && b === fk);
+	});
+};
+
+export const replaceLaneColor = (G: GState, from: Co, to: Co, color: Color): boolean => {
+	const idx = findLaneIndex(G, from, to);
+	if (idx === -1) return false;
 	G.lanes[idx] = { ...G.lanes[idx]!, color };
+	return true;
 };
 
 export const moveHex = (G: GState, from: Co, to: Co): void => {
@@ -287,6 +298,13 @@ export const moveHex = (G: GState, from: Co, to: Co): void => {
 };
 
 export const reorderPlayerPrefs = (G: GState, playerId: PlayerID, order: PlayerPrefs): void => {
+	const current = G.players[playerId]?.prefs;
+	if (!current) return;
+	// A reorder shuffles the player's OWN three colors — swapping in a color
+	// they don't have (or duplicating one) would rewrite their scoring identity.
+	const own = [current.primary, current.secondary, current.tertiary].sort().join('');
+	const next = [order.primary, order.secondary, order.tertiary].sort().join('');
+	if (own !== next) return;
 	G.players[playerId]!.prefs = order;
 };
 
@@ -421,6 +439,50 @@ export const placeFreeLane = (G: GState, source: Co, dest: Co): boolean => {
 	return true;
 };
 
+/**
+ * Pre-check for board-targeting action-card effects: a bad target must reject
+ * the playActionCard move (card stays in hand), never resolve as a silent
+ * no-op. Returns a human-readable reason, or null when everything can apply.
+ */
+export const actionEffectsInvalidReason = (G: GState, effects: GameEffect[]): string | null => {
+	for (const effect of effects) {
+		if (effect.type === 'replaceLaneColor') {
+			const idx = findLaneIndex(G, effect.from, effect.to);
+			if (idx === -1) {
+				return 'No lane connects those two spots.';
+			}
+			if (G.lanes[idx]!.color === effect.color) {
+				return 'The lane is already that color — pick a different one.';
+			}
+		}
+		if (effect.type === 'reorderPlayerPrefs') {
+			// "Switch around your priorities" — a reordering of your OWN three
+			// colors, not a way to adopt new ones (or duplicate one).
+			const current = G.players[effect.playerId]?.prefs;
+			if (current) {
+				const own = [current.primary, current.secondary, current.tertiary].sort().join('');
+				const next = [effect.order.primary, effect.order.secondary, effect.order.tertiary].sort().join('');
+				if (own !== next) {
+					return 'Priorities must be a reordering of your own three colors.';
+				}
+			}
+		}
+		if (effect.type === 'placeFreeLane') {
+			const dir = { q: effect.dest.q - effect.source.q, r: effect.dest.r - effect.source.r };
+			const color = dirToColor(G.rules, dir);
+			if (!color || (effect.color && color !== effect.color)) {
+				return effect.color
+					? `That step doesn't go in the ${effect.color} direction.`
+					: 'Those spots are not one step apart.';
+			}
+			if (!canPlacePath(G, effect.source, effect.dest, color, G.rules)) {
+				return 'A lane cannot legally be placed there.';
+			}
+		}
+	}
+	return null;
+};
+
 export const applyNightmareActions = (G: GState, actions: NightmareAction[], context: NightmareActionContext): void => {
 	const rng = context.rng ?? Math.random;
 	for (const action of actions) {
@@ -544,6 +606,14 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 		case 'replaceLaneColor':
 			replaceLaneColor(G, effect.from, effect.to, effect.color);
 			break;
+		case 'placeFreeLane': {
+			// effect.color constrains the lane (Seize the Opportunity copies the
+			// last-placed color); the direction must derive exactly that color.
+			const derived = dirToColor(G.rules, { q: effect.dest.q - effect.source.q, r: effect.dest.r - effect.source.r });
+			if (effect.color && derived !== effect.color) break;
+			placeFreeLane(G, effect.source, effect.dest);
+			break;
+		}
 		case 'moveHex':
 			moveHex(G, effect.from, effect.to);
 			break;

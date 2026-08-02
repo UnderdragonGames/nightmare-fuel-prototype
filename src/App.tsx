@@ -19,8 +19,10 @@ import { PlayerCard } from './ui/PlayerCard';
 import { StateLab } from './ui/StateLab';
 import { getNightmareByName } from './game/nightmares';
 import { resolveCardActions, resolveCardEffects, type CardActionResolveContext } from './game/cardActions';
+import { actionEffectsInvalidReason } from './game/effects';
 import { useIsMobile } from './ui/useIsMobile';
 import { ZoneTabBar } from './ui/ZoneTabBar';
+import { Icon } from './ui/Icon';
 import { ActionModeStrip, type ActionMode } from './ui/ActionModeStrip';
 import {
 	cancelMatchRemote,
@@ -139,6 +141,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
 	const [abilityFlow, setAbilityFlow] = React.useState<AbilityFlow | null>(null);
 	const [discardModalOpen, setDiscardModalOpen] = React.useState(false);
+	const [exportCopied, setExportCopied] = React.useState(false);
 
 	// Network session (null in local games). matchData is only provided by the
 	// multiplayer server, so its presence — not the store — gates network UI.
@@ -506,8 +509,17 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		action.type === 'replaceHexWithDead' || (action.type === 'replaceHexColor' && !isPathMode),
 	);
 	const actionNeedsMove = selectedActionList.some((action) =>
-		action.type === 'moveHex' || (action.type === 'replaceHexColor' && isPathMode) || action.type === 'replaceLaneColor',
+		action.type === 'moveHex' || (action.type === 'replaceHexColor' && isPathMode) || action.type === 'replaceLaneColor'
+		|| (action.type === 'grantExtraPlacement' && isPathMode),
 	);
+	// Seize the Opportunity: the free lane's color is fixed (last placed), and in
+	// path mode color == direction, so picking the start determines the end.
+	const actionFreeLaneColor = (() => {
+		if (!isPathMode) return null;
+		const grant = selectedActionList.find((action) => action.type === 'grantExtraPlacement');
+		if (!grant) return null;
+		return ('color' in grant && grant.color === 'lastPlaced' ? G.action.lastPlacedColor : null);
+	})();
 	const actionNeedsReplaceColor = selectedActionList.some((action) =>
 		action.type === 'replaceHexColor' || action.type === 'replaceLaneColor',
 	);
@@ -599,6 +611,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (msg.includes('choiceIndex')) return 'Pick an option.';
 		if (msg.includes('moveFrom') || msg.includes('moveTo')) return 'Pick the move source and destination.';
 		if (msg.includes('replaceColor')) return 'Pick a replacement color.';
+		if (msg.includes('lastPlacedColor')) return 'No lane has been placed yet — there is no color to copy.';
 		if (msg.includes('chosenStat')) return 'Pick a stat.';
 		return msg;
 	};
@@ -606,7 +619,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	let actionResolveError: string | null = null;
 	if (selectedActionCard && actionLimitAllows) {
 		try {
-			resolveCardEffects(selectedActionCard, buildActionContext());
+			const resolved = resolveCardEffects(selectedActionCard, buildActionContext());
+			// Board-targeting effects: mirror the engine's pre-check so a bad
+			// target reads as an error here instead of a rejected move.
+			actionResolveError = actionEffectsInvalidReason(G, resolved);
 		} catch (err) {
 			actionResolveError = humanizeActionError(err instanceof Error ? err.message : 'Action requires more input.');
 		}
@@ -627,8 +643,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
 		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
 	};
+	const shortcutRef = React.useRef<{ undo: () => void; endTurn: () => void; isMyTurn: boolean }>({ undo: () => {}, endTurn: () => {}, isMyTurn: false });
 	React.useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
+			const target = e.target as HTMLElement | null;
+			if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+			if (e.key === 'u' || e.key === 'U') { shortcutRef.current.undo(); return; }
+			if ((e.key === 'e' || e.key === 'E') && shortcutRef.current.isMyTurn) { shortcutRef.current.endTurn(); return; }
 			if (e.key !== 'Escape') return;
 			const s = escStateRef.current;
 			if (s.abilityFlow !== null) { setAbilityFlow(null); return; }
@@ -659,11 +680,25 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		else if (G.lanes.length < prev) playSfx('block');
 	}, [G.lanes.length]);
 
+	// A turn ended (any player's): dramatic hit for everyone; then, if the new
+	// turn is yours, the chime rings on top a beat later.
+	const prevPlayerRef = React.useRef<string | null>(null);
+	React.useEffect(() => {
+		const was = prevPlayerRef.current;
+		prevPlayerRef.current = currentPlayer;
+		if (was === null || was === currentPlayer) return; // initial mount / no change
+		if (ctx.gameover || !allSeatsJoined) return;
+		playSfx('turn-end');
+	}, [currentPlayer, ctx.gameover, allSeatsJoined]);
+
 	const prevMyTurnRef = React.useRef(isMyTurn);
 	React.useEffect(() => {
 		const was = prevMyTurnRef.current;
 		prevMyTurnRef.current = isMyTurn;
-		if (!was && isMyTurn && !ctx.gameover && allSeatsJoined) playSfx('your-turn');
+		if (!was && isMyTurn && !ctx.gameover && allSeatsJoined) {
+			const t = setTimeout(() => playSfx('your-turn'), 380);
+			return () => clearTimeout(t);
+		}
 	}, [isMyTurn, ctx.gameover, allSeatsJoined]);
 
 	React.useEffect(() => {
@@ -723,6 +758,31 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (flow.step === 'dest') { castAbility({ source: flow.source, coord }); }
 	};
 
+	// Mobile: once a board pick completes the card's inputs, play it right there
+	// instead of re-opening the full-screen modal just to press Play. Returns
+	// true when the card was played (desktop and incomplete cards fall through).
+	const tryAutoPlayAfterPick = (overrides: Partial<CardActionResolveContext>): boolean => {
+		if (!isMobile || selectedCard === null) return false;
+		const card = myHand[selectedCard];
+		if (!card?.isAction || !actionLimitAllows) return false;
+		try {
+			const effects = resolveCardEffects(card, { ...buildActionContext(), ...overrides });
+			if (actionEffectsInvalidReason(G, effects) !== null) return false;
+			moves.playActionCard?.({ handIndex: selectedCard, effects });
+			playSfx('action');
+			setSelectedCard(null);
+			setSelectedColor(null);
+			setSelectedSourceDot(null);
+			setActionModalOpen(false);
+			setActionCoordInput('');
+			setActionMoveFromInput('');
+			setActionMoveToInput('');
+			return true;
+		} catch {
+			return false; // more input needed — the modal reopens to collect it
+		}
+	};
+
 	const onHexClick = (coord: Co) => {
 		// Nightmare ability targeting — intercept before everything else.
 		if (abilityFlow !== null) {
@@ -735,12 +795,24 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			if (actionPickingCoord === 'coord') {
 				setActionCoordInput(coordStr);
 				setActionPickingCoord(null);
+				tryAutoPlayAfterPick({ coord });
 			} else if (actionPickingCoord === 'moveFrom') {
 				setActionMoveFromInput(coordStr);
-				setActionPickingCoord('moveTo'); // auto-advance to picking destination
+				if (actionFreeLaneColor) {
+					// Free-lane placement: destination is dictated by the color's
+					// direction, so fill it in instead of asking for a second pick.
+					const dir = rules.COLOR_TO_DIR[actionFreeLaneColor];
+					const dest = { q: coord.q + dir.q, r: coord.r + dir.r };
+					setActionMoveToInput(`${dest.q},${dest.r}`);
+					setActionPickingCoord(null);
+					tryAutoPlayAfterPick({ moveFrom: coord, moveTo: dest });
+				} else {
+					setActionPickingCoord('moveTo'); // auto-advance to picking destination
+				}
 			} else if (actionPickingCoord === 'moveTo') {
 				setActionMoveToInput(coordStr);
 				setActionPickingCoord(null);
+				tryAutoPlayAfterPick({ moveTo: coord });
 			}
 			return;
 		}
@@ -976,13 +1048,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const viewerNightmareState = viewerPlayer?.nightmareState;
 	const viewerPrefs = viewerPlayer?.prefs;
 
-	// Undo / stash / end-turn toolbar. Mobile: floating bar. Desktop: docked
-	// into the shelf's right end.
-	const floatingToolbar = (() => {
-		// Undo is enabled only when a move remains to undo this turn and the
-		// last remaining one is undoable — a non-undoable move (an action
-		// card) also locks everything played before it. Undone moves stay
-		// in the log with an UNDO entry appended, so remaining = moves − undos.
+	// Undo is enabled only when a move remains to undo this turn and the
+	// last remaining one is undoable — a non-undoable move (an action card)
+	// also locks everything played before it. Undone moves stay in the log
+	// with an UNDO entry appended, so remaining = moves − undos.
+	const canUndo = (() => {
 		const thisTurn = Array.isArray(log)
 			? (log as Array<{ turn?: number; action?: { type?: string; payload?: { type?: string } } }>).filter(
 					(e) => e.turn === ctx.turn,
@@ -992,46 +1062,82 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		const undosDone = thisTurn.filter((e) => e.action?.type === 'UNDO').length;
 		const remaining = movesMade.slice(0, Math.max(0, movesMade.length - undosDone));
 		const lastMove = remaining[remaining.length - 1]?.action?.payload?.type;
-		const canUndo = isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
-		return (
-			<div className="floating-toolbar">
-				<button
-					className="floating-action"
-					onClick={() => {
-						undo();
-						playSfx('undo');
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setPendingRotationTile(null);
-						setRotatable([]);
-						setActionMode('place');
-						setDiscardSelection([]);
-					}}
-					disabled={!canUndo}
-					title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
-				>
-					⟲
-				</button>
-		<button
-			className="floating-action"
-			onClick={onStash}
-			disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
-			title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
-		>
-			⬇
-		</button>
-		<button
-			className="floating-action floating-action--primary floating-action--end-turn"
-			onClick={onEndTurn}
-			disabled={!isMyTurn}
-			title="End Turn"
-		>
-			<span aria-hidden="true">⏳</span>
-			<span className="floating-action__label">End Turn</span>
-		</button>
-			</div>
-		);
+		return isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
 	})();
+
+	const handleUndo = () => {
+		if (!canUndo) return;
+		undo();
+		playSfx('undo');
+		setSelectedCard(null);
+		setSelectedColor(null);
+		setPendingRotationTile(null);
+		setRotatable([]);
+		setActionMode('place');
+		setDiscardSelection([]);
+	};
+
+	// Every button says what it does — and, when disabled, why.
+	const canStash = isMyTurn && selectedCard !== null && stage === 'active' && G.treasure.length < rules.TREASURE_MAX;
+	const stashTitle = !isMyTurn
+		? 'Wait for your turn'
+		: selectedCard === null
+			? 'Select a card first, then stash it to Treasure (you draw an extra card at end of turn)'
+			: G.treasure.length >= rules.TREASURE_MAX
+				? 'Treasure is full'
+				: `Stash the selected card to Treasure — draw ${1 + stashBonus} extra at end of turn`;
+
+	shortcutRef.current = { undo: handleUndo, endTurn: onEndTurn, isMyTurn };
+
+	// Hearthstone-style cue: End Turn glows when nothing in hand can be
+	// placed anywhere, so it's clearly time to pass.
+	const hasAnyPlay = React.useMemo(() => {
+		if (!isMyTurn || locked) return true; // no glow when it isn't your decision
+		if (!isPathMode) return true;
+		const coords = buildAllCoords(G.radius);
+		for (const card of myHand) {
+			if (card.isAction) return true; // an action card is always a potential play
+			for (const source of coords) {
+				if (getValidDestinations(source, card.colors as Color[]).length > 0) return true;
+			}
+		}
+		return false;
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- getValidDestinations captures only listed deps
+	}, [G, isMyTurn, isPathMode, locked, myHand]);
+
+	// Undo / stash / end-turn toolbar. Mobile: floating bar. Desktop: docked
+	// into the shelf's right end.
+	const floatingToolbar = (
+		<div className="floating-toolbar">
+			<button
+				className="floating-action floating-action--pill"
+				onClick={handleUndo}
+				disabled={!canUndo}
+				title={canUndo ? 'Undo your last move (U)' : 'Nothing to undo this turn'}
+			>
+				<Icon name="undo" />
+				<span className="floating-action__label">Undo</span>
+			</button>
+			<button
+				className="floating-action floating-action--pill"
+				onClick={onStash}
+				disabled={!canStash}
+				title={stashTitle}
+			>
+				<Icon name="stash" />
+				<span className="floating-action__label">Stash</span>
+			</button>
+			<button
+				className={`floating-action floating-action--pill floating-action--primary ${isMyTurn && !hasAnyPlay ? 'floating-action--glow' : ''}`}
+				onClick={onEndTurn}
+				disabled={!isMyTurn}
+				title={isMyTurn ? 'End your turn and refill your hand (E)' : 'Wait for your turn'}
+			>
+				<Icon name="hourglass" />
+				<span className="floating-action__label">End Turn</span>
+			</button>
+		</div>
+	);
 
 
 	return (
@@ -1150,15 +1256,19 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									{viewerNightmareState && (
 										<div className="hand-nightmare__ability-uses">
 											Uses left: {viewerNightmareState.abilityUsesRemaining}
+											{(viewerNightmareState.abilityUsesRemaining > 0 && !isMyTurn && !ctx.gameover) ? ' — usable on your turn' : ''}
 										</div>
 									)}
-									{isMyTurn && !locked && !ctx.gameover && (viewerNightmareState?.abilityUsesRemaining ?? 0) > 0 && (
+									{/* Stays visible (disabled) off-turn — a vanishing button reads
+									    as "the ability is gone" after its first use. */}
+									{!ctx.gameover && (viewerNightmareState?.abilityUsesRemaining ?? 0) > 0 && (
 										<button
 											className="hand-nightmare__use-btn"
 											onClick={startAbility}
-											disabled={abilityFlow !== null}
+											disabled={abilityFlow !== null || !isMyTurn || locked}
+											title={!isMyTurn ? 'Wait for your turn.' : locked ? 'Waiting for the current move to finish.' : 'Use your nightmare ability'}
 										>
-											{abilityFlow !== null ? 'Choosing target…' : '✨ Use Ability'}
+											{abilityFlow !== null ? 'Choosing target…' : <><Icon name="sparkles" size={14} /> Use Ability</>}
 										</button>
 									)}
 								</div>
@@ -1278,6 +1388,20 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						deckCount={G.deckSize ?? G.secret.deck.length}
 						discardCount={G.discard.length}
 						onOpenDiscard={() => setDiscardModalOpen(true)}
+						topSlot={
+							<ActionModeStrip
+								mode={actionMode}
+								onModeChange={handleModeChange}
+								canRotate={canRotateRule}
+								canBlock={canBlockRule}
+								rotateCost={rotateCost}
+								blockCost={blockCost}
+								disabled={!isMyTurn || locked}
+								discardCount={discardSelection.length}
+								discardNeeded={discardNeeded}
+								handSize={myHand.length}
+							/>
+						}
 					>
 						{floatingToolbar}
 					</Shelf>
@@ -1287,7 +1411,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					{actionMode !== 'place' && (
 						<div className="discard-tray">
 							<span className="discard-tray__title">
-								{actionMode === 'block' ? '🛇 Block' : '↻ Rotate'} — discard {discardNeeded} card{discardNeeded > 1 ? 's' : ''}
+								<Icon name={actionMode === 'block' ? 'ban' : 'rotate'} size={14} /> {actionMode === 'block' ? 'Block' : 'Rotate'} — discard {discardNeeded} card{discardNeeded > 1 ? 's' : ''}
 							</span>
 							<div className="discard-tray__slots">
 								{Array.from({ length: discardNeeded }, (_, i) => {
@@ -1488,8 +1612,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="coord-pick-banner">
 					<span className="coord-pick-banner__text">
 						{actionPickingCoord === 'coord' && 'Click a hex to select target'}
-						{actionPickingCoord === 'moveFrom' && 'Click a hex to select source'}
-						{actionPickingCoord === 'moveTo' && 'Click a hex to select destination'}
+						{actionPickingCoord === 'moveFrom' && (actionFreeLaneColor
+							? `Click where the free ${actionFreeLaneColor} lane starts`
+							: actionNeedsReplaceColor
+								? 'Click one end of the lane to recolor'
+								: 'Click a hex to select source')}
+						{actionPickingCoord === 'moveTo' && (actionNeedsReplaceColor
+							? 'Click the other end of the lane'
+							: 'Click a hex to select destination')}
 					</span>
 					<button
 						className="coord-pick-banner__cancel"
@@ -1590,7 +1720,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						{actionNeedsMove && (
 							<>
 								<div className="action-panel__field">
-									<span className="action-panel__label">Move From</span>
+									<span className="action-panel__label">
+										{actionFreeLaneColor ? 'Lane start' : actionNeedsReplaceColor ? 'Lane end A' : 'Move From'}
+									</span>
 									<div className="action-panel__coord-pick">
 										{actionMoveFromInput ? (
 											<>
@@ -1613,7 +1745,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									</div>
 								</div>
 								<div className="action-panel__field">
-									<span className="action-panel__label">Move To</span>
+									<span className="action-panel__label">
+										{actionFreeLaneColor ? 'Lane end (auto)' : actionNeedsReplaceColor ? 'Lane end B' : 'Move To'}
+									</span>
 									<div className="action-panel__coord-pick">
 										{actionMoveToInput ? (
 											<>
@@ -1672,55 +1806,61 @@ const GameBoard: React.FC<AppBoardProps> = ({
 								</select>
 							</label>
 						)}
-						{actionNeedsPrefs && (
-							<>
-								<label className="action-panel__field">
-									<span className="action-panel__label">Primary</span>
-									<select
-										className="action-panel__select"
-										value={actionPrefPrimary}
-										onChange={(e) => setActionPrefPrimary(e.target.value as Color)}
-									>
-										<option value="">Select</option>
-										{rules.COLORS.map((col) => (
-											<option key={`pp-${col}`} value={col}>
-												{col}
-											</option>
-										))}
-									</select>
-								</label>
-								<label className="action-panel__field">
-									<span className="action-panel__label">Secondary</span>
-									<select
-										className="action-panel__select"
-										value={actionPrefSecondary}
-										onChange={(e) => setActionPrefSecondary(e.target.value as Color)}
-									>
-										<option value="">Select</option>
-										{rules.COLORS.map((col) => (
-											<option key={`ps-${col}`} value={col}>
-												{col}
-											</option>
-										))}
-									</select>
-								</label>
-								<label className="action-panel__field">
-									<span className="action-panel__label">Tertiary</span>
-									<select
-										className="action-panel__select"
-										value={actionPrefTertiary}
-										onChange={(e) => setActionPrefTertiary(e.target.value as Color)}
-									>
-										<option value="">Select</option>
-										{rules.COLORS.map((col) => (
-											<option key={`pt-${col}`} value={col}>
-												{col}
-											</option>
-										))}
-									</select>
-								</label>
-							</>
-						)}
+						{actionNeedsPrefs && (() => {
+							// Reordering only shuffles your OWN three colors.
+							const ownColors: Color[] = viewerPrefs
+								? [viewerPrefs.primary, viewerPrefs.secondary, viewerPrefs.tertiary]
+								: [...rules.COLORS];
+							return (
+								<>
+									<label className="action-panel__field">
+										<span className="action-panel__label">Primary</span>
+										<select
+											className="action-panel__select"
+											value={actionPrefPrimary}
+											onChange={(e) => setActionPrefPrimary(e.target.value as Color)}
+										>
+											<option value="">Select</option>
+											{ownColors.map((col) => (
+												<option key={`pp-${col}`} value={col}>
+													{col}
+												</option>
+											))}
+										</select>
+									</label>
+									<label className="action-panel__field">
+										<span className="action-panel__label">Secondary</span>
+										<select
+											className="action-panel__select"
+											value={actionPrefSecondary}
+											onChange={(e) => setActionPrefSecondary(e.target.value as Color)}
+										>
+											<option value="">Select</option>
+											{ownColors.map((col) => (
+												<option key={`ps-${col}`} value={col}>
+													{col}
+												</option>
+											))}
+										</select>
+									</label>
+									<label className="action-panel__field">
+										<span className="action-panel__label">Tertiary</span>
+										<select
+											className="action-panel__select"
+											value={actionPrefTertiary}
+											onChange={(e) => setActionPrefTertiary(e.target.value as Color)}
+										>
+											<option value="">Select</option>
+											{ownColors.map((col) => (
+												<option key={`pt-${col}`} value={col}>
+													{col}
+												</option>
+											))}
+										</select>
+									</label>
+								</>
+							);
+						})()}
 						{actionNeedsRevealedPick && (
 							<label className="action-panel__field">
 								<span className="action-panel__label">Pick Index</span>
@@ -1792,34 +1932,37 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				/>
 			)}
 
-			{/* ACTION MODE STRIP — above hand zone */}
-			<ActionModeStrip
-				mode={actionMode}
-				onModeChange={handleModeChange}
-				canRotate={canRotateRule}
-				canBlock={canBlockRule}
-				rotateCost={rotateCost}
-				blockCost={blockCost}
-				disabled={!isMyTurn || locked}
-				discardCount={discardSelection.length}
-				discardNeeded={discardNeeded}
-				handSize={myHand.length}
-			/>
+			{/* ACTION MODE STRIP — mobile keeps the floating strip; desktop docks
+			    it into the shelf (modes are hand-actions). */}
+			{isMobile && (
+				<ActionModeStrip
+					mode={actionMode}
+					onModeChange={handleModeChange}
+					canRotate={canRotateRule}
+					canBlock={canBlockRule}
+					rotateCost={rotateCost}
+					blockCost={blockCost}
+					disabled={!isMyTurn || locked}
+					discardCount={discardSelection.length}
+					discardNeeded={discardNeeded}
+					handSize={myHand.length}
+				/>
+			)}
 
 			{/* FLOATING ACTIONS TOOLBAR (mobile; desktop docks it in the shelf) */}
 			{isMobile && floatingToolbar}
 
-			{/* Secret export state button */}
+			{/* Secret export state button (desktop only — a dev tool) */}
 			<button
 				className="secret-export-btn"
 				onClick={() => {
 					navigator.clipboard.writeText(JSON.stringify(G));
-					const btn = document.querySelector('.secret-export-btn') as HTMLElement | null;
-					if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = '⚙'; }, 1200); }
+					setExportCopied(true);
+					setTimeout(() => setExportCopied(false), 1200);
 				}}
 				title="Export state to clipboard (for Lab)"
 			>
-				⚙
+				{exportCopied ? <Icon name="check" size={13} /> : <Icon name="gear" size={13} />}
 			</button>
 
 			{/* Your-turn indicator (desktop; the mobile status bar has its own) */}
@@ -1842,11 +1985,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 										onClick={() => navigator.clipboard.writeText(network.matchID)}
 										title="Copy match code"
 									>
-										📋
+										<Icon name="copy" size={14} />
 									</button>
 								</div>
 								<button className="waiting-room__share" onClick={handleShareInvite}>
-									{inviteShared === 'copied' ? 'Invite link copied!' : '📤 Share Invite Link'}
+									{inviteShared === 'copied' ? 'Invite link copied!' : <><Icon name="share" size={15} /> Share Invite Link</>}
 								</button>
 							</>
 						)}
@@ -2092,7 +2235,7 @@ const NetworkModal: React.FC<{
 									onClick={() => navigator.clipboard.writeText(network.matchID)}
 									title="Copy"
 								>
-									📋
+									<Icon name="copy" size={14} />
 								</button>
 							</div>
 							<div className="network-status__server">
@@ -2100,7 +2243,7 @@ const NetworkModal: React.FC<{
 								<span>{serverURL}</span>
 							</div>
 							<button className="btn btn--primary" onClick={handleShare}>
-								{shareState === 'copied' ? 'Link copied!' : '📤 Share Invite'}
+								{shareState === 'copied' ? 'Link copied!' : <><Icon name="share" size={15} /> Share Invite</>}
 							</button>
 							<button className="btn btn--danger" onClick={handleDisconnect}>
 								Leave Match
@@ -2274,16 +2417,14 @@ const App: React.FC = () => {
 						onClick={() => setSoundMuted(!soundMuted)}
 						title={soundMuted ? 'Unmute sounds' : 'Mute sounds'}
 					>
-						{soundMuted ? '🔇' : '🔊'}
+						<Icon name={soundMuted ? 'volume-off' : 'volume'} />
 					</button>
 					<button
 						className={`setup-controls__network ${network ? 'setup-controls__network--connected' : ''}`}
 						onClick={() => setNetworkModalOpen(true)}
 						title={network ? 'Connected to network game' : 'Network game'}
 					>
-						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-							<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-						</svg>
+						<Icon name="globe" />
 					</button>
 				</div>
 			)}

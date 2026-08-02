@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Card, Color, Rules } from '../game/types';
-import { serializeCard } from '../game/helpers';
+import { axialToPixel, serializeCard } from '../game/helpers';
 import { CardZone } from './CardZone';
 
 // Neural pathway card component
@@ -16,18 +16,18 @@ export const NeuralCard: React.FC<{
 		(a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b)
 	);
 
-	// Calculate pathway positions - radiate from center
-	const pathways = sortedColors.map((color, i) => {
-		const angleOffset = -90; // Start from top
-		const spreadAngle = sortedColors.length === 1 ? 0 : 120; // Total spread
-		const startAngle = angleOffset - spreadAngle / 2;
-		const angle = sortedColors.length === 1
-			? angleOffset
-			: startAngle + (i / (sortedColors.length - 1)) * spreadAngle;
-		const rad = (angle * Math.PI) / 180;
-		const endX = 40 + Math.cos(rad) * 24;
-		const endY = 35 + Math.sin(rad) * 24;
-		return { color, endX, endY };
+	// Each color's segment points in the direction that color actually travels
+	// on the board (same axial→pixel transform the board uses), so the card
+	// previews the real placement direction.
+	const pathways = sortedColors.map((color) => {
+		const dir = rules.COLOR_TO_DIR[color];
+		const px = axialToPixel(dir, 1);
+		const len = Math.hypot(px.x, px.y) || 1;
+		return {
+			color,
+			endX: 40 + (px.x / len) * 24,
+			endY: 35 + (px.y / len) * 24,
+		};
 	});
 
 	const expandedClass = size === 'expanded' ? ' neural-card--expanded' : '';

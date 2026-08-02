@@ -21,12 +21,13 @@ type Props = {
 	origins?: Co[];
 	pendingRotationTile?: Co | null;
 	onRotationSelect?: (rotation: number) => void;
-	selectedColor?: Color | null; // for path mode preview
+	/** Accepted for API stability; previews now derive color per-destination. */
+	selectedColor?: Color | null;
 	selectedSourceDot?: Co | null; // for path mode: currently selected source dot
 	showCoords?: boolean;
 };
 
-export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes = [], phantomOpacity = 0.35, phantomDash = '6,4', radius, onHexClick, highlightCoords = [], highlightColor = '#000000', highlightColorByCoord, highlightIsRotation = false, origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null, showCoords = false }) => {
+export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes = [], phantomOpacity = 0.35, phantomDash = '6,4', radius, onHexClick, highlightCoords = [], highlightColor = '#000000', highlightColorByCoord, highlightIsRotation = false, origins = [], pendingRotationTile = null, onRotationSelect, selectedSourceDot = null, showCoords = false }) => {
 	const size = rules.UI.HEX_SIZE;
 	const coords = buildAllCoords(radius);
 	const width = size * 3 * (radius + 1);
@@ -284,8 +285,10 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				</g>
 			)}
 			
-			{/* Layer 3.5: Preview lanes for highlighted hexes (path mode only) */}
-			{isPathMode && selectedColor && selectedSourceDot && (
+			{/* Layer 3.5: Preview lanes for highlighted hexes (path mode only).
+			    Not gated on selectedColor: path mode derives color from direction,
+			    so each ghost segment already shows the color the lane will become. */}
+			{isPathMode && selectedSourceDot && !highlightIsRotation && (
 				<g>
 					{highlightCoords.map((c) => {
 						const center = axialToPixel(c, size);

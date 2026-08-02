@@ -338,6 +338,7 @@ export type GameEffect =
 	| { type: 'replaceHexWithDead'; coord: Co }
 	| { type: 'replaceHexColor'; coord: Co; color: Color }
 	| { type: 'replaceLaneColor'; from: Co; to: Co; color: Color }
+	| { type: 'placeFreeLane'; source: Co; dest: Co; color?: Color }
 	| { type: 'moveHex'; from: Co; to: Co }
 	| { type: 'reorderPlayerPrefs'; playerId: PlayerID; order: PlayerPrefs }
 	| { type: 'setAgendaOverride'; playerId: PlayerID; stat: Stat | null }

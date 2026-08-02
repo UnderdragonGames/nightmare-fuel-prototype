@@ -267,7 +267,16 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 				const color = action.color === 'lastPlaced'
 					? requireValue(ctx.lastPlacedColor ?? undefined, 'grantExtraPlacement requires lastPlacedColor.')
 					: requireValue(ctx.replaceColor, 'grantExtraPlacement requires color.');
-				pushEffect({ type: 'grantExtraPlacements', playerId: ctx.currentPlayerId, count: 1, color });
+				if (ctx.mode === 'path') {
+					// Path mode has no placement counter to spend (placements are
+					// card-limited, not count-limited) — "an additional hex" means a
+					// lane of that color placed without spending a card.
+					const source = requireValue(ctx.moveFrom, 'grantExtraPlacement requires a lane start (moveFrom).');
+					const dest = requireValue(ctx.moveTo, 'grantExtraPlacement requires a lane end (moveTo).');
+					pushEffect({ type: 'placeFreeLane', source, dest, color });
+				} else {
+					pushEffect({ type: 'grantExtraPlacements', playerId: ctx.currentPlayerId, count: 1, color });
+				}
 				break;
 			}
 			case 'randomStealCard': {

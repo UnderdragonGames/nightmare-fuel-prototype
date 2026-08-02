@@ -23,6 +23,8 @@ export const Shelf: React.FC<{
 	onOpenDiscard: () => void;
 	/** Docked on the right end of the shelf (undo / end-turn toolbar). */
 	children?: React.ReactNode;
+	/** Docked above the cards (the place/rotate/block mode strip). */
+	topSlot?: React.ReactNode;
 }> = ({
 	rules,
 	cards,
@@ -35,11 +37,36 @@ export const Shelf: React.FC<{
 	discardCount,
 	onOpenDiscard,
 	children,
+	topSlot,
 }) => {
 	const [hovered, setHovered] = React.useState<number | null>(null);
 
+	// Poker-style squeeze: once the hand outgrows its width budget (e.g. a
+	// 10-card hand after draw effects), cards overlap instead of pushing the
+	// shelf off-screen. Hover/selection raise the card above its neighbors,
+	// and the hover-zoom stays fully readable.
+	const [viewportW, setViewportW] = React.useState(() =>
+		typeof window === 'undefined' ? 1280 : window.innerWidth,
+	);
+	React.useEffect(() => {
+		const onResize = (): void => setViewportW(window.innerWidth);
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	}, []);
+	const CARD_W = 90;
+	const GAP = 12;
+	// Piles + the vertical toolbar + gaps/paddings claim ~400px of the row,
+	// and the centered shelf must stay clear of the ~200px sidebar each side.
+	const budget = Math.max(280, viewportW - 800);
+	const natural = cards.length * CARD_W + Math.max(0, cards.length - 1) * GAP;
+	const overlap = natural > budget && cards.length > 1
+		? Math.min(CARD_W - 22, Math.ceil((cards.length * CARD_W - budget) / (cards.length - 1)))
+		: 0;
+
 	return (
 		<div className="shelf">
+			{topSlot && <div className="shelf__top">{topSlot}</div>}
+			<div className="shelf__row">
 			<div className="shelf__piles">
 				<div className="shelf__pile" title="Cards left in the deck">
 					<b>{deckCount}</b>
@@ -51,7 +78,7 @@ export const Shelf: React.FC<{
 				</button>
 			</div>
 
-			<div className="shelf__cards">
+			<div className={`shelf__cards ${overlap > 0 ? 'shelf__cards--tight' : ''}`}>
 				{cards.map((card, i) => {
 					const isDiscardPick = discardMode && discardSelection.includes(i);
 					const isSelected = !discardMode && i === selectedIndex;
@@ -64,6 +91,7 @@ export const Shelf: React.FC<{
 								isDiscardPick ? 'shelf__card--discard' : '',
 								discardMode && !isDiscardPick ? 'shelf__card--dimmed' : '',
 							].filter(Boolean).join(' ')}
+							style={overlap > 0 && i > 0 ? { marginLeft: -overlap } : undefined}
 							onMouseEnter={() => setHovered(i)}
 							onMouseLeave={() => setHovered((h) => (h === i ? null : h))}
 						>
@@ -108,6 +136,7 @@ export const Shelf: React.FC<{
 			</div>
 
 			{children && <div className="shelf__tools">{children}</div>}
+			</div>
 		</div>
 	);
 };

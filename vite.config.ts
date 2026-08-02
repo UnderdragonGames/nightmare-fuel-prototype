@@ -12,7 +12,9 @@ const gitCommit = (() => {
   try {
     return execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim()
   } catch {
-    return 'unknown'
+    // CI/PaaS builds without a .git dir (e.g. Railway) expose the sha via env.
+    const envSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.SOURCE_COMMIT || process.env.GIT_COMMIT_SHA
+    return envSha ? envSha.slice(0, 7) : 'unknown'
   }
 })()
 

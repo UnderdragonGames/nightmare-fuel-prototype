@@ -7,6 +7,59 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-02 — v0.2.0 (PR #6)
+
+### Re-examine Priorities: only your own colors, reordered
+- **Feedback (Julian):** "Re-examine Priorities should raise an error if the person's own colors aren't included."
+- **Change:** the reorder is now validated as a permutation of the player's current three colors — swapping in a color you don't have (or duplicating one) is rejected at three layers: the modal dropdowns only offer your own colors, an invalid combination shows an error before Play, and the engine refuses the move (card stays in hand) and the effect itself.
+
+### [ux] Placement previews on the board point where the colors go
+- **Feedback (Julian):** "When placing a card, the path direction should line up with the colors that they will become. […] I didn't mean on the card art, I meant when you place it on the board."
+- **Change:** after picking a source dot, each valid destination now shows a dashed ghost lane from the source in the color that lane would become (the preview layer existed but was gated on a color selection that path mode never sets — only dotted rings ever showed). The card-art change (segments drawn in each color's true board direction) shipped alongside and stays.
+
+### [ux] Use Ability button no longer vanishes off-turn
+- **Feedback (Julian, screenshot):** "What happened to the use ability button? I used it once, now I don't see it."
+- **Diagnosis:** the button only rendered on your own turn — after using an ability and ending the turn it disappeared, reading as "the ability is gone" even with uses left.
+- **Change:** it stays visible whenever uses remain, disabled off-turn, and the uses line reads "Uses left: 1 — usable on your turn."
+
+### [ux] Mobile: board pick completes the action card (no modal round-trip)
+- **Feedback (Julian):** "on mobile we don't need an overlay when choosing a spot to place."
+- **Change:** on mobile, when a board pick supplies the last thing an action card needs (Prey's lane, Seize's free-lane start), the card plays right there — the full-screen card overlay no longer reopens just to press Play. It still returns if more input is needed or the target is invalid. Desktop keeps the explicit confirm.
+- **Outcome:** _pending — confirm this was the overlay that felt unnecessary._
+
+### "This Prey is Mine" and "Seize the Opportunity" fixed (were silent no-ops)
+- **Feedback (Julian):** "This Prey is Mine doesn't seem to have an effect. Seize the Opportunity also doesn't work."
+- **Diagnosis:** Prey's lane recolor only matched a lane picked in the exact direction it was stored — picking the two ends in the other order silently did nothing and still consumed the card. Seize granted an "extra placement" counter that nothing in path mode ever consumes (placements are card-limited, not count-limited), so it was a guaranteed no-op — the same trap as the Dragon/Werewolf ability before it.
+- **Change:** Prey now matches the lane in either direction, and requires an actually different color. Seize now places a **free lane** (no card spent) of the last-placed color — pick the start, the end auto-fills from the color's direction. Mistargeted plays are rejected up front (card stays in hand) with a reason shown in the modal, mirroring how abilities validate. Bots skip both cards (they don't do board-targeting cards yet).
+- **Outcome:** _pending — confirm both cards feel right in the next playtest._
+
+### Orange separated from yellow
+- **Feedback (Julian):** "The orange color needs to be a little more distinct from the yellow, they are too close in value and Hue."
+- **Change:** orange lane/arrow color moved from `#ffbb33` (amber, hue 38°) to `#f97316` (true orange, hue 25°) — darker in value and further in hue from yellow's `#ffee55`.
+- **Outcome:** _pending — check O vs Y readability on the board next playtest._
+- **Follow-up feedback (Julian, 2026-08-02, playing a version predating the fix):** "Potentially use more distinct colors, such as black or white. This is not an instruction, just to be added to the feedback section because yellow and orange are confusingly similar."
+- **Design note:** if the new orange still isn't distinct enough in play, the next lever is replacing one of the pair with something categorically different (white is viable on the dark board; black would need an outline treatment). No change made — awaiting a playtest on the new palette first.
+
+### [ux] Mode strip docked into the desktop shelf; End Turn nudge
+- **Feedback (Julian):** approved the guidance ("I like") to dock the Place/Rotate/Block strip into the shelf and nudge toward End Turn; also asked whether the labeled pills work on mobile ("that takes up a lot of horizontal room").
+- **Change:** on desktop the Place/Rotate/Block strip now sits inside the hand shelf (one control surface instead of a floating box over the board); mobile keeps the floating strip. End Turn pulses gently when it's your turn and you have no playable card/placement left. Mobile widths verified: all three labeled pills fit at 390px; below 380px Undo/Stash collapse to icons while End Turn keeps its label.
+
+### [ux] Big hands squeeze poker-style on the shelf
+- **Feedback (Julian):** "keep in mind you could have 10 cards in your hand, not sure if you accounted for that."
+- **Change:** it wasn't — 10 cards in a flat row would have pushed the shelf past the viewport edge. Once the hand outgrows its width budget, shelf cards now overlap like a held poker hand (hovering or selecting raises the card above its neighbors; the hover-zoom stays fully readable). Verified with a forced 10-card hand at 1280px (~43px of each card visible) and 1024px (~22px), both clear of the sidebar.
+
+### [ux] Turn-end drama + your-turn bell
+- **Feedback (Julian):** "we need a dramatic sound for whenever a turn has ended and a chime of some kind when it's your turn."
+- **Change:** new timpani-style turn-end hit plays for everyone whenever any turn ends; the your-turn sound is now a proper two-strike bell chime (inharmonic partials, long decay) that rings a beat after the turn-end hit when the turn is yours.
+
+### [ux] Labeled toolbar + keyboard shortcuts; opponent-move sounds fixed
+- **Feedback (Julian):** "we need more clarity on the undo and stash buttons"; "it doesn't seem to make sound effects when other players move."
+- **Change:** all three toolbar buttons are labeled pills (Undo / Stash / End Turn) with tooltips that explain the action — and when disabled, why ("Select a card first, then stash it to Treasure…"). Keyboard: U undoes, E ends turn, Esc cancels. Sound playback rewritten on Web Audio: iOS only allows an <audio> element started inside a user gesture, which silenced opponent-move sounds arriving over the socket; one AudioContext unlocked on first tap now covers everything.
+
+### [ux] Consistent icon set; de-crowded controls
+- **Feedback (Julian, iPhone screenshot):** "There's no reason to have these buttons so crowded. Also, we should use consistent icons, an icon font, probably."
+- **Change:** all emoji/text glyph buttons replaced with a single inline SVG stroke icon set (`src/ui/Icon.tsx` — Feather-style; chosen over an icon font: no font asset, crisp, inherits button color). Toolbar spacing widened with bigger touch targets, End Turn is a proper labeled pill on mobile, the dev export gear is hidden on mobile (it overlapped the Hand tab), and the version badge moved clear of the toolbar. Version badge now also shows the real commit on Railway builds (env sha fallback).
+
 ## 2026-08-02 — v0.1.0 (PR #5)
 
 ### [ux] Desktop hand shelf redesign (shipped)

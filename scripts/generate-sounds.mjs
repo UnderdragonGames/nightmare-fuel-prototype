@@ -48,6 +48,27 @@ const note = (freq, dur, { delay = 0, vol = 1, harmonics, attack, curve } = {}) 
 	return out;
 };
 
+// Bell strike: inharmonic partials with long exponential decay.
+const bell = (freq, dur, { delay = 0, vol = 1 } = {}) => {
+	const pad = Math.floor(delay * RATE);
+	const partials = [
+		[1, 1],
+		[2.76, 0.45],
+		[5.4, 0.18],
+		[8.9, 0.08],
+	];
+	const body = render(dur, (t, p) => {
+		const decay = Math.exp(-4.2 * p);
+		let s = 0;
+		for (const [ratio, amp] of partials) s += amp * Math.sin(2 * Math.PI * freq * ratio * t);
+		const attack = Math.min(1, t / 0.008);
+		return vol * attack * decay * s * 0.32;
+	});
+	const out = new Float32Array(pad + body.length);
+	out.set(body, pad);
+	return out;
+};
+
 const wav = (samples) => {
 	// normalize to 0.82 peak
 	let peak = 0;
@@ -107,10 +128,27 @@ const sounds = {
 		return env(p, 0.04, 1.8) * (0.4 * a + 0.4 * b + 0.3 * c);
 	}),
 
-	// Two-note rising chime — your turn.
+	// Dramatic low impact — a turn has ended. Timpani-style pitch-dropping
+	// hit with a sub fifth and a noise transient.
+	'turn-end': mix(
+		render(0.55, (t, p) => {
+			const fall = 1 - 0.45 * p;
+			const hit = tone(t, 105 * fall, [1, 0.5, 0.22]);
+			const sub = Math.sin(2 * Math.PI * 55 * fall * t);
+			return env(p, 0.004, 2.6) * (0.75 * hit + 0.5 * sub);
+		}),
+		render(0.07, (t, p) => 0.4 * (1 - p) * noise()),
+		render(0.5, (t, p) => {
+			// dark swell underneath
+			const swell = Math.sin(Math.PI * Math.min(1, p * 1.6));
+			return 0.22 * swell * tone(t, 65, [1, 0.4]);
+		}),
+	),
+
+	// Bell chime, two rising strikes — your turn.
 	'your-turn': mix(
-		note(st(-2), 0.16, { vol: 0.75 }),
-		note(st(5), 0.28, { delay: 0.12, vol: 0.95, curve: 1.8 }),
+		bell(st(5), 0.7, { vol: 0.8 }),
+		bell(st(12), 0.9, { delay: 0.16, vol: 1 }),
 	),
 
 	// Ascending arpeggio — game start.
