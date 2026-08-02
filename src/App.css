@@ -1067,6 +1067,18 @@
 	text-align: center;
 }
 
+.network-invite-code {
+	font-size: 1.05rem;
+	font-weight: 700;
+	letter-spacing: 2px;
+	color: var(--text-primary);
+}
+
+.network-invite-join {
+	margin-top: 10px;
+	width: 100%;
+}
+
 .network-section {
 	margin-bottom: 16px;
 }

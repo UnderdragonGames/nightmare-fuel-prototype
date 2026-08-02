@@ -400,6 +400,69 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		return moves;
 	}, [G, isMyTurn, isPathMode, locked, myHand, rules, selectedCard, selectedColor, selectedSourceDot]);
 
+	// Per-spot highlight colors: each potential placement is tinted with the
+	// color the move would actually play there (in path mode the direction
+	// dictates the color), instead of one uniform highlight.
+	const highlightColorByCoord = React.useMemo(() => {
+		if (!isMyTurn || locked || selectedCard === null || actionMode !== 'place') return undefined;
+		const card = myHand[selectedCard];
+		if (!card) return undefined;
+		const map: Record<string, string> = {};
+
+		if (isPathMode) {
+			// Colors a click on `dest` could play from `source`, in the same
+			// priority order the click handler uses (direction color first,
+			// then conversion / origin-finishing candidates).
+			const colorsForMove = (source: Co, dest: Co): Color[] => {
+				const out: Color[] = [];
+				const dirColor = getColorForDirection(source, dest);
+				if (dirColor && card.colors.includes(dirColor) && canPlacePath(G, source, dest, dirColor, rules)) {
+					out.push(dirColor);
+				}
+				const candidates: Color[] = selectedColor && card.colors.includes(selectedColor)
+					? [selectedColor, ...(card.colors as Color[])]
+					: (card.colors as Color[]);
+				for (const col of candidates) {
+					if (out.includes(col)) continue;
+					if (col !== dirColor && isOriginCoord(dest) && canPlacePath(G, source, dest, col, rules)) out.push(col);
+					else if (findConvertibleColor(source, dest, col)) out.push(col);
+				}
+				return out;
+			};
+
+			if (selectedSourceDot) {
+				for (const dest of availableMoveCoords) {
+					const cols = colorsForMove(selectedSourceDot, dest);
+					if (cols.length > 0) map[key(dest)] = asVisibleColor(cols[0]!);
+				}
+			} else {
+				// Source dots: tint only when every move from that dot plays a
+				// single color; ambiguous sources keep the neutral highlight.
+				for (const source of availableMoveCoords) {
+					const colSet = new Set<Color>();
+					for (const dest of getValidDestinations(source, card.colors as Color[])) {
+						for (const col of colorsForMove(source, dest)) colSet.add(col);
+					}
+					if (colSet.size === 1) map[key(source)] = asVisibleColor([...colSet][0]!);
+				}
+			}
+			return map;
+		}
+
+		// Hex mode: tint each spot with the color a click would place there.
+		const colors: Color[] = selectedColor ? [selectedColor] : (card.colors as Color[]);
+		for (const coord of availableMoveCoords) {
+			for (const color of colors) {
+				if (canPlace(G, coord, color, rules)) {
+					map[key(coord)] = asVisibleColor(color);
+					break;
+				}
+			}
+		}
+		return map;
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- helper fns capture only listed deps
+	}, [G, actionMode, availableMoveCoords, isMyTurn, isPathMode, locked, myHand, rules, selectedCard, selectedColor, selectedSourceDot]);
+
 	const blockableCoords = React.useMemo(() => {
 		if (actionMode !== 'block' || !isMyTurn || locked) return [];
 		if (rules.PLACEMENT.COST_TO_BLOCK <= 0) return [];
@@ -949,6 +1012,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					onHexClick={onHexClick}
 					highlightCoords={actionMode === 'rotate' ? rotatable : actionMode === 'block' ? blockableCoords : availableMoveCoords}
 					highlightColor={actionMode === 'rotate' ? '#8b5cf6' : actionMode === 'block' ? '#ef4444' : (selectedColor ? asVisibleColor(selectedColor) : '#8b5cf6')}
+					highlightColorByCoord={actionMode === 'place' ? highlightColorByCoord : undefined}
 					highlightIsRotation={actionMode === 'rotate'}
 					origins={G.origins}
 					pendingRotationTile={pendingRotationTile}
@@ -1607,8 +1671,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 const NetworkModal: React.FC<{
 	isOpen: boolean;
 	onClose: () => void;
-	/** Seed from a ?join= invite link that could not auto-join. */
-	prefill?: { code: string; error: string | null } | null;
+	/** Seed from a ?join= invite link: focused join prompt with name entry. */
+	prefill?: { code: string; error: string | null; invited?: boolean } | null;
 }> = ({ isOpen, onClose, prefill = null }) => {
 	const network = useUIStore((s) => s.network);
 	const setNetwork = useUIStore((s) => s.setNetwork);
@@ -1679,6 +1743,10 @@ const NetworkModal: React.FC<{
 			if (seat === null) {
 				throw new Error('Match is full — every seat is taken.');
 			}
+			// Following an invite while seated elsewhere: free the old seat.
+			if (network && network.matchID !== match.matchID) {
+				await leaveMatch(serverURL, network.matchID, network.seat, network.credentials);
+			}
 			const credentials = await joinMatch(serverURL, match.matchID, seat, nameFor(seat));
 			setNetwork({ matchID: match.matchID, seat, credentials, numPlayers: match.players.length });
 			onClose();
@@ -1716,7 +1784,28 @@ const NetworkModal: React.FC<{
 				</div>
 
 				<div className="modal-body">
-					{network ? (
+					{prefill?.invited && (!network || network.matchID !== prefill.code) ? (
+						<div className="network-section">
+							<h3>You're invited!</h3>
+							<p className="network-hint">
+								Join match <code className="network-invite-code">{inputMatchID}</code>
+								{network ? ' — you will leave your current match' : ''}. Set your name first:
+							</p>
+							<input
+								type="text"
+								className="network-name-input"
+								placeholder="Player"
+								maxLength={24}
+								autoFocus
+								value={playerName}
+								onChange={(e) => setPlayerName(e.target.value)}
+								onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+							/>
+							<button className="btn btn--primary network-invite-join" onClick={handleJoin} disabled={busy}>
+								{busy ? 'Joining…' : 'Join Match'}
+							</button>
+						</div>
+					) : network ? (
 						<div className="network-status">
 							<div className="network-status__connected">
 								<span className="network-status__dot" />
@@ -1820,11 +1909,12 @@ const App: React.FC = () => {
 	const serverURL = getServerURL();
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 	const [isLabRoute, setIsLabRoute] = React.useState(false);
-	const [joinPrefill, setJoinPrefill] = React.useState<{ code: string; error: string | null } | null>(null);
+	const [joinPrefill, setJoinPrefill] = React.useState<{ code: string; error: string | null; invited?: boolean } | null>(null);
 	const joinLinkHandled = React.useRef(false);
 
-	// Invite links: /?join=<code> auto-claims a free seat. On failure (full,
-	// not found, server down) the network modal opens seeded with the code.
+	// Invite links: /?join=<code> opens a join prompt seeded with the code so
+	// the incoming player can set their name before claiming a seat. Any
+	// lookup error (full, not found, server down) shows in the same prompt.
 	React.useEffect(() => {
 		if (joinLinkHandled.current) return;
 		const code = new URLSearchParams(window.location.search).get('join');
@@ -1832,20 +1922,16 @@ const App: React.FC = () => {
 		joinLinkHandled.current = true;
 		window.history.replaceState(null, '', window.location.pathname + window.location.hash);
 		(async () => {
-			const { network: current, playerName, setNetwork } = useUIStore.getState();
+			const { network: current } = useUIStore.getState();
 			try {
 				const match = await findMatchByCode(serverURL, code);
 				if (current?.matchID === match.matchID) return; // already seated here
-				const seat = firstFreeSeat(match);
-				if (seat === null) throw new Error('Match is full — every seat is taken.');
-				// Following an invite means switching matches: free the old seat.
-				if (current) await leaveMatch(serverURL, current.matchID, current.seat, current.credentials);
-				const credentials = await joinMatch(serverURL, match.matchID, seat, playerName.trim() || `Player ${seat}`);
-				setNetwork({ matchID: match.matchID, seat, credentials, numPlayers: match.players.length });
+				if (firstFreeSeat(match) === null) throw new Error('Match is full — every seat is taken.');
+				setJoinPrefill({ code: match.matchID, error: null, invited: true });
 			} catch (e) {
-				setJoinPrefill({ code, error: e instanceof Error ? e.message : 'Failed to join match' });
-				setNetworkModalOpen(true);
+				setJoinPrefill({ code, error: e instanceof Error ? e.message : 'Failed to join match', invited: true });
 			}
+			setNetworkModalOpen(true);
 		})();
 	}, [serverURL]);
 

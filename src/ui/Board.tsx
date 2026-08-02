@@ -14,6 +14,9 @@ type Props = {
 	onHexClick: (coord: Co) => void;
 	highlightCoords?: Co[];
 	highlightColor?: string;
+	/** Per-coord override of highlightColor (key(coord) → css color) so each
+	 *  potential spot can show the color the move would actually play. */
+	highlightColorByCoord?: Record<string, string>;
 	highlightIsRotation?: boolean;
 	origins?: Co[];
 	pendingRotationTile?: Co | null;
@@ -23,7 +26,7 @@ type Props = {
 	showCoords?: boolean;
 };
 
-export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes = [], phantomOpacity = 0.35, phantomDash = '6,4', radius, onHexClick, highlightCoords = [], highlightColor = '#000000', highlightIsRotation = false, origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null, showCoords = false }) => {
+export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes = [], phantomOpacity = 0.35, phantomDash = '6,4', radius, onHexClick, highlightCoords = [], highlightColor = '#000000', highlightColorByCoord, highlightIsRotation = false, origins = [], pendingRotationTile = null, onRotationSelect, selectedColor = null, selectedSourceDot = null, showCoords = false }) => {
 	const size = rules.UI.HEX_SIZE;
 	const coords = buildAllCoords(radius);
 	const width = size * 3 * (radius + 1);
@@ -32,6 +35,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 	const marginY = height / 2 + size * 2;
 	const highlightSet = new Set(highlightCoords.map((c) => key(c)));
 	const originSet = new Set(origins.map((c) => key(c)));
+	const colorFor = (c: Co): string => highlightColorByCoord?.[key(c)] ?? highlightColor;
 	
 	const isPathMode = rules.MODE === 'path';
 	
@@ -161,8 +165,8 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 				const hexFill = isDead || isInnerRing
 					? '#0a0a0e'
 					: isPathMode
-						? (isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24')
-						: (sortedOccupants[0] ? asVisibleColor(sortedOccupants[0]) : isHighlight ? highlightColor : isOrigin ? '#2a1a2e' : '#1a1a24');
+						? (isHighlight ? colorFor(c) : isOrigin ? '#2a1a2e' : '#1a1a24')
+						: (sortedOccupants[0] ? asVisibleColor(sortedOccupants[0]) : isHighlight ? colorFor(c) : isOrigin ? '#2a1a2e' : '#1a1a24');
 				
 				return (
 					<g key={key(c)}>
@@ -172,7 +176,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 							fill={hexFill}
 							splitFills={isDead ? undefined : (split ?? undefined)}
 							fillOpacity={isDead ? 1 : (isHighlight ? 0.35 : (isRotatable ? 0.7 : 1))}
-							stroke={isDead ? '#1a1020' : (isRotatable ? highlightColor : (showMoveStroke ? highlightColor : (isOrigin ? '#bb88ee' : '#2a2a3d')))}
+							stroke={isDead ? '#1a1020' : (isRotatable ? highlightColor : (showMoveStroke ? colorFor(c) : (isOrigin ? '#bb88ee' : '#2a2a3d')))}
 							strokeWidth={isDead ? 2 : (isRotatable ? 3 : (showMoveStroke ? 2 : (isOrigin ? 2 : 1)))}
 							onClick={() => !isPathMode && onHexClick(c)}
 						>
@@ -291,7 +295,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 								y1={y1}
 								x2={x2}
 								y2={y2}
-								stroke={asVisibleColor(selectedColor)}
+								stroke={colorFor(c)}
 								strokeWidth={laneWidth}
 								strokeLinecap="round"
 								strokeDasharray="4,3"
@@ -345,7 +349,7 @@ export const Board: React.FC<Props> = ({ rules, board, lanes = [], phantomLanes 
 								cy={center.y}
 								r={size * 0.25}
 								fill="none"
-								stroke={highlightColor}
+								stroke={colorFor(c)}
 								strokeWidth={1.5}
 								strokeDasharray="3,2"
 							/>
