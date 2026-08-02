@@ -7,9 +7,9 @@ import { HexStringsGame } from './game/game';
 import { useBotClients } from './useBotClients';
 import { Board as HexBoard } from './ui/Board';
 import type { CardAction, Color, Co, GState, MoveUseAbilityArgs, PlayerPrefs, Stat } from './game/types';
-import { Hand, NeuralCard } from './ui/Hand';
+import { NeuralCard } from './ui/Hand';
+import { Shelf } from './ui/Shelf';
 import { Treasure, TreasureCard } from './ui/Treasure';
-import { DiscardZone } from './ui/DiscardZone';
 import { ActionCardModal } from './ui/ActionCardModal';
 import { PlayerHandModal } from './ui/PlayerHandModal';
 import { computeScores } from './game/scoring';
@@ -138,6 +138,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
 	const [abilityFlow, setAbilityFlow] = React.useState<AbilityFlow | null>(null);
+	const [discardModalOpen, setDiscardModalOpen] = React.useState(false);
 
 	// Network session (null in local games). matchData is only provided by the
 	// multiplayer server, so its presence — not the store — gates network UI.
@@ -616,6 +617,39 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (!isMyTurn) setAbilityFlow(null);
 	}, [isMyTurn]);
 
+	// Universal cancel: Escape unwinds the innermost transient state, one
+	// level per press. Every state must be cancellable.
+	const escStateRef = React.useRef({
+		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
+		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
+	});
+	escStateRef.current = {
+		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
+		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
+	};
+	React.useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape') return;
+			const s = escStateRef.current;
+			if (s.abilityFlow !== null) { setAbilityFlow(null); return; }
+			if (s.actionPickingCoord !== null) { setActionPickingCoord(null); return; }
+			if (s.discardModalOpen) { setDiscardModalOpen(false); return; }
+			if (s.actionModalOpen) { setActionModalOpen(false); setSelectedCard(null); setSelectedColor(null); return; }
+			if (s.pendingRotationTile !== null) { setPendingRotationTile(null); return; }
+			if (s.actionMode !== 'place') {
+				setActionMode('place');
+				setDiscardSelection([]);
+				setPendingRotationTile(null);
+				return;
+			}
+			if (s.selectedSourceDot !== null) { setSelectedSourceDot(null); return; }
+			if (s.selectedCard !== null) { setSelectedCard(null); setSelectedColor(null); return; }
+			if (s.expandedZone !== null) setExpandedZone(null);
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, []);
+
 	// ── Sound triggers driven by state changes (covers both players) ──
 	const prevLanesRef = React.useRef(G.lanes.length);
 	React.useEffect(() => {
@@ -942,6 +976,64 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const viewerNightmareState = viewerPlayer?.nightmareState;
 	const viewerPrefs = viewerPlayer?.prefs;
 
+	// Undo / stash / end-turn toolbar. Mobile: floating bar. Desktop: docked
+	// into the shelf's right end.
+	const floatingToolbar = (() => {
+		// Undo is enabled only when a move remains to undo this turn and the
+		// last remaining one is undoable — a non-undoable move (an action
+		// card) also locks everything played before it. Undone moves stay
+		// in the log with an UNDO entry appended, so remaining = moves − undos.
+		const thisTurn = Array.isArray(log)
+			? (log as Array<{ turn?: number; action?: { type?: string; payload?: { type?: string } } }>).filter(
+					(e) => e.turn === ctx.turn,
+				)
+			: [];
+		const movesMade = thisTurn.filter((e) => e.action?.type === 'MAKE_MOVE');
+		const undosDone = thisTurn.filter((e) => e.action?.type === 'UNDO').length;
+		const remaining = movesMade.slice(0, Math.max(0, movesMade.length - undosDone));
+		const lastMove = remaining[remaining.length - 1]?.action?.payload?.type;
+		const canUndo = isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
+		return (
+			<div className="floating-toolbar">
+				<button
+					className="floating-action"
+					onClick={() => {
+						undo();
+						playSfx('undo');
+						setSelectedCard(null);
+						setSelectedColor(null);
+						setPendingRotationTile(null);
+						setRotatable([]);
+						setActionMode('place');
+						setDiscardSelection([]);
+					}}
+					disabled={!canUndo}
+					title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
+				>
+					⟲
+				</button>
+		<button
+			className="floating-action"
+			onClick={onStash}
+			disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
+			title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
+		>
+			⬇
+		</button>
+		<button
+			className="floating-action floating-action--primary floating-action--end-turn"
+			onClick={onEndTurn}
+			disabled={!isMyTurn}
+			title="End Turn"
+		>
+			<span aria-hidden="true">⏳</span>
+			<span className="floating-action__label">End Turn</span>
+		</button>
+			</div>
+		);
+	})();
+
+
 	return (
 		<div className="game-layout">
 			{/* MOBILE STATUS BAR */}
@@ -1147,14 +1239,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="zone-backdrop-dim" onClick={() => setExpandedZone(null)} />
 			)}
 
-			{/* CARD ZONES — hidden on mobile (tab bar controls them) */}
+			{/* CARD SHELF — persistent desktop hand (mobile uses the tab bar) */}
 			{!isMobile && (
 				<>
-					<Hand
+					<Shelf
 						rules={rules}
 						cards={myHand}
 						selectedIndex={actionMode === 'place' ? selectedCard : null}
-						selectedIndices={actionMode !== 'place' ? discardSelection : undefined}
+						discardSelection={discardSelection}
+						discardMode={actionMode !== 'place'}
 						onSelect={(index) => {
 							if (actionMode !== 'place') {
 								// Multi-select for discard cost
@@ -1182,9 +1275,43 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							if (actionMode !== 'place') return;
 							onPickColor(index, color);
 						}}
-						isExpanded={expandedZone === 'hand'}
-						onExpandChange={handleZoneExpand('hand')}
-					/>
+						deckCount={G.deckSize ?? G.secret.deck.length}
+						discardCount={G.discard.length}
+						onOpenDiscard={() => setDiscardModalOpen(true)}
+					>
+						{floatingToolbar}
+					</Shelf>
+
+					{/* Discard-cost tray: a distinct prompt so the cost never reads
+					    as "back to your hand". */}
+					{actionMode !== 'place' && (
+						<div className="discard-tray">
+							<span className="discard-tray__title">
+								{actionMode === 'block' ? '🛇 Block' : '↻ Rotate'} — discard {discardNeeded} card{discardNeeded > 1 ? 's' : ''}
+							</span>
+							<div className="discard-tray__slots">
+								{Array.from({ length: discardNeeded }, (_, i) => {
+									const idx = discardSelection[i];
+									return (
+										<div
+											key={`tray-${i}`}
+											className={`discard-tray__slot ${idx !== undefined ? 'discard-tray__slot--filled' : ''}`}
+										>
+											{idx !== undefined ? myHand[idx]?.name : '+'}
+										</div>
+									);
+								})}
+							</div>
+							<span className="discard-tray__hint">
+								{discardReady
+									? (actionMode === 'block' ? 'Now click a highlighted tile' : 'Now click a highlighted node')
+									: 'Pick cards from your hand'}
+							</span>
+							<button className="discard-tray__cancel" onClick={() => handleModeChange('place')}>
+								Cancel (Esc)
+							</button>
+						</div>
+					)}
 
 					<Treasure
 						rules={rules}
@@ -1194,12 +1321,30 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						onExpandChange={handleZoneExpand('treasure')}
 					/>
 
-					<DiscardZone
-						rules={rules}
-						cards={G.discard}
-						isExpanded={expandedZone === 'discard'}
-						onExpandChange={handleZoneExpand('discard')}
-					/>
+					{/* Discard browser (opened from the shelf pile) */}
+					{discardModalOpen && (
+						<div className="modal-overlay" onClick={() => setDiscardModalOpen(false)}>
+							<div className="modal-content discard-modal" onClick={(e) => e.stopPropagation()}>
+								<div className="modal-header">
+									<h2>Discard ({G.discard.length})</h2>
+									<button className="modal-close" onClick={() => setDiscardModalOpen(false)}>×</button>
+								</div>
+								<div className="modal-body discard-modal__grid">
+									{G.discard.map((card, i) => (
+										<NeuralCard
+											key={`dm-${card.id}-${i}`}
+											card={card}
+											isSelected={false}
+											rules={rules}
+											onSelect={() => {}}
+											onPickColor={() => {}}
+										/>
+									))}
+									{G.discard.length === 0 && <div className="discard-modal__empty">Nothing discarded yet</div>}
+								</div>
+							</div>
+						</div>
+					)}
 				</>
 			)}
 
@@ -1661,61 +1806,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				handSize={myHand.length}
 			/>
 
-			{/* FLOATING ACTIONS TOOLBAR */}
-			{(() => {
-				// Undo is enabled only when a move remains to undo this turn and the
-				// last remaining one is undoable — a non-undoable move (an action
-				// card) also locks everything played before it. Undone moves stay
-				// in the log with an UNDO entry appended, so remaining = moves − undos.
-				const thisTurn = Array.isArray(log)
-					? (log as Array<{ turn?: number; action?: { type?: string; payload?: { type?: string } } }>).filter(
-							(e) => e.turn === ctx.turn,
-						)
-					: [];
-				const movesMade = thisTurn.filter((e) => e.action?.type === 'MAKE_MOVE');
-				const undosDone = thisTurn.filter((e) => e.action?.type === 'UNDO').length;
-				const remaining = movesMade.slice(0, Math.max(0, movesMade.length - undosDone));
-				const lastMove = remaining[remaining.length - 1]?.action?.payload?.type;
-				const canUndo = isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
-				return (
-					<div className="floating-toolbar">
-						<button
-							className="floating-action"
-							onClick={() => {
-								undo();
-								playSfx('undo');
-								setSelectedCard(null);
-								setSelectedColor(null);
-								setPendingRotationTile(null);
-								setRotatable([]);
-								setActionMode('place');
-								setDiscardSelection([]);
-							}}
-							disabled={!canUndo}
-							title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
-						>
-							⟲
-						</button>
-				<button
-					className="floating-action"
-					onClick={onStash}
-					disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
-					title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
-				>
-					⬇
-				</button>
-				<button
-					className="floating-action floating-action--primary floating-action--end-turn"
-					onClick={onEndTurn}
-					disabled={!isMyTurn}
-					title="End Turn"
-				>
-					<span aria-hidden="true">⏳</span>
-					<span className="floating-action__label">End Turn</span>
-				</button>
-					</div>
-				);
-			})()}
+			{/* FLOATING ACTIONS TOOLBAR (mobile; desktop docks it in the shelf) */}
+			{isMobile && floatingToolbar}
 
 			{/* Secret export state button */}
 			<button

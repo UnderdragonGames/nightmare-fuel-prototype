@@ -9,9 +9,10 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-02 — v0.1.0 (PR #5)
 
-### [ux] Desktop hand feedback — pending redesign
-- **Feedback (Julian):** "As pretty as the hand animation is, the way it disappears is unintuitive. It should stay as a shelf at the bottom. Take design cues from well-established card games like poker and Dominion." Also: "selecting cards for action discards should present the cards in a different way that doesn't feel like going back to your hand, as it feels like you cancelled out"; "every state needs to be cancellable."
-- **Action:** recommendations delivered (persistent bottom shelf, distinct discard-cost tray, Esc + visible cancel for every transient state); implementation pending approval.
+### [ux] Desktop hand shelf redesign (shipped)
+- **Feedback (Julian):** "As pretty as the hand animation is, the way it disappears is unintuitive. It should stay as a shelf at the bottom. Take design cues from well-established card games like poker and Dominion." Also: "selecting cards for action discards should present the cards in a different way that doesn't feel like going back to your hand"; "every state needs to be cancellable"; "action cards need to be readable without a click."
+- **Change:** hover-fan corner hand replaced by a persistent bottom shelf (always visible, hover raises, click selects) with deck/discard piles and the docked toolbar; hover-zoom shows a full-size readable card without clicking; block/rotate costs use a distinct red discard tray with slots + Cancel; Escape unwinds every transient state one level per press.
+- **Outcome:** _pending next desktop playtest._
 
 ### Nightmare abilities enabled (all 12)
 - **Change:** abilities are now playable — `useNightmareAbility` move with per-nightmare targeting (node pick for Demon/Witch, lane pick for Ghost/Mutant, free-lane placement for Dragon/Werewolf, target player for Vampire, instant for the rest). Uses are limited per game and shown in the panel; invalid targets don't consume a use; abilities are not undoable. Bots don't use abilities yet.
