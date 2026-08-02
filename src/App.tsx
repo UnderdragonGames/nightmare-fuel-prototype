@@ -758,6 +758,31 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (flow.step === 'dest') { castAbility({ source: flow.source, coord }); }
 	};
 
+	// Mobile: once a board pick completes the card's inputs, play it right there
+	// instead of re-opening the full-screen modal just to press Play. Returns
+	// true when the card was played (desktop and incomplete cards fall through).
+	const tryAutoPlayAfterPick = (overrides: Partial<CardActionResolveContext>): boolean => {
+		if (!isMobile || selectedCard === null) return false;
+		const card = myHand[selectedCard];
+		if (!card?.isAction || !actionLimitAllows) return false;
+		try {
+			const effects = resolveCardEffects(card, { ...buildActionContext(), ...overrides });
+			if (actionEffectsInvalidReason(G, effects) !== null) return false;
+			moves.playActionCard?.({ handIndex: selectedCard, effects });
+			playSfx('action');
+			setSelectedCard(null);
+			setSelectedColor(null);
+			setSelectedSourceDot(null);
+			setActionModalOpen(false);
+			setActionCoordInput('');
+			setActionMoveFromInput('');
+			setActionMoveToInput('');
+			return true;
+		} catch {
+			return false; // more input needed — the modal reopens to collect it
+		}
+	};
+
 	const onHexClick = (coord: Co) => {
 		// Nightmare ability targeting — intercept before everything else.
 		if (abilityFlow !== null) {
@@ -770,20 +795,24 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			if (actionPickingCoord === 'coord') {
 				setActionCoordInput(coordStr);
 				setActionPickingCoord(null);
+				tryAutoPlayAfterPick({ coord });
 			} else if (actionPickingCoord === 'moveFrom') {
 				setActionMoveFromInput(coordStr);
 				if (actionFreeLaneColor) {
 					// Free-lane placement: destination is dictated by the color's
 					// direction, so fill it in instead of asking for a second pick.
 					const dir = rules.COLOR_TO_DIR[actionFreeLaneColor];
-					setActionMoveToInput(`${coord.q + dir.q},${coord.r + dir.r}`);
+					const dest = { q: coord.q + dir.q, r: coord.r + dir.r };
+					setActionMoveToInput(`${dest.q},${dest.r}`);
 					setActionPickingCoord(null);
+					tryAutoPlayAfterPick({ moveFrom: coord, moveTo: dest });
 				} else {
 					setActionPickingCoord('moveTo'); // auto-advance to picking destination
 				}
 			} else if (actionPickingCoord === 'moveTo') {
 				setActionMoveToInput(coordStr);
 				setActionPickingCoord(null);
+				tryAutoPlayAfterPick({ moveTo: coord });
 			}
 			return;
 		}
@@ -1227,13 +1256,17 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									{viewerNightmareState && (
 										<div className="hand-nightmare__ability-uses">
 											Uses left: {viewerNightmareState.abilityUsesRemaining}
+											{(viewerNightmareState.abilityUsesRemaining > 0 && !isMyTurn && !ctx.gameover) ? ' — usable on your turn' : ''}
 										</div>
 									)}
-									{isMyTurn && !locked && !ctx.gameover && (viewerNightmareState?.abilityUsesRemaining ?? 0) > 0 && (
+									{/* Stays visible (disabled) off-turn — a vanishing button reads
+									    as "the ability is gone" after its first use. */}
+									{!ctx.gameover && (viewerNightmareState?.abilityUsesRemaining ?? 0) > 0 && (
 										<button
 											className="hand-nightmare__use-btn"
 											onClick={startAbility}
-											disabled={abilityFlow !== null}
+											disabled={abilityFlow !== null || !isMyTurn || locked}
+											title={!isMyTurn ? 'Wait for your turn.' : locked ? 'Waiting for the current move to finish.' : 'Use your nightmare ability'}
 										>
 											{abilityFlow !== null ? 'Choosing target…' : <><Icon name="sparkles" size={14} /> Use Ability</>}
 										</button>

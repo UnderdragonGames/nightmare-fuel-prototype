@@ -9,6 +9,20 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-02 — v0.2.0 (PR #6)
 
+### [ux] Card art points where the colors actually go
+- **Feedback (Julian):** "When placing a card, the path direction should line up with the colors that they will become."
+- **Change:** the mini path drawn on each lane card was decorative (a fan spread from the top); each color's segment now points in the direction that color actually travels on the board, using the board's own axial→pixel transform — including per-match shuffled directions. Cards now double as placement previews.
+
+### [ux] Use Ability button no longer vanishes off-turn
+- **Feedback (Julian, screenshot):** "What happened to the use ability button? I used it once, now I don't see it."
+- **Diagnosis:** the button only rendered on your own turn — after using an ability and ending the turn it disappeared, reading as "the ability is gone" even with uses left.
+- **Change:** it stays visible whenever uses remain, disabled off-turn, and the uses line reads "Uses left: 1 — usable on your turn."
+
+### [ux] Mobile: board pick completes the action card (no modal round-trip)
+- **Feedback (Julian):** "on mobile we don't need an overlay when choosing a spot to place."
+- **Change:** on mobile, when a board pick supplies the last thing an action card needs (Prey's lane, Seize's free-lane start), the card plays right there — the full-screen card overlay no longer reopens just to press Play. It still returns if more input is needed or the target is invalid. Desktop keeps the explicit confirm.
+- **Outcome:** _pending — confirm this was the overlay that felt unnecessary._
+
 ### "This Prey is Mine" and "Seize the Opportunity" fixed (were silent no-ops)
 - **Feedback (Julian):** "This Prey is Mine doesn't seem to have an effect. Seize the Opportunity also doesn't work."
 - **Diagnosis:** Prey's lane recolor only matched a lane picked in the exact direction it was stored — picking the two ends in the other order silently did nothing and still consumed the card. Seize granted an "extra placement" counter that nothing in path mode ever consumes (placements are card-limited, not count-limited), so it was a guaranteed no-op — the same trap as the Dragon/Werewolf ability before it.
