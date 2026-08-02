@@ -9,6 +9,10 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-02 — v0.1.0 (PR #5)
 
+### [ux] Desktop hand feedback — pending redesign
+- **Feedback (Julian):** "As pretty as the hand animation is, the way it disappears is unintuitive. It should stay as a shelf at the bottom. Take design cues from well-established card games like poker and Dominion." Also: "selecting cards for action discards should present the cards in a different way that doesn't feel like going back to your hand, as it feels like you cancelled out"; "every state needs to be cancellable."
+- **Action:** recommendations delivered (persistent bottom shelf, distinct discard-cost tray, Esc + visible cancel for every transient state); implementation pending approval.
+
 ### Nightmare abilities enabled (all 12)
 - **Change:** abilities are now playable — `useNightmareAbility` move with per-nightmare targeting (node pick for Demon/Witch, lane pick for Ghost/Mutant, free-lane placement for Dragon/Werewolf, target player for Vampire, instant for the rest). Uses are limited per game and shown in the panel; invalid targets don't consume a use; abilities are not undoable. Bots don't use abilities yet.
 - **Reason (Julian):** "Let's turn on the nightmare abilities."
