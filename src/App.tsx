@@ -340,12 +340,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				}
 			}
 
-			// Also check all neighbors for consolidation CONVERSIONS (recolor an existing lane).
-			// When a color is explicitly selected, only check that color; otherwise check all card colors.
-			const colorsToCheck = selectedColor && cardColors.includes(selectedColor)
-				? [selectedColor]
-				: cardColors;
-			for (const col of colorsToCheck) {
+			// Also check all neighbors for consolidation CONVERSIONS (recolor an
+			// existing lane) and the origin FINISHING move. Check ALL card colors:
+			// the click handler tries every card color, and narrowing to the
+			// (auto-picked) selectedColor previously hid legal finishing spots —
+			// e.g. a rim-connected green path couldn't see its move into the
+			// center because the card's first color wasn't green.
+			for (const col of cardColors) {
 				for (const dest of neighbors(source)) {
 					if (dests.some((d) => d.q === dest.q && d.r === dest.r)) continue;
 					if (findConvertibleColor(source, dest, col)) {
