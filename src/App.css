@@ -1228,23 +1228,31 @@ button .icon {
 	min-height: 130px;
 }
 
+/* Big hands (draw effects) squeeze into a poker-style overlap. */
+.shelf__cards--tight {
+	gap: 0;
+}
+
 .shelf__card {
 	position: relative;
-	transition: transform 0.15s ease;
+	transition: transform 0.15s ease, margin-left 0.15s ease;
 }
 
 .shelf__card:hover {
 	transform: translateY(-12px);
+	z-index: 6;
 }
 
 .shelf__card--selected,
 .shelf__card--selected:hover {
 	transform: translateY(-22px);
+	z-index: 5;
 }
 
 .shelf__card--discard,
 .shelf__card--discard:hover {
 	transform: translateY(-18px);
+	z-index: 5;
 }
 
 .shelf__card--discard .neural-card {

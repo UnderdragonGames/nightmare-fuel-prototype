@@ -18,6 +18,10 @@ later playtest confirms or refutes the change.
 - **Feedback (Julian):** approved the guidance ("I like") to dock the Place/Rotate/Block strip into the shelf and nudge toward End Turn; also asked whether the labeled pills work on mobile ("that takes up a lot of horizontal room").
 - **Change:** on desktop the Place/Rotate/Block strip now sits inside the hand shelf (one control surface instead of a floating box over the board); mobile keeps the floating strip. End Turn pulses gently when it's your turn and you have no playable card/placement left. Mobile widths verified: all three labeled pills fit at 390px; below 380px Undo/Stash collapse to icons while End Turn keeps its label.
 
+### [ux] Big hands squeeze poker-style on the shelf
+- **Feedback (Julian):** "keep in mind you could have 10 cards in your hand, not sure if you accounted for that."
+- **Change:** it wasn't — 10 cards in a flat row would have pushed the shelf past the viewport edge. Once the hand outgrows its width budget, shelf cards now overlap like a held poker hand (hovering or selecting raises the card above its neighbors; the hover-zoom stays fully readable). Verified with a forced 10-card hand at 1280px (~43px of each card visible) and 1024px (~22px), both clear of the sidebar.
+
 ### [ux] Turn-end drama + your-turn bell
 - **Feedback (Julian):** "we need a dramatic sound for whenever a turn has ended and a chime of some kind when it's your turn."
 - **Change:** new timpani-style turn-end hit plays for everyone whenever any turn ends; the your-turn sound is now a proper two-strike bell chime (inharmonic partials, long decay) that rings a beat after the turn-end hit when the turn is yours.
