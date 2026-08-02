@@ -106,9 +106,8 @@ const main = async () => {
     if (!pick) break;
 
     await hidePanel();
-    await page.locator('text=HAND').first().click({ force: true });
-    await page.waitForTimeout(600);
-    await page.locator('.neural-card').nth(pick.handIndex).locator(`.neural-card__btn--${pick.pick}`).click({ timeout: 5000 });
+    // Shelf hand: cards are always visible — click the color pip directly.
+    await page.locator('.shelf .neural-card').nth(pick.handIndex).locator(`.neural-card__btn--${pick.pick}`).click({ timeout: 5000 });
     await page.waitForTimeout(300);
     const dim = page.locator('.zone-backdrop-dim');
     if (await dim.count()) { await dim.click({ position: { x: 5, y: 5 } }).catch(() => {}); await page.waitForTimeout(250); }

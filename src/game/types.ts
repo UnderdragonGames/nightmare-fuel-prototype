@@ -84,9 +84,19 @@ export type NightmareAction =
 	| { type: 'changeLaneColor' }
 	| { type: 'destroyNode' }
 	| { type: 'grantExtraPlacements'; count: number }
+	// Place a lane without spending a card (Dragon/Werewolf "add a branch").
+	| { type: 'placeFreeLane' }
 	| { type: 'randomStealCard'; count: number }
 	| { type: 'swapPrefsSecondaryTertiary' }
 	| { type: 'increaseHandSize'; amount: number };
+
+export type MoveUseAbilityArgs = {
+	targetPlayerId?: PlayerID;
+	coord?: Co;
+	source?: Co;
+	laneIndex?: number;
+	color?: Color;
+};
 
 export type AttachedCard = {
 	card: Card;

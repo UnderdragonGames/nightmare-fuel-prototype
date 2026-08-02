@@ -20,6 +20,7 @@ export type UIState = {
 	network: NetworkSession | null;
 	playerName: string;
 	aiPaused: boolean;
+	soundMuted: boolean;
 	setViewer: (v: PlayerID) => void;
 	setNumPlayers: (n: number) => void;
 	setBotFor: (pid: PlayerID, bot: BotMode) => void;
@@ -27,6 +28,7 @@ export type UIState = {
 	setNetwork: (session: NetworkSession | null) => void;
 	setPlayerName: (name: string) => void;
 	setAiPaused: (v: boolean) => void;
+	setSoundMuted: (v: boolean) => void;
 };
 
 export const useUIStore = create<UIState>()(
@@ -38,6 +40,7 @@ export const useUIStore = create<UIState>()(
 			network: null,
 			playerName: '',
 			aiPaused: false,
+			soundMuted: false,
 			setViewer: (v) => set({ viewer: v }),
 			setNumPlayers: (n) => set({ numPlayers: n }),
 			setBotFor: (pid, bot) => set({ botByPlayer: { ...get().botByPlayer, [pid]: bot } }),
@@ -49,6 +52,7 @@ export const useUIStore = create<UIState>()(
 			setNetwork: (session) => set({ network: session }),
 			setPlayerName: (name) => set({ playerName: name }),
 			setAiPaused: (v) => set({ aiPaused: v }),
+			setSoundMuted: (v) => set({ soundMuted: v }),
 		}),
 		{ name: 'ui-store' }
 	)

@@ -6,10 +6,10 @@ import { Local, SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
 import { useBotClients } from './useBotClients';
 import { Board as HexBoard } from './ui/Board';
-import type { CardAction, Color, Co, GState, PlayerPrefs, Stat } from './game/types';
-import { Hand, NeuralCard } from './ui/Hand';
+import type { CardAction, Color, Co, GState, MoveUseAbilityArgs, PlayerPrefs, Stat } from './game/types';
+import { NeuralCard } from './ui/Hand';
+import { Shelf } from './ui/Shelf';
 import { Treasure, TreasureCard } from './ui/Treasure';
-import { DiscardZone } from './ui/DiscardZone';
 import { ActionCardModal } from './ui/ActionCardModal';
 import { PlayerHandModal } from './ui/PlayerHandModal';
 import { computeScores } from './game/scoring';
@@ -35,6 +35,7 @@ import {
 	shareInvite,
 } from './network/lobby';
 import type { BotMode, NetworkSession } from './ui/useUIStore';
+import { playSfx, primeSfx, setSfxMuted } from './sound/sfx';
 
 // Types
 type ExtraBoardProps = { viewer: PlayerID; onSetViewer: (pid: PlayerID) => void };
@@ -42,6 +43,16 @@ type AppBoardProps = BGIOBoardProps<GState> & ExtraBoardProps;
 
 // Stable empty bot map: local bot clients are disabled while in a network match.
 const EMPTY_BOTS: Record<PlayerID, BotMode> = {};
+
+// Targeting flow for nightmare abilities (discriminated on `step`).
+type AbilityFlow =
+	| { step: 'coord' } // Demon/Witch: pick a node on a path
+	| { step: 'edgeFrom' } // Ghost/Mutant: pick one end of a lane…
+	| { step: 'edgeTo'; from: Co } // …then the other
+	| { step: 'color'; laneIndex: number } // Mutant: pick the new color
+	| { step: 'target' } // Vampire: pick an opponent
+	| { step: 'source' } // Dragon/Werewolf: pick the node to build from…
+	| { step: 'dest'; source: Co }; // …then the destination
 
 // Mobile Status Bar Component
 const MobileStatusBar: React.FC<{
@@ -126,6 +137,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const setAiPaused = useUIStore((s) => s.setAiPaused);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
+	const [abilityFlow, setAbilityFlow] = React.useState<AbilityFlow | null>(null);
+	const [discardModalOpen, setDiscardModalOpen] = React.useState(false);
 
 	// Network session (null in local games). matchData is only provided by the
 	// multiplayer server, so its presence — not the store — gates network UI.
@@ -599,7 +612,123 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		}
 	}
 
+	// Ability targeting can't outlive your turn.
+	React.useEffect(() => {
+		if (!isMyTurn) setAbilityFlow(null);
+	}, [isMyTurn]);
+
+	// Universal cancel: Escape unwinds the innermost transient state, one
+	// level per press. Every state must be cancellable.
+	const escStateRef = React.useRef({
+		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
+		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
+	});
+	escStateRef.current = {
+		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
+		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
+	};
+	React.useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape') return;
+			const s = escStateRef.current;
+			if (s.abilityFlow !== null) { setAbilityFlow(null); return; }
+			if (s.actionPickingCoord !== null) { setActionPickingCoord(null); return; }
+			if (s.discardModalOpen) { setDiscardModalOpen(false); return; }
+			if (s.actionModalOpen) { setActionModalOpen(false); setSelectedCard(null); setSelectedColor(null); return; }
+			if (s.pendingRotationTile !== null) { setPendingRotationTile(null); return; }
+			if (s.actionMode !== 'place') {
+				setActionMode('place');
+				setDiscardSelection([]);
+				setPendingRotationTile(null);
+				return;
+			}
+			if (s.selectedSourceDot !== null) { setSelectedSourceDot(null); return; }
+			if (s.selectedCard !== null) { setSelectedCard(null); setSelectedColor(null); return; }
+			if (s.expandedZone !== null) setExpandedZone(null);
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, []);
+
+	// ── Sound triggers driven by state changes (covers both players) ──
+	const prevLanesRef = React.useRef(G.lanes.length);
+	React.useEffect(() => {
+		const prev = prevLanesRef.current;
+		prevLanesRef.current = G.lanes.length;
+		if (G.lanes.length > prev) playSfx('place');
+		else if (G.lanes.length < prev) playSfx('block');
+	}, [G.lanes.length]);
+
+	const prevMyTurnRef = React.useRef(isMyTurn);
+	React.useEffect(() => {
+		const was = prevMyTurnRef.current;
+		prevMyTurnRef.current = isMyTurn;
+		if (!was && isMyTurn && !ctx.gameover && allSeatsJoined) playSfx('your-turn');
+	}, [isMyTurn, ctx.gameover, allSeatsJoined]);
+
+	React.useEffect(() => {
+		if (startBanner) playSfx('game-start');
+	}, [startBanner]);
+
+	const gameoverSoundedRef = React.useRef(false);
+	React.useEffect(() => {
+		if (!ctx.gameover || gameoverSoundedRef.current) return;
+		gameoverSoundedRef.current = true;
+		playSfx((ctx.gameover as { cancelled?: boolean }).cancelled ? 'cancel' : 'game-over');
+	}, [ctx.gameover]);
+
+	const castAbility = (args: MoveUseAbilityArgs) => {
+		moves.useNightmareAbility?.(args);
+		playSfx('ability');
+		setAbilityFlow(null);
+	};
+
+	const startAbility = () => {
+		const name = getNightmareByName(G.players[myID]?.nightmare)?.name;
+		if (!name) return;
+		if (name === 'Demon' || name === 'Witch') { setAbilityFlow({ step: 'coord' }); return; }
+		if (name === 'Ghost' || name === 'Mutant') { setAbilityFlow({ step: 'edgeFrom' }); return; }
+		if (name === 'Dragon' || name === 'Werewolf') { setAbilityFlow({ step: 'source' }); return; }
+		if (name === 'Vampire') {
+			const opponents = (ctx.playOrder as PlayerID[]).filter(
+				(p2) => p2 !== myID && (G.players[p2]?.handSize ?? G.players[p2]?.hand.length ?? 0) > 0,
+			);
+			if (opponents.length === 1) { castAbility({ targetPlayerId: opponents[0] }); return; }
+			setAbilityFlow({ step: 'target' });
+			return;
+		}
+		castAbility({}); // Alien, Blob, Cultist, Robot, Zombie: no target
+	};
+
+	const onAbilityBoardClick = (coord: Co, flow: AbilityFlow) => {
+		if (flow.step === 'coord') { castAbility({ coord }); return; }
+		if (flow.step === 'edgeFrom') { setAbilityFlow({ step: 'edgeTo', from: coord }); return; }
+		if (flow.step === 'edgeTo') {
+			const { from } = flow;
+			const idx = G.lanes.findIndex(
+				(ln) =>
+					(ln.from.q === from.q && ln.from.r === from.r && ln.to.q === coord.q && ln.to.r === coord.r) ||
+					(ln.from.q === coord.q && ln.from.r === coord.r && ln.to.q === from.q && ln.to.r === from.r),
+			);
+			// No lane on that edge: treat the click as re-picking the first end.
+			if (idx === -1) { setAbilityFlow({ step: 'edgeTo', from: coord }); return; }
+			if (getNightmareByName(G.players[myID]?.nightmare)?.name === 'Mutant') {
+				setAbilityFlow({ step: 'color', laneIndex: idx });
+			} else {
+				castAbility({ laneIndex: idx });
+			}
+			return;
+		}
+		if (flow.step === 'source') { setAbilityFlow({ step: 'dest', source: coord }); return; }
+		if (flow.step === 'dest') { castAbility({ source: flow.source, coord }); }
+	};
+
 	const onHexClick = (coord: Co) => {
+		// Nightmare ability targeting — intercept before everything else.
+		if (abilityFlow !== null) {
+			onAbilityBoardClick(coord, abilityFlow);
+			return;
+		}
 		// Action card coordinate picking — intercept before normal logic.
 		if (actionPickingCoord !== null) {
 			const coordStr = `${coord.q},${coord.r}`;
@@ -632,6 +761,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			if (!tile || tile.colors.length > 0 || tile.dead) return;
 			if (isOriginCoord(coord)) return;
 			moves.blockTile({ coord, handIndices: [...discardSelection] });
+			playSfx('block');
 			setDiscardSelection([]);
 			setActionMode('place');
 			return;
@@ -771,6 +901,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const handleRotation = (rotation: number) => {
 		if (pendingRotationTile === null || !discardReady) return;
 		moves.rotateTile({ coord: pendingRotationTile, handIndices: [...discardSelection], rotation });
+		playSfx('rotate');
 		setPendingRotationTile(null);
 		setDiscardSelection([]);
 		setActionMode('place');
@@ -826,6 +957,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		try {
 			const effects = resolveCardEffects(card, buildActionContext());
 			moves.playActionCard?.({ handIndex: selectedCard, effects });
+			playSfx('action');
 			setSelectedCard(null);
 			setSelectedColor(null);
 			setSelectedSourceDot(null);
@@ -843,6 +975,64 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const viewerNightmare = getNightmareByName(viewerPlayer?.nightmare);
 	const viewerNightmareState = viewerPlayer?.nightmareState;
 	const viewerPrefs = viewerPlayer?.prefs;
+
+	// Undo / stash / end-turn toolbar. Mobile: floating bar. Desktop: docked
+	// into the shelf's right end.
+	const floatingToolbar = (() => {
+		// Undo is enabled only when a move remains to undo this turn and the
+		// last remaining one is undoable — a non-undoable move (an action
+		// card) also locks everything played before it. Undone moves stay
+		// in the log with an UNDO entry appended, so remaining = moves − undos.
+		const thisTurn = Array.isArray(log)
+			? (log as Array<{ turn?: number; action?: { type?: string; payload?: { type?: string } } }>).filter(
+					(e) => e.turn === ctx.turn,
+				)
+			: [];
+		const movesMade = thisTurn.filter((e) => e.action?.type === 'MAKE_MOVE');
+		const undosDone = thisTurn.filter((e) => e.action?.type === 'UNDO').length;
+		const remaining = movesMade.slice(0, Math.max(0, movesMade.length - undosDone));
+		const lastMove = remaining[remaining.length - 1]?.action?.payload?.type;
+		const canUndo = isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
+		return (
+			<div className="floating-toolbar">
+				<button
+					className="floating-action"
+					onClick={() => {
+						undo();
+						playSfx('undo');
+						setSelectedCard(null);
+						setSelectedColor(null);
+						setPendingRotationTile(null);
+						setRotatable([]);
+						setActionMode('place');
+						setDiscardSelection([]);
+					}}
+					disabled={!canUndo}
+					title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
+				>
+					⟲
+				</button>
+		<button
+			className="floating-action"
+			onClick={onStash}
+			disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
+			title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
+		>
+			⬇
+		</button>
+		<button
+			className="floating-action floating-action--primary floating-action--end-turn"
+			onClick={onEndTurn}
+			disabled={!isMyTurn}
+			title="End Turn"
+		>
+			<span aria-hidden="true">⏳</span>
+			<span className="floating-action__label">End Turn</span>
+		</button>
+			</div>
+		);
+	})();
+
 
 	return (
 		<div className="game-layout">
@@ -962,6 +1152,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 											Uses left: {viewerNightmareState.abilityUsesRemaining}
 										</div>
 									)}
+									{isMyTurn && !locked && !ctx.gameover && (viewerNightmareState?.abilityUsesRemaining ?? 0) > 0 && (
+										<button
+											className="hand-nightmare__use-btn"
+											onClick={startAbility}
+											disabled={abilityFlow !== null}
+										>
+											{abilityFlow !== null ? 'Choosing target…' : '✨ Use Ability'}
+										</button>
+									)}
 								</div>
 							</div>
 							{viewerPrefs && (
@@ -1040,14 +1239,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="zone-backdrop-dim" onClick={() => setExpandedZone(null)} />
 			)}
 
-			{/* CARD ZONES — hidden on mobile (tab bar controls them) */}
+			{/* CARD SHELF — persistent desktop hand (mobile uses the tab bar) */}
 			{!isMobile && (
 				<>
-					<Hand
+					<Shelf
 						rules={rules}
 						cards={myHand}
 						selectedIndex={actionMode === 'place' ? selectedCard : null}
-						selectedIndices={actionMode !== 'place' ? discardSelection : undefined}
+						discardSelection={discardSelection}
+						discardMode={actionMode !== 'place'}
 						onSelect={(index) => {
 							if (actionMode !== 'place') {
 								// Multi-select for discard cost
@@ -1075,9 +1275,43 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							if (actionMode !== 'place') return;
 							onPickColor(index, color);
 						}}
-						isExpanded={expandedZone === 'hand'}
-						onExpandChange={handleZoneExpand('hand')}
-					/>
+						deckCount={G.deckSize ?? G.secret.deck.length}
+						discardCount={G.discard.length}
+						onOpenDiscard={() => setDiscardModalOpen(true)}
+					>
+						{floatingToolbar}
+					</Shelf>
+
+					{/* Discard-cost tray: a distinct prompt so the cost never reads
+					    as "back to your hand". */}
+					{actionMode !== 'place' && (
+						<div className="discard-tray">
+							<span className="discard-tray__title">
+								{actionMode === 'block' ? '🛇 Block' : '↻ Rotate'} — discard {discardNeeded} card{discardNeeded > 1 ? 's' : ''}
+							</span>
+							<div className="discard-tray__slots">
+								{Array.from({ length: discardNeeded }, (_, i) => {
+									const idx = discardSelection[i];
+									return (
+										<div
+											key={`tray-${i}`}
+											className={`discard-tray__slot ${idx !== undefined ? 'discard-tray__slot--filled' : ''}`}
+										>
+											{idx !== undefined ? myHand[idx]?.name : '+'}
+										</div>
+									);
+								})}
+							</div>
+							<span className="discard-tray__hint">
+								{discardReady
+									? (actionMode === 'block' ? 'Now click a highlighted tile' : 'Now click a highlighted node')
+									: 'Pick cards from your hand'}
+							</span>
+							<button className="discard-tray__cancel" onClick={() => handleModeChange('place')}>
+								Cancel (Esc)
+							</button>
+						</div>
+					)}
 
 					<Treasure
 						rules={rules}
@@ -1087,12 +1321,30 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						onExpandChange={handleZoneExpand('treasure')}
 					/>
 
-					<DiscardZone
-						rules={rules}
-						cards={G.discard}
-						isExpanded={expandedZone === 'discard'}
-						onExpandChange={handleZoneExpand('discard')}
-					/>
+					{/* Discard browser (opened from the shelf pile) */}
+					{discardModalOpen && (
+						<div className="modal-overlay" onClick={() => setDiscardModalOpen(false)}>
+							<div className="modal-content discard-modal" onClick={(e) => e.stopPropagation()}>
+								<div className="modal-header">
+									<h2>Discard ({G.discard.length})</h2>
+									<button className="modal-close" onClick={() => setDiscardModalOpen(false)}>×</button>
+								</div>
+								<div className="modal-body discard-modal__grid">
+									{G.discard.map((card, i) => (
+										<NeuralCard
+											key={`dm-${card.id}-${i}`}
+											card={card}
+											isSelected={false}
+											rules={rules}
+											onSelect={() => {}}
+											onPickColor={() => {}}
+										/>
+									))}
+									{G.discard.length === 0 && <div className="discard-modal__empty">Nothing discarded yet</div>}
+								</div>
+							</div>
+						</div>
+					)}
 				</>
 			)}
 
@@ -1187,6 +1439,48 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						</div>
 					)}
 				</>
+			)}
+
+			{/* NIGHTMARE ABILITY TARGETING BANNER */}
+			{abilityFlow !== null && (
+				<div className="coord-pick-banner">
+					<span className="coord-pick-banner__text">
+						{abilityFlow.step === 'coord' && 'Click a node on the path to destroy'}
+						{abilityFlow.step === 'edgeFrom' && 'Click one end of the lane'}
+						{abilityFlow.step === 'edgeTo' && 'Click the other end of the lane'}
+						{abilityFlow.step === 'source' && 'Click the node to build from'}
+						{abilityFlow.step === 'dest' && 'Click the destination node'}
+						{abilityFlow.step === 'target' && 'Steal from:'}
+						{abilityFlow.step === 'color' && 'New color:'}
+					</span>
+					{abilityFlow.step === 'target' &&
+						(ctx.playOrder as PlayerID[])
+							.filter((p2) => p2 !== myID)
+							.map((p2) => (
+								<button
+									key={`ab-target-${p2}`}
+									className="coord-pick-banner__cancel"
+									onClick={() => castAbility({ targetPlayerId: p2 })}
+								>
+									{nameOf(p2) ?? `P${p2}`}
+								</button>
+							))}
+					{abilityFlow.step === 'color' &&
+						(rules.COLORS as Color[])
+							.filter((c2) => G.lanes[abilityFlow.laneIndex]?.color !== c2)
+							.map((c2) => (
+								<button
+									key={`ab-color-${c2}`}
+									className="ability-color-btn"
+									style={{ background: asVisibleColor(c2) }}
+									onClick={() => castAbility({ laneIndex: abilityFlow.laneIndex, color: c2 })}
+									title={c2}
+								/>
+							))}
+					<button className="coord-pick-banner__cancel" onClick={() => setAbilityFlow(null)}>
+						Cancel
+					</button>
+				</div>
 			)}
 
 			{/* COORD PICKING BANNER — shown when board is active for picking */}
@@ -1512,60 +1806,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				handSize={myHand.length}
 			/>
 
-			{/* FLOATING ACTIONS TOOLBAR */}
-			{(() => {
-				// Undo is enabled only when a move remains to undo this turn and the
-				// last remaining one is undoable — a non-undoable move (an action
-				// card) also locks everything played before it. Undone moves stay
-				// in the log with an UNDO entry appended, so remaining = moves − undos.
-				const thisTurn = Array.isArray(log)
-					? (log as Array<{ turn?: number; action?: { type?: string; payload?: { type?: string } } }>).filter(
-							(e) => e.turn === ctx.turn,
-						)
-					: [];
-				const movesMade = thisTurn.filter((e) => e.action?.type === 'MAKE_MOVE');
-				const undosDone = thisTurn.filter((e) => e.action?.type === 'UNDO').length;
-				const remaining = movesMade.slice(0, Math.max(0, movesMade.length - undosDone));
-				const lastMove = remaining[remaining.length - 1]?.action?.payload?.type;
-				const canUndo = isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
-				return (
-					<div className="floating-toolbar">
-						<button
-							className="floating-action"
-							onClick={() => {
-								undo();
-								setSelectedCard(null);
-								setSelectedColor(null);
-								setPendingRotationTile(null);
-								setRotatable([]);
-								setActionMode('place');
-								setDiscardSelection([]);
-							}}
-							disabled={!canUndo}
-							title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
-						>
-							⟲
-						</button>
-				<button
-					className="floating-action"
-					onClick={onStash}
-					disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
-					title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
-				>
-					⬇
-				</button>
-				<button
-					className="floating-action floating-action--primary floating-action--end-turn"
-					onClick={onEndTurn}
-					disabled={!isMyTurn}
-					title="End Turn"
-				>
-					<span aria-hidden="true">⏳</span>
-					<span className="floating-action__label">End Turn</span>
-				</button>
-					</div>
-				);
-			})()}
+			{/* FLOATING ACTIONS TOOLBAR (mobile; desktop docks it in the shelf) */}
+			{isMobile && floatingToolbar}
 
 			{/* Secret export state button */}
 			<button
@@ -1938,9 +2180,19 @@ const App: React.FC = () => {
 	const aiPaused = useUIStore((s) => s.aiPaused);
 	const network = useUIStore((s) => s.network);
 	const serverURL = getServerURL();
+	const soundMuted = useUIStore((s) => s.soundMuted);
+	const setSoundMuted = useUIStore((s) => s.setSoundMuted);
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 	const [isLabRoute, setIsLabRoute] = React.useState(false);
 	const [joinPrefill, setJoinPrefill] = React.useState<{ code: string; error: string | null; invited?: boolean } | null>(null);
+
+	// Sounds: preload on first gesture (iOS unlock) and honor the mute setting.
+	React.useEffect(() => {
+		primeSfx();
+	}, []);
+	React.useEffect(() => {
+		setSfxMuted(soundMuted);
+	}, [soundMuted]);
 	const joinLinkHandled = React.useRef(false);
 
 	// Invite links: /?join=<code> opens a join prompt seeded with the code so
@@ -2017,6 +2269,13 @@ const App: React.FC = () => {
 						setNumPlayers(next);
 						resetBotsForCount(next);
 					}} disabled={network !== null || numPlayers <= 2} title={network ? 'Leave the network match to change players' : undefined}>−</button>
+					<button
+						className="setup-controls__network"
+						onClick={() => setSoundMuted(!soundMuted)}
+						title={soundMuted ? 'Unmute sounds' : 'Mute sounds'}
+					>
+						{soundMuted ? '🔇' : '🔊'}
+					</button>
 					<button
 						className={`setup-controls__network ${network ? 'setup-controls__network--connected' : ''}`}
 						onClick={() => setNetworkModalOpen(true)}
