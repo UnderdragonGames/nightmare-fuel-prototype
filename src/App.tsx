@@ -629,8 +629,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
 		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
 	};
+	const shortcutRef = React.useRef<{ undo: () => void; endTurn: () => void; isMyTurn: boolean }>({ undo: () => {}, endTurn: () => {}, isMyTurn: false });
 	React.useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
+			const target = e.target as HTMLElement | null;
+			if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+			if (e.key === 'u' || e.key === 'U') { shortcutRef.current.undo(); return; }
+			if ((e.key === 'e' || e.key === 'E') && shortcutRef.current.isMyTurn) { shortcutRef.current.endTurn(); return; }
 			if (e.key !== 'Escape') return;
 			const s = escStateRef.current;
 			if (s.abilityFlow !== null) { setAbilityFlow(null); return; }
@@ -978,13 +983,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const viewerNightmareState = viewerPlayer?.nightmareState;
 	const viewerPrefs = viewerPlayer?.prefs;
 
-	// Undo / stash / end-turn toolbar. Mobile: floating bar. Desktop: docked
-	// into the shelf's right end.
-	const floatingToolbar = (() => {
-		// Undo is enabled only when a move remains to undo this turn and the
-		// last remaining one is undoable — a non-undoable move (an action
-		// card) also locks everything played before it. Undone moves stay
-		// in the log with an UNDO entry appended, so remaining = moves − undos.
+	// Undo is enabled only when a move remains to undo this turn and the
+	// last remaining one is undoable — a non-undoable move (an action card)
+	// also locks everything played before it. Undone moves stay in the log
+	// with an UNDO entry appended, so remaining = moves − undos.
+	const canUndo = (() => {
 		const thisTurn = Array.isArray(log)
 			? (log as Array<{ turn?: number; action?: { type?: string; payload?: { type?: string } } }>).filter(
 					(e) => e.turn === ctx.turn,
@@ -994,46 +997,66 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		const undosDone = thisTurn.filter((e) => e.action?.type === 'UNDO').length;
 		const remaining = movesMade.slice(0, Math.max(0, movesMade.length - undosDone));
 		const lastMove = remaining[remaining.length - 1]?.action?.payload?.type;
-		const canUndo = isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
-		return (
-			<div className="floating-toolbar">
-				<button
-					className="floating-action"
-					onClick={() => {
-						undo();
-						playSfx('undo');
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setPendingRotationTile(null);
-						setRotatable([]);
-						setActionMode('place');
-						setDiscardSelection([]);
-					}}
-					disabled={!canUndo}
-					title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
-				>
-					<Icon name="undo" />
-				</button>
-		<button
-			className="floating-action"
-			onClick={onStash}
-			disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
-			title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
-		>
-			<Icon name="stash" />
-		</button>
-		<button
-			className="floating-action floating-action--primary floating-action--end-turn"
-			onClick={onEndTurn}
-			disabled={!isMyTurn}
-			title="End Turn"
-		>
-			<Icon name="hourglass" />
-			<span className="floating-action__label">End Turn</span>
-		</button>
-			</div>
-		);
+		return isMyTurn && lastMove !== undefined && lastMove !== 'playActionCard' && lastMove !== 'cancelMatch';
 	})();
+
+	const handleUndo = () => {
+		if (!canUndo) return;
+		undo();
+		playSfx('undo');
+		setSelectedCard(null);
+		setSelectedColor(null);
+		setPendingRotationTile(null);
+		setRotatable([]);
+		setActionMode('place');
+		setDiscardSelection([]);
+	};
+
+	// Every button says what it does — and, when disabled, why.
+	const canStash = isMyTurn && selectedCard !== null && stage === 'active' && G.treasure.length < rules.TREASURE_MAX;
+	const stashTitle = !isMyTurn
+		? 'Wait for your turn'
+		: selectedCard === null
+			? 'Select a card first, then stash it to Treasure (you draw an extra card at end of turn)'
+			: G.treasure.length >= rules.TREASURE_MAX
+				? 'Treasure is full'
+				: `Stash the selected card to Treasure — draw ${1 + stashBonus} extra at end of turn`;
+
+	shortcutRef.current = { undo: handleUndo, endTurn: onEndTurn, isMyTurn };
+
+	// Undo / stash / end-turn toolbar. Mobile: floating bar. Desktop: docked
+	// into the shelf's right end.
+	const floatingToolbar = (
+		<div className="floating-toolbar">
+			<button
+				className="floating-action floating-action--pill"
+				onClick={handleUndo}
+				disabled={!canUndo}
+				title={canUndo ? 'Undo your last move (U)' : 'Nothing to undo this turn'}
+			>
+				<Icon name="undo" />
+				<span className="floating-action__label">Undo</span>
+			</button>
+			<button
+				className="floating-action floating-action--pill"
+				onClick={onStash}
+				disabled={!canStash}
+				title={stashTitle}
+			>
+				<Icon name="stash" />
+				<span className="floating-action__label">Stash</span>
+			</button>
+			<button
+				className="floating-action floating-action--pill floating-action--primary"
+				onClick={onEndTurn}
+				disabled={!isMyTurn}
+				title={isMyTurn ? 'End your turn and refill your hand (E)' : 'Wait for your turn'}
+			>
+				<Icon name="hourglass" />
+				<span className="floating-action__label">End Turn</span>
+			</button>
+		</div>
+	);
 
 
 	return (

@@ -557,9 +557,9 @@
 	color: white;
 }
 
-/* End-turn: pill with hourglass + label (label drops on tight screens).
-   Double-class selector so later size overrides on .floating-action lose. */
-.floating-action.floating-action--end-turn {
+/* Labeled toolbar pills (label drops on tight screens). Double-class
+   selector so later size overrides on .floating-action lose. */
+.floating-action.floating-action--pill {
 	width: auto;
 	padding: 0 14px;
 	border-radius: 999px;
@@ -578,7 +578,7 @@
 		display: none;
 	}
 
-	.floating-action.floating-action--end-turn {
+	.floating-action.floating-action--pill {
 		width: 40px;
 		padding: 0;
 		border-radius: 10px;
@@ -2358,9 +2358,9 @@ button .icon {
 		font-size: 1rem;
 	}
 
-	.floating-action.floating-action--end-turn {
+	.floating-action.floating-action--pill {
 		width: auto;
-		padding: 0 16px;
+		padding: 0 14px;
 	}
 
 	/* Dev tool — hidden on mobile (it overlapped the Hand tab) */
