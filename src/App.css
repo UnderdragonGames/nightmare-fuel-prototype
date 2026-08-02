@@ -557,8 +557,9 @@
 	color: white;
 }
 
-/* End-turn: pill with hourglass + label (label drops on tight screens) */
-.floating-action--end-turn {
+/* End-turn: pill with hourglass + label (label drops on tight screens).
+   Double-class selector so later size overrides on .floating-action lose. */
+.floating-action.floating-action--end-turn {
 	width: auto;
 	padding: 0 14px;
 	border-radius: 999px;
@@ -577,10 +578,10 @@
 		display: none;
 	}
 
-	.floating-action--end-turn {
-		width: 32px;
+	.floating-action.floating-action--end-turn {
+		width: 40px;
 		padding: 0;
-		border-radius: 8px;
+		border-radius: 10px;
 	}
 }
 
@@ -1084,8 +1085,9 @@
 
 @media (max-width: 768px) {
 	.version-badge {
-		bottom: 62px; /* clears the zone tab bar */
-		left: 8px;
+		bottom: 112px; /* clears the tab bar and the toolbar row */
+		left: auto;
+		right: 8px;
 	}
 }
 
@@ -1094,6 +1096,38 @@
 	font-size: 0.7rem;
 	color: var(--text-muted);
 	text-align: center;
+}
+
+/* ── Icons ── */
+
+.icon {
+	display: block;
+	flex-shrink: 0;
+}
+
+button .icon {
+	pointer-events: none;
+}
+
+/* Buttons hosting icons center their content */
+.floating-action,
+.setup-controls button,
+.secret-export-btn,
+.waiting-room__copy,
+.network-status__copy,
+.hand-nightmare__use-btn,
+.cancel-match-btn,
+.waiting-room__share {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+}
+
+.discard-tray__title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 }
 
 /* ── Desktop hand shelf ── */
@@ -2319,9 +2353,19 @@
 	}
 
 	.floating-action {
-		width: 32px;
-		height: 32px;
+		width: 40px;
+		height: 40px;
 		font-size: 1rem;
+	}
+
+	.floating-action.floating-action--end-turn {
+		width: auto;
+		padding: 0 16px;
+	}
+
+	/* Dev tool — hidden on mobile (it overlapped the Hand tab) */
+	.secret-export-btn {
+		display: none;
 	}
 
 	/* Smaller cards on mobile */
@@ -3920,7 +3964,7 @@
 	left: 50%;
 	transform: translateX(-50%);
 	display: flex;
-	gap: 8px;
+	gap: 12px;
 	padding: 8px 12px;
 	border-radius: 12px;
 	background: rgba(20, 20, 30, 0.85);

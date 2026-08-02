@@ -21,6 +21,7 @@ import { getNightmareByName } from './game/nightmares';
 import { resolveCardActions, resolveCardEffects, type CardActionResolveContext } from './game/cardActions';
 import { useIsMobile } from './ui/useIsMobile';
 import { ZoneTabBar } from './ui/ZoneTabBar';
+import { Icon } from './ui/Icon';
 import { ActionModeStrip, type ActionMode } from './ui/ActionModeStrip';
 import {
 	cancelMatchRemote,
@@ -139,6 +140,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
 	const [abilityFlow, setAbilityFlow] = React.useState<AbilityFlow | null>(null);
 	const [discardModalOpen, setDiscardModalOpen] = React.useState(false);
+	const [exportCopied, setExportCopied] = React.useState(false);
 
 	// Network session (null in local games). matchData is only provided by the
 	// multiplayer server, so its presence — not the store — gates network UI.
@@ -1010,7 +1012,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					disabled={!canUndo}
 					title={canUndo ? 'Undo last move' : 'Nothing to undo this turn'}
 				>
-					⟲
+					<Icon name="undo" />
 				</button>
 		<button
 			className="floating-action"
@@ -1018,7 +1020,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			disabled={!isMyTurn || selectedCard === null || stage !== 'active' || G.treasure.length >= rules.TREASURE_MAX}
 			title={stashBonus > 0 ? `Stash (+${stashBonus})` : 'Stash'}
 		>
-			⬇
+			<Icon name="stash" />
 		</button>
 		<button
 			className="floating-action floating-action--primary floating-action--end-turn"
@@ -1026,7 +1028,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			disabled={!isMyTurn}
 			title="End Turn"
 		>
-			<span aria-hidden="true">⏳</span>
+			<Icon name="hourglass" />
 			<span className="floating-action__label">End Turn</span>
 		</button>
 			</div>
@@ -1158,7 +1160,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 											onClick={startAbility}
 											disabled={abilityFlow !== null}
 										>
-											{abilityFlow !== null ? 'Choosing target…' : '✨ Use Ability'}
+											{abilityFlow !== null ? 'Choosing target…' : <><Icon name="sparkles" size={14} /> Use Ability</>}
 										</button>
 									)}
 								</div>
@@ -1287,7 +1289,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					{actionMode !== 'place' && (
 						<div className="discard-tray">
 							<span className="discard-tray__title">
-								{actionMode === 'block' ? '🛇 Block' : '↻ Rotate'} — discard {discardNeeded} card{discardNeeded > 1 ? 's' : ''}
+								<Icon name={actionMode === 'block' ? 'ban' : 'rotate'} size={14} /> {actionMode === 'block' ? 'Block' : 'Rotate'} — discard {discardNeeded} card{discardNeeded > 1 ? 's' : ''}
 							</span>
 							<div className="discard-tray__slots">
 								{Array.from({ length: discardNeeded }, (_, i) => {
@@ -1809,17 +1811,17 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			{/* FLOATING ACTIONS TOOLBAR (mobile; desktop docks it in the shelf) */}
 			{isMobile && floatingToolbar}
 
-			{/* Secret export state button */}
+			{/* Secret export state button (desktop only — a dev tool) */}
 			<button
 				className="secret-export-btn"
 				onClick={() => {
 					navigator.clipboard.writeText(JSON.stringify(G));
-					const btn = document.querySelector('.secret-export-btn') as HTMLElement | null;
-					if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = '⚙'; }, 1200); }
+					setExportCopied(true);
+					setTimeout(() => setExportCopied(false), 1200);
 				}}
 				title="Export state to clipboard (for Lab)"
 			>
-				⚙
+				{exportCopied ? <Icon name="check" size={13} /> : <Icon name="gear" size={13} />}
 			</button>
 
 			{/* Your-turn indicator (desktop; the mobile status bar has its own) */}
@@ -1842,11 +1844,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 										onClick={() => navigator.clipboard.writeText(network.matchID)}
 										title="Copy match code"
 									>
-										📋
+										<Icon name="copy" size={14} />
 									</button>
 								</div>
 								<button className="waiting-room__share" onClick={handleShareInvite}>
-									{inviteShared === 'copied' ? 'Invite link copied!' : '📤 Share Invite Link'}
+									{inviteShared === 'copied' ? 'Invite link copied!' : <><Icon name="share" size={15} /> Share Invite Link</>}
 								</button>
 							</>
 						)}
@@ -2092,7 +2094,7 @@ const NetworkModal: React.FC<{
 									onClick={() => navigator.clipboard.writeText(network.matchID)}
 									title="Copy"
 								>
-									📋
+									<Icon name="copy" size={14} />
 								</button>
 							</div>
 							<div className="network-status__server">
@@ -2100,7 +2102,7 @@ const NetworkModal: React.FC<{
 								<span>{serverURL}</span>
 							</div>
 							<button className="btn btn--primary" onClick={handleShare}>
-								{shareState === 'copied' ? 'Link copied!' : '📤 Share Invite'}
+								{shareState === 'copied' ? 'Link copied!' : <><Icon name="share" size={15} /> Share Invite</>}
 							</button>
 							<button className="btn btn--danger" onClick={handleDisconnect}>
 								Leave Match
@@ -2274,16 +2276,14 @@ const App: React.FC = () => {
 						onClick={() => setSoundMuted(!soundMuted)}
 						title={soundMuted ? 'Unmute sounds' : 'Mute sounds'}
 					>
-						{soundMuted ? '🔇' : '🔊'}
+						<Icon name={soundMuted ? 'volume-off' : 'volume'} />
 					</button>
 					<button
 						className={`setup-controls__network ${network ? 'setup-controls__network--connected' : ''}`}
 						onClick={() => setNetworkModalOpen(true)}
 						title={network ? 'Connected to network game' : 'Network game'}
 					>
-						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-							<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-						</svg>
+						<Icon name="globe" />
 					</button>
 				</div>
 			)}

@@ -7,6 +7,12 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-02 — v0.2.0 (PR #6)
+
+### [ux] Consistent icon set; de-crowded controls
+- **Feedback (Julian, iPhone screenshot):** "There's no reason to have these buttons so crowded. Also, we should use consistent icons, an icon font, probably."
+- **Change:** all emoji/text glyph buttons replaced with a single inline SVG stroke icon set (`src/ui/Icon.tsx` — Feather-style; chosen over an icon font: no font asset, crisp, inherits button color). Toolbar spacing widened with bigger touch targets, End Turn is a proper labeled pill on mobile, the dev export gear is hidden on mobile (it overlapped the Hand tab), and the version badge moved clear of the toolbar. Version badge now also shows the real commit on Railway builds (env sha fallback).
+
 ## 2026-08-02 — v0.1.0 (PR #5)
 
 ### [ux] Desktop hand shelf redesign (shipped)
