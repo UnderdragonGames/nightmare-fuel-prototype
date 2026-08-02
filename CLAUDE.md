@@ -8,6 +8,15 @@ Hex/path tile-laying board game prototype (React + boardgame.io). The server (`s
 - Local dev without Postgres: `USE_FLATFILE=1 bun server.ts` (FlatFile storage; needs the `node-persist` devDependency).
 - Tests: `npx vitest run` (unit), `npm run test:ui` (browser smoke, needs `CHROME_PATH`).
 
+## Rules toggles (env)
+
+Rules knobs resolve from env in `rulesConfig.ts` (Vite `import.meta.env` in the browser, `process.env` on the server) and are snapshotted into each match at creation — existing matches keep the rules they started with:
+
+- `VITE_ACTION_CARDS` = `disabled` | `one-per-turn` (default) | `unlimited`
+- `VITE_FORK_SUPPORT` = `1`/`0` — support-tree fork constraints (default off: playtests found forking too hard)
+
+Tests that exercise a mechanic must pin its flag in their own rules rather than relying on the shipping default.
+
 ## Versioning (semver — required)
 
 - `package.json` `version` (MAJOR.MINOR.PATCH) is the single source of truth. It is baked into the client at build time (`__APP_VERSION__`/`__APP_COMMIT__` via `vite.config.ts` define), displayed in the app (bottom-left version badge and the network modal), and logged by the server at startup — the deployed version is always identifiable.

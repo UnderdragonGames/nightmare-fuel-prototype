@@ -13,14 +13,25 @@ export const BASE_DIRECTIONS: readonly Co[] = [
 // Default edge colors going clockwise from North (edges 0-5): YGBVRO
 export const BASE_EDGE_COLORS: readonly Color[] = ['Y', 'G', 'B', 'V', 'R', 'O'];
 
-// Env override for the action card rule. Reads Vite's import.meta.env in the
-// browser and process.env on the server (tsx/bun have no VITE_* injection), so
-// both the Local() setup and the multiplayer server resolve the same rule.
+// Env overrides for rules knobs. Read Vite's import.meta.env in the browser
+// and process.env on the server (tsx/bun have no VITE_* injection), so both
+// the Local() setup and the multiplayer server resolve the same rule.
+const envValue = (name: string): string | undefined => {
+	const fromVite = (import.meta as { env?: Record<string, string> }).env?.[name];
+	const fromNode = typeof process !== 'undefined' ? process.env?.[name] : undefined;
+	return fromVite ?? fromNode;
+};
+
 const envActionCardsRule = (): ActionCardsRule | null => {
-	const fromVite = (import.meta as { env?: Record<string, string> }).env?.VITE_ACTION_CARDS;
-	const fromNode = typeof process !== 'undefined' ? process.env?.VITE_ACTION_CARDS : undefined;
-	const value = fromVite ?? fromNode;
+	const value = envValue('VITE_ACTION_CARDS');
 	return value === 'disabled' || value === 'one-per-turn' || value === 'unlimited' ? value : null;
+};
+
+// Boolean rules flag: "1"/"true"/"on" → true, "0"/"false"/"off" → false, unset → null.
+const envFlag = (name: string): boolean | null => {
+	const value = envValue(name);
+	if (value === undefined || value === '') return null;
+	return value === '1' || value === 'true' || value === 'on';
 };
 
 export const buildColorToDir = (edgeColors: readonly Color[]): Record<Color, Co> => {
@@ -131,8 +142,10 @@ export const PATH_RULES: Rules = {
 		OUTWARD_RULE: 'none',
 		// In path mode, allow up to 3 instances per path segment
 		MAX_LANES_PER_PATH: 3,
-		// Fork support: lanes determine branching capacity (single=0, double=1, triple=2 branches per node)
-		FORK_SUPPORT: true,
+		// Fork support: lanes determine branching capacity (single=0, double=1,
+		// triple=2 branches per node). Off by default after playtests found
+		// forking too hard; flip per-deploy with VITE_FORK_SUPPORT=1|0.
+		FORK_SUPPORT: envFlag('VITE_FORK_SUPPORT') ?? false,
 		// Paths cannot intersect: all incoming edges at a tile must come from same source
 		NO_INTERSECT: true,
 		// Tiles at rim cannot have outgoing edges (paths terminate at rim)
