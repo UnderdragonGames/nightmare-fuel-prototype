@@ -9,6 +9,12 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-02 — v0.2.0 (PR #6)
 
+### "This Prey is Mine" and "Seize the Opportunity" fixed (were silent no-ops)
+- **Feedback (Julian):** "This Prey is Mine doesn't seem to have an effect. Seize the Opportunity also doesn't work."
+- **Diagnosis:** Prey's lane recolor only matched a lane picked in the exact direction it was stored — picking the two ends in the other order silently did nothing and still consumed the card. Seize granted an "extra placement" counter that nothing in path mode ever consumes (placements are card-limited, not count-limited), so it was a guaranteed no-op — the same trap as the Dragon/Werewolf ability before it.
+- **Change:** Prey now matches the lane in either direction, and requires an actually different color. Seize now places a **free lane** (no card spent) of the last-placed color — pick the start, the end auto-fills from the color's direction. Mistargeted plays are rejected up front (card stays in hand) with a reason shown in the modal, mirroring how abilities validate. Bots skip both cards (they don't do board-targeting cards yet).
+- **Outcome:** _pending — confirm both cards feel right in the next playtest._
+
 ### Orange separated from yellow
 - **Feedback (Julian):** "The orange color needs to be a little more distinct from the yellow, they are too close in value and Hue."
 - **Change:** orange lane/arrow color moved from `#ffbb33` (amber, hue 38°) to `#f97316` (true orange, hue 25°) — darker in value and further in hue from yellow's `#ffee55`.

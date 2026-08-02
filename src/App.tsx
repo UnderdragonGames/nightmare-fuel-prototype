@@ -19,6 +19,7 @@ import { PlayerCard } from './ui/PlayerCard';
 import { StateLab } from './ui/StateLab';
 import { getNightmareByName } from './game/nightmares';
 import { resolveCardActions, resolveCardEffects, type CardActionResolveContext } from './game/cardActions';
+import { actionEffectsInvalidReason } from './game/effects';
 import { useIsMobile } from './ui/useIsMobile';
 import { ZoneTabBar } from './ui/ZoneTabBar';
 import { Icon } from './ui/Icon';
@@ -508,8 +509,17 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		action.type === 'replaceHexWithDead' || (action.type === 'replaceHexColor' && !isPathMode),
 	);
 	const actionNeedsMove = selectedActionList.some((action) =>
-		action.type === 'moveHex' || (action.type === 'replaceHexColor' && isPathMode) || action.type === 'replaceLaneColor',
+		action.type === 'moveHex' || (action.type === 'replaceHexColor' && isPathMode) || action.type === 'replaceLaneColor'
+		|| (action.type === 'grantExtraPlacement' && isPathMode),
 	);
+	// Seize the Opportunity: the free lane's color is fixed (last placed), and in
+	// path mode color == direction, so picking the start determines the end.
+	const actionFreeLaneColor = (() => {
+		if (!isPathMode) return null;
+		const grant = selectedActionList.find((action) => action.type === 'grantExtraPlacement');
+		if (!grant) return null;
+		return ('color' in grant && grant.color === 'lastPlaced' ? G.action.lastPlacedColor : null);
+	})();
 	const actionNeedsReplaceColor = selectedActionList.some((action) =>
 		action.type === 'replaceHexColor' || action.type === 'replaceLaneColor',
 	);
@@ -601,6 +611,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		if (msg.includes('choiceIndex')) return 'Pick an option.';
 		if (msg.includes('moveFrom') || msg.includes('moveTo')) return 'Pick the move source and destination.';
 		if (msg.includes('replaceColor')) return 'Pick a replacement color.';
+		if (msg.includes('lastPlacedColor')) return 'No lane has been placed yet — there is no color to copy.';
 		if (msg.includes('chosenStat')) return 'Pick a stat.';
 		return msg;
 	};
@@ -608,7 +619,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	let actionResolveError: string | null = null;
 	if (selectedActionCard && actionLimitAllows) {
 		try {
-			resolveCardEffects(selectedActionCard, buildActionContext());
+			const resolved = resolveCardEffects(selectedActionCard, buildActionContext());
+			// Board-targeting effects: mirror the engine's pre-check so a bad
+			// target reads as an error here instead of a rejected move.
+			actionResolveError = actionEffectsInvalidReason(G, resolved);
 		} catch (err) {
 			actionResolveError = humanizeActionError(err instanceof Error ? err.message : 'Action requires more input.');
 		}
@@ -758,7 +772,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				setActionPickingCoord(null);
 			} else if (actionPickingCoord === 'moveFrom') {
 				setActionMoveFromInput(coordStr);
-				setActionPickingCoord('moveTo'); // auto-advance to picking destination
+				if (actionFreeLaneColor) {
+					// Free-lane placement: destination is dictated by the color's
+					// direction, so fill it in instead of asking for a second pick.
+					const dir = rules.COLOR_TO_DIR[actionFreeLaneColor];
+					setActionMoveToInput(`${coord.q + dir.q},${coord.r + dir.r}`);
+					setActionPickingCoord(null);
+				} else {
+					setActionPickingCoord('moveTo'); // auto-advance to picking destination
+				}
 			} else if (actionPickingCoord === 'moveTo') {
 				setActionMoveToInput(coordStr);
 				setActionPickingCoord(null);
@@ -1557,8 +1579,14 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="coord-pick-banner">
 					<span className="coord-pick-banner__text">
 						{actionPickingCoord === 'coord' && 'Click a hex to select target'}
-						{actionPickingCoord === 'moveFrom' && 'Click a hex to select source'}
-						{actionPickingCoord === 'moveTo' && 'Click a hex to select destination'}
+						{actionPickingCoord === 'moveFrom' && (actionFreeLaneColor
+							? `Click where the free ${actionFreeLaneColor} lane starts`
+							: actionNeedsReplaceColor
+								? 'Click one end of the lane to recolor'
+								: 'Click a hex to select source')}
+						{actionPickingCoord === 'moveTo' && (actionNeedsReplaceColor
+							? 'Click the other end of the lane'
+							: 'Click a hex to select destination')}
 					</span>
 					<button
 						className="coord-pick-banner__cancel"
@@ -1659,7 +1687,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						{actionNeedsMove && (
 							<>
 								<div className="action-panel__field">
-									<span className="action-panel__label">Move From</span>
+									<span className="action-panel__label">
+										{actionFreeLaneColor ? 'Lane start' : actionNeedsReplaceColor ? 'Lane end A' : 'Move From'}
+									</span>
 									<div className="action-panel__coord-pick">
 										{actionMoveFromInput ? (
 											<>
@@ -1682,7 +1712,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									</div>
 								</div>
 								<div className="action-panel__field">
-									<span className="action-panel__label">Move To</span>
+									<span className="action-panel__label">
+										{actionFreeLaneColor ? 'Lane end (auto)' : actionNeedsReplaceColor ? 'Lane end B' : 'Move To'}
+									</span>
 									<div className="action-panel__coord-pick">
 										{actionMoveToInput ? (
 											<>

@@ -2,7 +2,7 @@ import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
 import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, isRotatableNode, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
 import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, MoveUseAbilityArgs, PlayerPrefs, PlayerState, HexTile, Co, Rules, NightmareAction } from './types';
-import { drawOne, initActionState, playActionCardFromHand, applyNightmareActions } from './effects';
+import { drawOne, initActionState, playActionCardFromHand, applyNightmareActions, actionEffectsInvalidReason } from './effects';
 import { resolveNightmareActions } from './nightmareActions';
 import { emitEvent } from './hooks';
 import { enumerateActions } from './ai';
@@ -384,6 +384,8 @@ export const HexStringsGame: Game<GState> = {
 								playerOrder: ctx.playOrder as PlayerID[],
 								lastPlacedColor: G.action.lastPlacedColor,
 							});
+							// A mistargeted board effect must not consume the card.
+							if (actionEffectsInvalidReason(G, effects) !== null) return;
 							if (G.rules.ACTION_CARDS === 'one-per-turn') {
 								if (played > 0 && extra > 0) {
 									G.action.extraActionPlays[pid] = extra - 1;
