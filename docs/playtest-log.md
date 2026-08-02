@@ -9,6 +9,11 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-02 — v0.3.0
 
+### Randomized starting order
+- **Feedback (Julian):** "Let's randomize starting order."
+- **Change:** who goes first is now shuffled once per match (`RANDOM_START_ORDER`, default on; `VITE_RANDOM_START_ORDER=0` to pin, which tests and the UI smoke do). Turn order still proceeds clockwise from the shuffled first player. Existing matches keep their order (rules snapshot).
+- **Reason:** _pending — assumed first-player advantage; confirm what felt wrong in play._
+
 ### Mystery Box becomes a real interactive draft
 - **Feedback (Julian):** "Mystery box doesn't really work as intended." Design answers: full interactive draft; a drafted lane card "must place immediately."
 - **Diagnosis:** the old flow had the playing player blind-type a numeric pick for every player *before* the cards were revealed; nobody ever saw the cards, and drafted lane cards just went to hand.

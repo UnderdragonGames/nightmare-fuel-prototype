@@ -39,7 +39,12 @@ const findChromium = () => {
 const flattedPath = join(ROOT, 'node_modules/flatted/min.js');
 
 const main = async () => {
-  const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
+  // Deterministic smoke: player 0 must start (the script drives P0's seat).
+  const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
+    cwd: ROOT,
+    stdio: 'ignore',
+    env: { ...process.env, VITE_RANDOM_START_ORDER: '0' },
+  });
   const cleanup = () => { try { vite.kill(); } catch { /* already dead */ } };
   process.on('exit', cleanup);
 

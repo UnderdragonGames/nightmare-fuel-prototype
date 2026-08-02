@@ -315,6 +315,16 @@ export const HexStringsGame: Game<GState> = {
 		),
 	}),
 	turn: {
+		// Who goes first is shuffled once per match (snapshotted like all rules;
+		// pin off with VITE_RANDOM_START_ORDER=0 for deterministic tests/smoke).
+		order: {
+			first: () => 0,
+			next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.playOrder.length,
+			playOrder: ({ G, random }) => {
+				const ids = Object.keys(G.players) as PlayerID[];
+				return G.rules.RANDOM_START_ORDER && random ? random.Shuffle(ids) : ids;
+			},
+		},
 		onBegin: (context) => {
 			const { G, ctx, events } = context;
 			const pid = ctx.currentPlayer;

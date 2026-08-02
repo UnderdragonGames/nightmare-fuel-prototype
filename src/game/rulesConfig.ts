@@ -93,6 +93,9 @@ export const HEX_RULES: Rules = {
 	EDGE_COLORS: BASE_EDGE_COLORS,
 	// If true, shuffle EDGE_COLORS once per new game (and derive COLOR_TO_DIR from that shuffled order).
 	RANDOM_CARDINAL_DIRECTIONS: true,
+	// If true, shuffle the seat order once per new game (who goes first).
+	// Flip per-deploy with VITE_RANDOM_START_ORDER=1|0; tests pin it off.
+	RANDOM_START_ORDER: envFlag('VITE_RANDOM_START_ORDER') ?? true,
 	// Maps each color to its directional offset vector in hex coordinates (derived from EDGE_COLORS)
 	COLOR_TO_DIR: buildColorToDir(BASE_EDGE_COLORS),
 	// Number of cards each player holds in hand
