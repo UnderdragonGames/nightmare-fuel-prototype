@@ -8,9 +8,20 @@ type MoveConfig = { undoable?: boolean };
 type StageConfig = { moves: Record<string, MoveConfig | ((...a: unknown[]) => unknown)> };
 const stages = (HexStringsGame.turn as unknown as { stages: Record<string, StageConfig> }).stages;
 
+// Pin the seat-order shuffle off: this suite drives player 0's client and
+// needs them to start (see CLAUDE.md — tests pin the flags they rely on).
+const FixedOrderGame = {
+	...HexStringsGame,
+	setup: (context: Parameters<NonNullable<typeof HexStringsGame.setup>>[0]) => {
+		const G = HexStringsGame.setup!(context) as GState;
+		G.rules = { ...G.rules, RANDOM_START_ORDER: false };
+		return G;
+	},
+};
+
 describe('undo', () => {
 	it('reverts a placement made this turn', () => {
-		const client = Client<GState>({ game: HexStringsGame, numPlayers: 2, playerID: '0', debug: false });
+		const client = Client<GState>({ game: FixedOrderGame, numPlayers: 2, playerID: '0', debug: false });
 		client.start();
 		const before = client.getState()!;
 		const place = enumerateActions(before.G, '0').find((a) => a.type === 'playCard');

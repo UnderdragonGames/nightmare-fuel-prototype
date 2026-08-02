@@ -37,6 +37,7 @@ export type CardAction =
 	| { type: 'moveCardToPlayerHand' }
 	| { type: 'draftInTurnOrder' }
 	| { type: 'autoPlayPickedCard' }
+	| { type: 'beginDraft' }
 	| { type: 'chooseAgenda' }
 	| { type: 'setAgendaOverride' }
 	| { type: 'reorderPlayerPrefs' }
@@ -144,6 +145,14 @@ export type ActionState = {
 	// Hand index of the card each player drafted in the most recent draft
 	// (consumed by autoPlayDrafted; null when not mid-draft).
 	draftedHandIndex: Record<PlayerID, number | null>;
+	// Interactive sequential draft (Mystery Box): each player in `order` picks
+	// one revealed card on their own client; a picked lane card must then be
+	// placed (`placing`) before the draft advances. Null when no draft is live.
+	pendingDraft: {
+		order: PlayerID[];
+		position: number;
+		placing: { playerId: PlayerID; handIndex: number } | null;
+	} | null;
 };
 
 // Path-mode lane segment between adjacent nodes.
@@ -275,6 +284,7 @@ export type Rules = {
 	EDGE_COLORS: readonly Color[];
 	// If true, shuffle EDGE_COLORS once per new game (and derive COLOR_TO_DIR from that shuffled order).
 	RANDOM_CARDINAL_DIRECTIONS: boolean;
+	RANDOM_START_ORDER: boolean;
 	// Maps each color to its directional offset vector in hex coordinates
 	COLOR_TO_DIR: Record<Color, Co>;
 	// Number of cards each player holds in hand
@@ -326,6 +336,7 @@ export type GameEffect =
 	| { type: 'revealTop'; count: number }
 	| { type: 'discardRevealed' }
 	| { type: 'draftInTurnOrder'; order: PlayerID[]; picks: Record<PlayerID, number> }
+	| { type: 'beginDraft'; order: PlayerID[] }
 	| { type: 'autoPlayDrafted'; order: PlayerID[] }
 	| { type: 'autoPlayPickedCard'; playerId: PlayerID; revealedIndex: number; effects?: GameEffect[] }
 	| { type: 'moveCardToPlayerHand'; playerId: PlayerID; card?: Card; usePlayedCard?: boolean }
@@ -354,6 +365,8 @@ export type MovePlayCardArgs =
 	// existing `convert`-colored lane on the edge (source, coord) to `pick`.
 	| { handIndex: number; pick: Color; coord: Co; source: Co; convert?: Color };
 export type MovePlayActionArgs = { handIndex: number; effects?: GameEffect[] };
+export type MoveDraftPickArgs = { index: number };
+export type MoveDraftPlaceArgs = { source: Co; coord: Co; pick: Color };
 export type MoveStashArgs = { handIndex: number };
 export type MoveTakeTreasureArgs = { index: number };
 export type MoveRotateTileArgs = { coord: Co; handIndices: number[]; rotation: number }; // rotation: 1-5 (60°-300°), excluding 3 (180°); handIndices: cards to discard (length must equal COST_TO_ROTATE)

@@ -14,7 +14,7 @@ import type {
 } from './types';
 import { emitEvent, registerHook } from './hooks';
 import { resolveCardEffects } from './cardActions';
-import { canPlace, canPlacePath, dirToColor, inferPlacementRotation, inBounds, key } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, dirToColor, inferPlacementRotation, inBounds, key } from './helpers';
 import { buildColorToDir } from './rulesConfig';
 
 export type EffectContext = {
@@ -72,6 +72,7 @@ export const initActionState = (playerIDs: PlayerID[] = []): ActionState => {
 		attachedCards: [],
 		lastPlacedColor: null,
 		draftedHandIndex,
+		pendingDraft: null,
 	};
 };
 
@@ -204,6 +205,77 @@ export const autoPlayDrafted = (G: GState, ctx: Ctx | undefined, order: PlayerID
 		hand.splice(idx, 1);
 		playActionCardFromCard(G, ctx, playerId, card, effects, rng);
 	}
+};
+
+// ── Interactive draft (Mystery Box) ──────────────────────────────────────────
+
+/** Whether the card can legally be played as a lane/hex anywhere right now. */
+export const cardHasLegalPlacement = (G: GState, card: Card): boolean => {
+	const coords = buildAllCoords(G.radius);
+	for (const color of card.colors as Color[]) {
+		if (G.rules.MODE === 'path') {
+			const dir = G.rules.COLOR_TO_DIR[color];
+			for (const source of coords) {
+				const dest = { q: source.q + dir.q, r: source.r + dir.r };
+				if (canPlacePath(G, source, dest, color, G.rules)) return true;
+			}
+		} else {
+			for (const coord of coords) {
+				if (canPlace(G, coord, color, G.rules)) return true;
+			}
+		}
+	}
+	return false;
+};
+
+/**
+ * Auto-play a just-drafted ACTION card with a minimal context ("immediately
+ * plays it"). Returns false when the card needs input the draft can't supply —
+ * it then stays in the player's hand.
+ */
+export const tryAutoPlayDraftedAction = (
+	G: GState,
+	ctx: Ctx | undefined,
+	playerId: PlayerID,
+	handIndex: number,
+	rng: () => number = Math.random,
+): boolean => {
+	const hand = ensureHand(G, playerId);
+	const card = hand[handIndex];
+	if (!card || !card.isAction) return false;
+	let effects: GameEffect[];
+	try {
+		effects = resolveCardEffects(card, {
+			currentPlayerId: playerId,
+			playerOrder: Object.keys(G.players) as PlayerID[],
+			lastPlacedColor: G.action.lastPlacedColor,
+			mode: G.rules.MODE,
+		});
+	} catch {
+		return false;
+	}
+	if (actionEffectsInvalidReason(G, effects) !== null) return false;
+	hand.splice(handIndex, 1);
+	playActionCardFromCard(G, ctx, playerId, card, effects, rng);
+	return true;
+};
+
+/**
+ * Advance the pending draft to the next picker. Returns the player who should
+ * become active next, or null when the draft is over (the caller restores the
+ * current player's stage). Skips remaining players if the reveal ran dry.
+ */
+export const advanceDraft = (G: GState): PlayerID | null => {
+	const draft = G.action.pendingDraft;
+	if (!draft) return null;
+	draft.placing = null;
+	draft.position += 1;
+	if (draft.position >= draft.order.length || G.action.revealed.length === 0) {
+		discardRevealed(G);
+		G.action.pendingDraft = null;
+		return null;
+	}
+	return draft.order[draft.position]!;
 };
 
 export const moveCardToPlayerHand = (G: GState, playerId: PlayerID, card: Card): void => {
@@ -614,6 +686,12 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 			placeFreeLane(G, effect.source, effect.dest);
 			break;
 		}
+		case 'beginDraft':
+			// Vacuous when the reveal came up empty (deck exhausted).
+			if (G.action.revealed.length > 0) {
+				G.action.pendingDraft = { order: effect.order, position: 0, placing: null };
+			}
+			break;
 		case 'moveHex':
 			moveHex(G, effect.from, effect.to);
 			break;

@@ -7,6 +7,19 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-02 — v0.3.0
+
+### Randomized starting order
+- **Feedback (Julian):** "Let's randomize starting order."
+- **Change:** who goes first is now shuffled once per match (`RANDOM_START_ORDER`, default on; `VITE_RANDOM_START_ORDER=0` to pin, which tests and the UI smoke do). Turn order still proceeds clockwise from the shuffled first player. Existing matches keep their order (rules snapshot).
+- **Reason (Julian):** "just fairness principle. Especially if I'm the one always starting the game, it feels weird to always go first just for that reason."
+
+### Mystery Box becomes a real interactive draft
+- **Feedback (Julian):** "Mystery box doesn't really work as intended." Design answers: full interactive draft; a drafted lane card "must place immediately."
+- **Diagnosis:** the old flow had the playing player blind-type a numeric pick for every player *before* the cards were revealed; nobody ever saw the cards, and drafted lane cards just went to hand.
+- **Change:** cards are revealed face-up to everyone; each player in play order (starting with the player of the card) picks on their own screen — the game hands stage control to each picker in sequence, even mid-turn. A picked action card still auto-plays ("immediately plays it"; ones needing input stay in hand). A picked lane card must now be placed immediately — the picker gets the same source→destination ghost-preview targeting as normal placement, and only if no legal placement exists anywhere does it fall into their hand. Bots pick and place for themselves; bots don't initiate Mystery Box (v1). Neither draft step is undoable (picks reveal information).
+- **Outcome:** _pending first live multiplayer draft — watch for stalls if a player disconnects mid-pick._
+
 ## 2026-08-02 — v0.2.0 (PR #6)
 
 ### Re-examine Priorities: only your own colors, reordered

@@ -17,6 +17,7 @@ export {
 	playOneRandom,
 	playOneEvaluator,
 	playOneEvaluatorPlus,
+	playDraftStep,
 	enumerateActions,
 	applyMicroAction,
 	applyEndTurn,

@@ -1,8 +1,8 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
 import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, isRotatableNode, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
-import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, MoveUseAbilityArgs, PlayerPrefs, PlayerState, HexTile, Co, Rules, NightmareAction } from './types';
-import { drawOne, initActionState, playActionCardFromHand, applyNightmareActions, actionEffectsInvalidReason } from './effects';
+import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, MoveUseAbilityArgs, MoveDraftPickArgs, MoveDraftPlaceArgs, PlayerPrefs, PlayerState, HexTile, Co, Rules, NightmareAction } from './types';
+import { drawOne, initActionState, playActionCardFromHand, applyNightmareActions, actionEffectsInvalidReason, advanceDraft, cardHasLegalPlacement, tryAutoPlayDraftedAction } from './effects';
 import { resolveNightmareActions } from './nightmareActions';
 import { emitEvent } from './hooks';
 import { enumerateActions } from './ai';
@@ -10,6 +10,19 @@ import { buildDeck } from './deck';
 import { NIGHTMARES, getNightmareByName } from './nightmares';
 import { computeScores } from './scoring';
 import { resolveCardEffects } from './cardActions';
+
+// Advance the Mystery Box draft and move stage control accordingly: next
+// picker becomes the sole active player; when the draft ends, control returns
+// to the turn owner. Kept here (not effects.ts) because it needs `events`.
+type StageEvents = { setActivePlayers?: (arg: import('boardgame.io/dist/types/src/types').ActivePlayersArg) => void } | undefined;
+const advanceDraftAndSetStage = (G: GState, events: StageEvents): void => {
+	const next = advanceDraft(G);
+	if (next !== null) {
+		events?.setActivePlayers?.({ value: { [next]: 'draft' } });
+	} else {
+		events?.setActivePlayers?.({ currentPlayer: 'active' });
+	}
+};
 
 const buildPreferenceOptions = (): PlayerPrefs[] => {
 	return NIGHTMARES.map(({ priorities }) => ({
@@ -302,6 +315,16 @@ export const HexStringsGame: Game<GState> = {
 		),
 	}),
 	turn: {
+		// Who goes first is shuffled once per match (snapshotted like all rules;
+		// pin off with VITE_RANDOM_START_ORDER=0 for deterministic tests/smoke).
+		order: {
+			first: () => 0,
+			next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.playOrder.length,
+			playOrder: ({ G, random }) => {
+				const ids = Object.keys(G.players) as PlayerID[];
+				return G.rules.RANDOM_START_ORDER && random ? random.Shuffle(ids) : ids;
+			},
+		},
 		onBegin: (context) => {
 			const { G, ctx, events } = context;
 			const pid = ctx.currentPlayer;
@@ -395,6 +418,12 @@ export const HexStringsGame: Game<GState> = {
 								p.actionPlaysThisTurn += 1;
 							}
 							playActionCardFromHand(G, ctx, pid, args.handIndex, effects);
+							// Mystery Box: hand control to the first picker. Exactly one
+							// player is active at a time (multiplayer-undo constraint).
+							const draft = G.action.pendingDraft;
+							if (draft && draft.position === 0 && !draft.placing) {
+								context.events?.setActivePlayers?.({ value: { [draft.order[0]!]: 'draft' } });
+							}
 						},
 					},
 					useNightmareAbility: {
@@ -581,6 +610,76 @@ export const HexStringsGame: Game<GState> = {
 						p.stashBonus = 0;
 						afterRefillMaybeMarkExhaust(G, ctx, rules);
 						events?.endTurn?.();
+					},
+				},
+			},
+			// Mystery Box draft: the picking player (possibly not the turn owner)
+			// is moved into this stage; everyone else has no moves. Neither move
+			// is undoable — picks reveal hidden information and hand control.
+			draft: {
+				moves: {
+					draftPick: {
+						undoable: false,
+						move: (context, args: MoveDraftPickArgs) => {
+							const { G, ctx, events, playerID } = context;
+							const draft = G.action.pendingDraft;
+							if (!draft || draft.placing) return;
+							const picker = draft.order[draft.position];
+							if (!picker || playerID !== picker) return;
+							if (!Number.isInteger(args.index) || args.index < 0 || args.index >= G.action.revealed.length) return;
+							const [card] = G.action.revealed.splice(args.index, 1);
+							if (!card) return;
+							const hand = G.players[picker]!.hand;
+							hand.push(card);
+							const handIndex = hand.length - 1;
+							if (card.isAction) {
+								// "Immediately plays it" — cards needing input stay in hand.
+								tryAutoPlayDraftedAction(G, ctx, picker, handIndex);
+								advanceDraftAndSetStage(G, events);
+							} else if (cardHasLegalPlacement(G, card)) {
+								draft.placing = { playerId: picker, handIndex };
+								// Same player stays active to place the lane.
+							} else {
+								// No legal placement anywhere — the card joins the hand.
+								advanceDraftAndSetStage(G, events);
+							}
+						},
+					},
+					draftPlace: {
+						undoable: false,
+						move: (context, args: MoveDraftPlaceArgs) => {
+							const { G, events, playerID } = context;
+							const rules = G.rules;
+							const draft = G.action.pendingDraft;
+							if (!draft?.placing || playerID !== draft.placing.playerId) return;
+							const hand = G.players[playerID]!.hand;
+							const card = hand[draft.placing.handIndex];
+							if (!card) {
+								advanceDraftAndSetStage(G, events);
+								return;
+							}
+							if (!card.colors.includes(args.pick)) return;
+							if (rules.MODE === 'path') {
+								if (!canPlacePath(G, args.source, args.coord, args.pick, rules)) return;
+								G.lanes.push({ from: args.source, to: args.coord, color: args.pick });
+							} else {
+								if (!canPlace(G, args.coord, args.pick, rules)) return;
+								const k = key(args.coord);
+								const tile = G.board[k];
+								if (tile) {
+									tile.colors.push(args.pick);
+								} else {
+									const rotation = inferPlacementRotation(G, args.coord, args.pick);
+									G.board[k] = { colors: [args.pick], rotation, dead: false };
+								}
+							}
+							G.stats.placements += 1;
+							G.action.lastPlacedColor = args.pick;
+							emitEvent(G, { type: 'onPlacement', playerId: playerID, coord: [args.source, args.coord], color: args.pick });
+							const [used] = hand.splice(draft.placing.handIndex, 1);
+							if (used) G.discard.push(used);
+							advanceDraftAndSetStage(G, events);
+						},
 					},
 				},
 			},

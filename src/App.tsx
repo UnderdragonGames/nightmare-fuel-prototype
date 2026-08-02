@@ -265,8 +265,25 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const isMyTurn = myID === currentPlayer;
 	const myHand = G.players[myID]?.hand ?? [];
 	const stage = (ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[currentPlayer as PlayerID] : undefined) ?? 'active';
-	const locked = stage !== 'active';
+	// A live Mystery Box draft suspends everyone's normal controls.
+	const pendingDraft = G.action.pendingDraft ?? null;
+	const locked = stage !== 'active' || pendingDraft !== null;
 	const isPathMode = rules.MODE === 'path';
+
+	// Mystery Box draft: my role in it right now.
+	const myStage = ctx.activePlayers ? (ctx.activePlayers as Record<PlayerID, string>)[myID] : undefined;
+	const draftPicker = pendingDraft && !pendingDraft.placing
+		? pendingDraft.order[pendingDraft.position] ?? null
+		: null;
+	const isMyDraftPick = draftPicker === myID && myStage === 'draft';
+	const isMyDraftPlace = pendingDraft?.placing?.playerId === myID && myStage === 'draft';
+	const draftPlacingCard = isMyDraftPlace && pendingDraft?.placing
+		? (G.players[myID]?.hand[pendingDraft.placing.handIndex] ?? null)
+		: null;
+	const [draftSource, setDraftSource] = React.useState<Co | null>(null);
+	React.useEffect(() => {
+		if (!isMyDraftPlace) setDraftSource(null);
+	}, [isMyDraftPlace]);
 	const selectedActionCard = selectedCard !== null ? myHand[selectedCard] : null;
 	const selectedActionList = selectedActionCard ? resolveCardActions(selectedActionCard) : [];
 
@@ -321,10 +338,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const discardNeeded = actionMode === 'rotate' ? rotateCost : actionMode === 'block' ? blockCost : 0;
 	const discardReady = discardSelection.length === discardNeeded;
 
-	// Board is interactable: place mode needs a card selected; rotate/block need enough discard cards
-	const boardInteractable = actionMode === 'place'
+	// Board is interactable: place mode needs a card selected; rotate/block need
+	// enough discard cards. A drafted-card placement always needs the board.
+	const boardInteractable = isMyDraftPlace || (actionMode === 'place'
 		? selectedCard !== null
-		: discardReady;
+		: discardReady);
 
 	// Helper: get direction-color between two adjacent coords (path-mode core mechanic)
 	const getColorForDirection = (source: Co, dest: Co): Color | null => {
@@ -388,6 +406,37 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		}
 		return dests;
 	};
+
+	// ── Mystery Box drafted-card placement targeting ──
+	// Plain placements only (direction color + origin finishing); the draft
+	// engine move doesn't support consolidation conversions.
+	const draftPlaceColorFor = (source: Co, dest: Co, cardColors: Color[]): Color | null => {
+		const dirColor = getColorForDirection(source, dest);
+		if (dirColor && cardColors.includes(dirColor) && canPlacePath(G, source, dest, dirColor, rules)) return dirColor;
+		for (const col of cardColors) {
+			if (canPlacePath(G, source, dest, col, rules)) return col;
+		}
+		return null;
+	};
+	const draftDestinations = (source: Co, cardColors: Color[]): Co[] =>
+		neighbors(source).filter((dest) => draftPlaceColorFor(source, dest, cardColors) !== null);
+
+	const draftHighlights = React.useMemo(() => {
+		if (!isMyDraftPlace || !draftPlacingCard) return null;
+		const colors = draftPlacingCard.colors as Color[];
+		if (draftSource) {
+			const dests = draftDestinations(draftSource, colors);
+			const byCoord: Record<string, string> = {};
+			for (const d of dests) {
+				const col = draftPlaceColorFor(draftSource, d, colors);
+				if (col) byCoord[key(d)] = asVisibleColor(col);
+			}
+			return { coords: dests, byCoord: byCoord as Record<string, string> | undefined };
+		}
+		const sources = buildAllCoords(G.radius).filter((c) => draftDestinations(c, colors).length > 0);
+		return { coords: sources, byCoord: undefined };
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- helper fns capture only listed deps
+	}, [G, draftPlacingCard, draftSource, isMyDraftPlace, rules]);
 
 	const availableMoveCoords = React.useMemo(() => {
 		if (!isMyTurn || locked || selectedCard === null) return [];
@@ -814,6 +863,22 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				setActionPickingCoord(null);
 				tryAutoPlayAfterPick({ moveTo: coord });
 			}
+			return;
+		}
+
+		// Mystery Box: place the drafted card (can happen on another's turn).
+		if (isMyDraftPlace && draftPlacingCard) {
+			const colors = draftPlacingCard.colors as Color[];
+			if (draftSource) {
+				const col = draftPlaceColorFor(draftSource, coord, colors);
+				if (col) {
+					moves.draftPlace?.({ source: draftSource, coord, pick: col });
+					setDraftSource(null);
+					return;
+				}
+			}
+			// First click (or re-pick): select a source that has a legal placement.
+			if (draftDestinations(coord, colors).length > 0) setDraftSource(coord);
 			return;
 		}
 
@@ -1331,15 +1396,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					lanes={G.lanes}
 					radius={G.radius}
 					onHexClick={onHexClick}
-					highlightCoords={actionMode === 'rotate' ? rotatable : actionMode === 'block' ? blockableCoords : availableMoveCoords}
-					highlightColor={actionMode === 'rotate' ? '#8b5cf6' : actionMode === 'block' ? '#ef4444' : (selectedColor ? asVisibleColor(selectedColor) : '#8b5cf6')}
-					highlightColorByCoord={actionMode === 'place' ? highlightColorByCoord : undefined}
-					highlightIsRotation={actionMode === 'rotate'}
+					highlightCoords={draftHighlights ? draftHighlights.coords : actionMode === 'rotate' ? rotatable : actionMode === 'block' ? blockableCoords : availableMoveCoords}
+					highlightColor={draftHighlights ? '#8b5cf6' : actionMode === 'rotate' ? '#8b5cf6' : actionMode === 'block' ? '#ef4444' : (selectedColor ? asVisibleColor(selectedColor) : '#8b5cf6')}
+					highlightColorByCoord={draftHighlights ? draftHighlights.byCoord : actionMode === 'place' ? highlightColorByCoord : undefined}
+					highlightIsRotation={!draftHighlights && actionMode === 'rotate'}
 					origins={G.origins}
 					pendingRotationTile={pendingRotationTile}
 					onRotationSelect={handleRotation}
 					selectedColor={actionMode !== 'place' ? null : selectedColor}
-					selectedSourceDot={selectedSourceDot}
+					selectedSourceDot={draftHighlights ? draftSource : selectedSourceDot}
 					showCoords={showCoords}
 				/>
 			</main>
@@ -2031,6 +2096,45 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			{/* Game-start banner */}
 			{startBanner && (
 				<div className="game-start-banner">All players in — game on!</div>
+			)}
+
+			{/* MYSTERY BOX DRAFT — revealed cards + whose pick/placement it is.
+			    Non-blocking: during placement the board must stay clickable. */}
+			{pendingDraft && !ctx.gameover && (
+				<div className={`draft-overlay ${pendingDraft.placing ? 'draft-overlay--slim' : ''}`}>
+					<div className="draft-overlay__title"><Icon name="sparkles" size={14} /> Mystery Box</div>
+					{pendingDraft.placing ? (
+						<div className="draft-overlay__hint">
+							{isMyDraftPlace
+								? (draftSource ? 'Now click the destination for your lane.' : 'Place your drafted card: click a source dot.')
+								: `${nameOf(pendingDraft.placing.playerId) ?? `P${pendingDraft.placing.playerId}`} is placing their drafted card…`}
+						</div>
+					) : (
+						<>
+							<div className="draft-overlay__hint">
+								{isMyDraftPick
+									? 'Your pick — choose a card:'
+									: `${(draftPicker && (nameOf(draftPicker) ?? `P${draftPicker}`)) ?? '…'} is picking…`}
+							</div>
+							<div className="draft-overlay__cards">
+								{G.action.revealed.map((card, i) => (
+									<div
+										key={`draft-${serializeCard(card)}-${i}`}
+										className={`draft-overlay__card ${isMyDraftPick ? 'draft-overlay__card--pickable' : ''}`}
+									>
+										<NeuralCard
+											card={card}
+											isSelected={false}
+											rules={rules}
+											onSelect={() => { if (isMyDraftPick) moves.draftPick?.({ index: i }); }}
+											onPickColor={() => { if (isMyDraftPick) moves.draftPick?.({ index: i }); }}
+										/>
+									</div>
+								))}
+							</div>
+						</>
+					)}
+				</div>
 			)}
 
 			{/* Game Over overlay */}
