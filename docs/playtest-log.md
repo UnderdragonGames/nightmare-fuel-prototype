@@ -11,8 +11,9 @@ later playtest confirms or refutes the change.
 
 ### FORK_SUPPORT off by default
 - **Change:** support-tree fork constraints disabled (`VITE_FORK_SUPPORT` knob added; default `0`).
-- **Reason (Julian):** "it's a little too hard to fork."
-- **Outcome:** _pending next playtest._
+- **Reason (Julian):** "it's a little too hard to fork. […] there's very little branching happening, which means that all the focus goes onto either rotating or blocking a single path, rather than building and keeping track of multiple paths, which is undesirable."
+- **Design goal:** the game should be about building and tracking **multiple simultaneous paths**; evaluate future balance changes against that.
+- **Outcome:** _pending next playtest — does branching actually happen more?_
 
 ### [ux] Origin finishing move hidden by color auto-pick
 - **Change:** destination highlights now scan every card color, not just the auto-picked one.
