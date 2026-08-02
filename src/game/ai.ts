@@ -42,6 +42,8 @@ type BGIOClient = {
 		stashToTreasure(a: MoveStashArgs): void;
 		takeFromTreasure(a: MoveTakeTreasureArgs): void;
 		endTurnAndRefill(): void;
+		draftPick?(a: { index: number }): void;
+		draftPlace?(a: { source: Co; coord: Co; pick: Color }): void;
 	};
 };
 
@@ -179,6 +181,9 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 					} catch {
 						continue;
 					}
+					// Interactive multi-player flows (Mystery Box draft) are not
+					// enumerable as a single move — bots don't initiate them (v1).
+					if (effects.some((e) => e.type === 'beginDraft')) continue;
 					const sig = JSON.stringify(effects);
 					if (seen.has(sig)) continue;
 					seen.add(sig);
@@ -1303,6 +1308,52 @@ const waitForStateUpdate = (): Promise<void> => {
 			resolve();
 		}
 	});
+};
+
+/**
+ * Take one Mystery Box draft step for a bot seat: pick a random revealed card,
+ * or place a just-picked lane card at the first legal spot. Returns true when
+ * a move was dispatched (caller waits for the next state update).
+ */
+export const playDraftStep = (client: BGIOClient, playerID: PlayerID): boolean => {
+	const state = client.getState();
+	if (!state) return false;
+	const { G } = state;
+	const draft = G.action.pendingDraft;
+	if (!draft) return false;
+
+	if (draft.placing) {
+		if (draft.placing.playerId !== playerID) return false;
+		const card = G.players[playerID]?.hand[draft.placing.handIndex];
+		if (!card) return false;
+		const coords = buildAllCoords(G.radius);
+		for (const color of card.colors as Color[]) {
+			if (G.rules.MODE === 'path') {
+				const dir = G.rules.COLOR_TO_DIR[color];
+				for (const source of coords) {
+					const dest = { q: source.q + dir.q, r: source.r + dir.r };
+					if (canPlacePath(G, source, dest, color, G.rules)) {
+						client.moves.draftPlace?.({ source, coord: dest, pick: color });
+						return true;
+					}
+				}
+			} else {
+				for (const coord of coords) {
+					if (canPlace(G, coord, color, G.rules)) {
+						client.moves.draftPlace?.({ source: coord, coord, pick: color });
+						return true;
+					}
+				}
+			}
+		}
+		return false; // no legal placement — engine only enters placing when one existed
+	}
+
+	if (draft.order[draft.position] !== playerID) return false;
+	const count = G.action.revealed.length;
+	if (count === 0) return false;
+	client.moves.draftPick?.({ index: Math.floor(Math.random() * count) });
+	return true;
 };
 
 /**

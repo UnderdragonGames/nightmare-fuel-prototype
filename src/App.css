@@ -1980,6 +1980,80 @@ button .icon {
 }
 
 /* Coord picking banner */
+/* ── Mystery Box draft overlay ── */
+.draft-overlay {
+	position: fixed;
+	top: 56px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 90;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 18px 14px;
+	max-width: min(92vw, 640px);
+	background: rgba(18, 18, 26, 0.96);
+	backdrop-filter: blur(12px);
+	border: 1px solid var(--accent-primary);
+	border-radius: 14px;
+	box-shadow: 0 6px 32px rgba(139, 92, 246, 0.3);
+}
+
+.draft-overlay--slim {
+	padding: 8px 16px;
+	flex-direction: row;
+	gap: 8px;
+}
+
+.draft-overlay__title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.75rem;
+	font-weight: 800;
+	letter-spacing: 0.8px;
+	text-transform: uppercase;
+	color: var(--accent-primary);
+}
+
+.draft-overlay__hint {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--text-primary);
+	text-align: center;
+}
+
+.draft-overlay__cards {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	justify-content: center;
+	max-height: 50vh;
+	overflow-y: auto;
+}
+
+.draft-overlay__card .neural-card {
+	cursor: default;
+}
+
+.draft-overlay__card--pickable .neural-card {
+	cursor: pointer;
+}
+
+.draft-overlay__card--pickable .neural-card:hover {
+	transform: translateY(-6px);
+	border-color: var(--accent-primary);
+	box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+}
+
+@media (max-width: 768px) {
+	.draft-overlay {
+		top: 48px;
+		max-width: 96vw;
+	}
+}
+
 .coord-pick-banner {
 	position: fixed;
 	top: 20px;

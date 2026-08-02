@@ -3,9 +3,11 @@ import type { Ctx } from 'boardgame.io';
 import { CARDS } from '../../game/cards';
 import { buildDeck, DIGITALLY_EXCLUDED_CARD_IDS } from '../../game/deck';
 import { resolveCardEffects } from '../../game/cardActions';
-import { initActionState, playActionCardFromHand } from '../../game/effects';
+import { initActionState } from '../../game/effects';
+import { HexStringsGame } from '../../game/game';
+import { canPlacePath, neighbors } from '../../game/helpers';
 import { MODE_RULESETS, buildColorToDir } from '../../game/rulesConfig';
-import type { Card, GState } from '../../game/types';
+import type { Card, Co, Color, GState, MoveDraftPickArgs, MoveDraftPlaceArgs, MovePlayActionArgs } from '../../game/types';
 import { buildPlayers } from '../testHelpers';
 
 const byId = (id: number): Card => {
@@ -34,80 +36,154 @@ describe('digital deck exclusions', () => {
 	});
 });
 
-describe('Mystery Box (reveal → draft → auto-play)', () => {
-	const setup = () => {
-		const mysteryBox = byId(63);
-		const armed = byId(8);   // action: draw 5 — auto-plays with no input
-		const steal = byId(82);  // action: needs targetPlayerId — must stay in hand
-		const filler = Array.from({ length: 6 }, (_, i) => ({
-			colors: ['R', 'O'], id: 1000 + i, name: `F${i}`, stats: {}, text: null,
-			isAction: false, synergies: [], synergyCount: 0,
-			flags: { needsNewPrint: false, needsDuplicate: false },
-		} as unknown as Card));
+// ── Interactive draft flow ──────────────────────────────────────────────────
+// Playtest report (2026-08-02): "Mystery box doesn't really work as intended."
+// The old flow had the playing player blind-type numeric picks for everyone
+// before the cards were even revealed. Now each player picks on their own
+// client in turn order, and a picked lane card must be placed immediately.
 
-		// revealTop pops from the END of secret.deck: reveal 2 → [steal, armed].
-		// Draft picks: P0 takes index 0 (steal? no —) …
-		// revealed = [steal, armed]? pop order: last element first → deck ends
-		// with [..., armed, steal] → revealed [steal, armed].
-		const G = {
-			rules,
-			radius: rules.RADIUS,
-			board: {},
-			lanes: [],
-			secret: { deck: [...filler, armed, steal] },
-			discard: [],
-			players: buildPlayers({ '0': [byId(63)], '1': [] }),
-			treasure: [],
-			stats: { placements: 0 },
-			meta: { deckExhaustionCycle: null },
-			origins: [{ q: 0, r: 0 }],
-			action: initActionState(['0', '1']),
-		} as unknown as GState;
-		void mysteryBox;
-		const ctx = { currentPlayer: '0', playOrder: ['0', '1'], numPlayers: 2, turn: 3 } as unknown as Ctx;
-		return { G, ctx };
-	};
+type MoveFn<A> = (context: { G: GState; ctx: Ctx; events: unknown; playerID: string }, args: A) => unknown;
+const stages = (HexStringsGame.turn as unknown as {
+	stages: Record<string, { moves: Record<string, { move: MoveFn<never>; undoable?: boolean }> }>;
+}).stages;
+const playActionMove = stages.active!.moves.playActionCard!.move as MoveFn<MovePlayActionArgs>;
+const draftPickDef = stages.draft!.moves.draftPick!;
+const draftPlaceDef = stages.draft!.moves.draftPlace!;
+const draftPickMove = draftPickDef.move as MoveFn<MoveDraftPickArgs>;
+const draftPlaceMove = draftPlaceDef.move as MoveFn<MoveDraftPlaceArgs>;
 
-	it('auto-plays a drafted no-input action card and keeps input-requiring ones in hand', () => {
-		const { G, ctx } = setup();
-		// P0 drafts revealed[1] (armed, auto-plays); P1 drafts revealed[0] (steal, stays)
+const makeCtx = (): Ctx => ({ currentPlayer: '0', playOrder: ['0', '1'], numPlayers: 2, turn: 3 }) as unknown as Ctx;
+
+const makeEvents = () => {
+	const calls: unknown[] = [];
+	return { calls, setActivePlayers: (arg: unknown) => calls.push(arg) };
+};
+
+const plainCard = (id: number, colors: Color[]): Card => ({
+	colors, id, name: `Plain${id}`, stats: {}, text: null, isAction: false,
+	synergies: [], synergyCount: 0, flags: { needsNewPrint: false, needsDuplicate: false },
+} as unknown as Card);
+
+const setup = (deckTail: Card[]) => {
+	const filler = Array.from({ length: 6 }, (_, i) => plainCard(1000 + i, ['R', 'O'] as Color[]));
+	const G = {
+		rules,
+		radius: rules.RADIUS,
+		board: {},
+		lanes: [],
+		secret: { deck: [...filler, ...deckTail] },
+		discard: [],
+		players: buildPlayers({ '0': [byId(63)], '1': [] }),
+		treasure: [],
+		stats: { placements: 0 },
+		meta: { deckExhaustionCycle: null },
+		origins: [{ q: 0, r: 0 }],
+		action: initActionState(['0', '1']),
+	} as unknown as GState;
+	const ctx = makeCtx();
+	const events = makeEvents();
+	const playMysteryBox = () => {
 		const effects = resolveCardEffects(G.players['0']!.hand[0]!, {
 			currentPlayerId: '0',
 			playerOrder: ['0', '1'],
-			draftPicks: { '0': 1, '1': 0 },
 			mode: 'path',
 		});
-		playActionCardFromHand(G, ctx, '0', 0, effects, () => 0.5);
+		playActionMove({ G, ctx, events, playerID: '0' }, { handIndex: 0, effects });
+	};
+	return { G, ctx, events, playMysteryBox };
+};
 
-		// P0: Mystery Box discarded, Armed drafted + auto-played (discarded) → drew 5
-		expect(G.players['0']!.hand.map((c) => c.id)).not.toContain(8);
-		expect(G.players['0']!.hand.length).toBe(5); // the 5 drawn cards
-		expect(G.discard.map((c) => c.id)).toEqual(expect.arrayContaining([63, 8]));
+const legalPlacementFor = (G: GState, card: Card): { source: Co; coord: Co; pick: Color } => {
+	for (const pick of card.colors as Color[]) {
+		const dir = G.rules.COLOR_TO_DIR[pick];
+		for (const source of neighbors({ q: 0, r: 0 })) {
+			const coord = { q: source.q + dir.q, r: source.r + dir.r };
+			if (canPlacePath(G, source, coord, pick, G.rules)) return { source, coord, pick };
+		}
+	}
+	throw new Error('no legal placement found');
+};
 
-		// P1: Steal needs a target → stays in hand, not discarded
-		expect(G.players['1']!.hand.map((c) => c.id)).toContain(82);
-		expect(G.discard.map((c) => c.id)).not.toContain(82);
-
-		// Draft state cleaned up
-		expect(G.action.revealed).toEqual([]);
-		expect(G.action.draftedHandIndex['0']).toBeNull();
-		expect(G.action.draftedHandIndex['1']).toBeNull();
+describe('Mystery Box — interactive draft', () => {
+	it('playing it reveals playerCount cards and hands control to the first picker', () => {
+		// revealTop pops from the END of the deck: tail [armed, steal] reveals [steal, armed].
+		const { G, events, playMysteryBox } = setup([byId(8), byId(82)]);
+		playMysteryBox();
+		expect(G.action.revealed).toHaveLength(2);
+		expect(G.action.pendingDraft).toEqual({ order: ['0', '1'], position: 0, placing: null });
+		expect(G.discard.map((c) => c.id)).toContain(63);
+		expect(events.calls).toContainEqual({ value: { '0': 'draft' } });
 	});
 
-	it('non-action drafted cards simply stay in hand', () => {
-		const { G, ctx } = setup();
-		// P0 drafts steal-position (index 0) — wait: pick the NON-action filler by
-		// rebuilding the deck tail: replace armed with a plain card.
-		const plain = { colors: ['B'], id: 2000, name: 'Plain', stats: {}, text: null, isAction: false, synergies: [], synergyCount: 0, flags: { needsNewPrint: false, needsDuplicate: false } } as unknown as Card;
-		G.secret.deck[G.secret.deck.length - 2] = plain; // becomes revealed[1]
-		const effects = resolveCardEffects(G.players['0']!.hand[0]!, {
-			currentPlayerId: '0',
-			playerOrder: ['0', '1'],
-			draftPicks: { '0': 1, '1': 0 },
-			mode: 'path',
-		});
-		playActionCardFromHand(G, ctx, '0', 0, effects, () => 0.5);
-		expect(G.players['0']!.hand.map((c) => c.id)).toContain(2000);
+	it('neither draft move is undoable', () => {
+		expect(draftPickDef.undoable).toBe(false);
+		expect(draftPlaceDef.undoable).toBe(false);
+	});
+
+	it('a drafted no-input action card auto-plays; input-requiring ones stay in hand', () => {
+		// tail [armed(8: draw 5), steal(82: needs target)] → revealed [82, 8]
+		const { G, ctx, events, playMysteryBox } = setup([byId(8), byId(82)]);
+		playMysteryBox();
+
+		// P0 picks Armed to the Teeth (index 1) — auto-plays, draws 5.
+		draftPickMove({ G, ctx, events, playerID: '0' }, { index: 1 });
+		expect(G.players['0']!.hand.map((c) => c.id)).not.toContain(8);
+		expect(G.players['0']!.hand).toHaveLength(5);
+		expect(G.discard.map((c) => c.id)).toContain(8);
+		expect(G.action.pendingDraft?.position).toBe(1);
+		expect(events.calls).toContainEqual({ value: { '1': 'draft' } });
+
+		// P1 picks Steal (index 0) — needs a target, stays in hand; draft ends.
+		draftPickMove({ G, ctx, events, playerID: '1' }, { index: 0 });
 		expect(G.players['1']!.hand.map((c) => c.id)).toContain(82);
+		expect(G.discard.map((c) => c.id)).not.toContain(82);
+		expect(G.action.pendingDraft).toBeNull();
+		expect(G.action.revealed).toEqual([]);
+		expect(events.calls).toContainEqual({ currentPlayer: 'active' });
+	});
+
+	it('a drafted lane card must be placed immediately', () => {
+		const lane = plainCard(2000, ['B'] as Color[]);
+		const { G, ctx, events, playMysteryBox } = setup([lane, byId(8)]);
+		// revealed = [8, lane]
+		playMysteryBox();
+
+		draftPickMove({ G, ctx, events, playerID: '0' }, { index: 1 });
+		expect(G.action.pendingDraft?.placing).toEqual({ playerId: '0', handIndex: 0 });
+
+		// Normal moves are for the 'active' stage — the draft is its own stage,
+		// so nothing else can happen until the placement lands.
+		const placement = legalPlacementFor(G, lane);
+		draftPlaceMove({ G, ctx, events, playerID: '0' }, placement);
+		expect(G.lanes).toHaveLength(1);
+		expect(G.lanes[0]!.color).toBe('B');
+		expect(G.players['0']!.hand.map((c) => c.id)).not.toContain(2000);
+		expect(G.discard.map((c) => c.id)).toContain(2000);
+		expect(G.action.pendingDraft?.position).toBe(1);
+	});
+
+	it('rejects picks and placements from the wrong player', () => {
+		const { G, ctx, events, playMysteryBox } = setup([byId(8), byId(82)]);
+		playMysteryBox();
+
+		// P1 tries to pick out of turn — nothing happens.
+		draftPickMove({ G, ctx, events, playerID: '1' }, { index: 0 });
+		expect(G.action.revealed).toHaveLength(2);
+		expect(G.action.pendingDraft?.position).toBe(0);
+
+		// Bad index — nothing happens.
+		draftPickMove({ G, ctx, events, playerID: '0' }, { index: 5 });
+		expect(G.action.revealed).toHaveLength(2);
+	});
+
+	it('rejects an illegal placement and keeps waiting for a legal one', () => {
+		const lane = plainCard(2000, ['B'] as Color[]);
+		const { G, ctx, events, playMysteryBox } = setup([lane, byId(8)]);
+		playMysteryBox();
+		draftPickMove({ G, ctx, events, playerID: '0' }, { index: 1 });
+
+		draftPlaceMove({ G, ctx, events, playerID: '0' }, { source: { q: 3, r: 0 }, coord: { q: 3, r: -3 }, pick: 'B' });
+		expect(G.lanes).toHaveLength(0);
+		expect(G.action.pendingDraft?.placing).not.toBeNull();
 	});
 });

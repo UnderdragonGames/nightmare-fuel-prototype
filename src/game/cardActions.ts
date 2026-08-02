@@ -25,7 +25,7 @@ export const CARD_ACTIONS_BY_ID: Record<number, CardAction[]> = {
 	48: [{ type: 'chooseStat' }, { type: 'placeTokenOnHex' }, { type: 'markHexCountsForTwoStats' }],
 	54: [{ type: 'replaceHexWithDead' }],
 	60: [{ type: 'moveCardToPlayerHand' }, grantExtraPlay(1)],
-	63: [{ type: 'revealTop', count: 'playerCount' }, { type: 'draftInTurnOrder' }, { type: 'autoPlayPickedCard' }],
+	63: [{ type: 'revealTop', count: 'playerCount' }, { type: 'beginDraft' }],
 	65: [{ type: 'chooseAgenda' }, { type: 'chooseStat' }, { type: 'setAgendaOverride' }],
 	73: [{ type: 'replaceHexWithDead' }],
 	79: [{ type: 'grantRevealUnusedVillains', duration: 'round' }],
@@ -187,6 +187,14 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 				// autoPlayDrafted effect resolves them when the move applies.
 				pushEffect({ type: 'autoPlayDrafted', order: [...ctx.playerOrder] });
 				break;
+			case 'beginDraft': {
+				// Interactive sequential draft in play order, starting with the
+				// player of the card (Mystery Box).
+				const start = Math.max(0, ctx.playerOrder.indexOf(ctx.currentPlayerId));
+				const order = [...ctx.playerOrder.slice(start), ...ctx.playerOrder.slice(0, start)];
+				pushEffect({ type: 'beginDraft', order });
+				break;
+			}
 			case 'chooseAgenda':
 				// UI-driven selection before setAgendaOverride.
 				break;

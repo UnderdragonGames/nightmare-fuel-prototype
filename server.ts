@@ -7,7 +7,7 @@ import { resolve } from 'path';
 import { readFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { HexStringsGame } from './src/game/game.js';
-import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, type BotKind } from './src/game/bots.js';
+import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, playDraftStep, type BotKind } from './src/game/bots.js';
 import type { GState } from './src/game/types.js';
 
 const GAME_NAME = 'hex-strings';
@@ -218,7 +218,23 @@ const spawnBot = (matchID: string, seat: string, kind: BotKind, credentials: str
 	const unsubscribe = client.subscribe((state) => {
 		if (!state) return;
 		if (state.ctx.gameover) return;
+		// Mystery Box draft: the bot may need to pick/place during ANY turn.
+		if ((state.ctx.activePlayers as Record<string, string> | null)?.[seat] === 'draft') {
+			if (!botsPlaying.has(key)) {
+				botsPlaying.add(key);
+				try {
+					playDraftStep(client as unknown as Parameters<typeof playDraftStep>[0], seat);
+				} catch (err) {
+					console.error(`bot ${key} failed a draft step:`, err);
+				} finally {
+					botsPlaying.delete(key);
+				}
+			}
+			return;
+		}
 		if (state.ctx.currentPlayer !== seat) return;
+		// A draft is live but it's not this bot's pick — wait, don't take a turn.
+		if (state.G.action?.pendingDraft) return;
 		// Game-start gate: hold until every seat is claimed, mirroring the UI.
 		const md = client.matchData;
 		if (!md || !md.every((p) => !!p.name)) return;

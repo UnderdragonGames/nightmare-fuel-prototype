@@ -11,7 +11,7 @@ import { Local } from 'boardgame.io/multiplayer';
 import type { Game, PlayerID } from 'boardgame.io';
 import type { GState } from './game/types';
 import type { BotKind } from './game/bots';
-import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus } from './game/bots';
+import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, playDraftStep } from './game/bots';
 
 type RawClientInstance = ReturnType<typeof RawClient<GState>>;
 
@@ -74,8 +74,23 @@ export function useBotClients(
 
 			const unsub = client.subscribe((state) => {
 				if (!state) return;
-				if (state.ctx.currentPlayer !== pid) return;
 				if (aiPaused) return;
+				// Mystery Box draft: the bot may need to pick/place mid-turn of
+				// ANY player — handle it before the own-turn gate.
+				if ((state.ctx.activePlayers as Record<string, string> | null)?.[pid] === 'draft') {
+					if (!playingRef.current.has(pid)) {
+						playingRef.current.add(pid);
+						try {
+							playDraftStep(client as unknown as Parameters<typeof playDraftStep>[0], pid);
+						} finally {
+							playingRef.current.delete(pid);
+						}
+					}
+					return;
+				}
+				if (state.ctx.currentPlayer !== pid) return;
+				// A draft is live but it's another player's pick — wait it out.
+				if (state.G.action?.pendingDraft) return;
 				if (playingRef.current.has(pid)) return;
 
 				playingRef.current.add(pid);
