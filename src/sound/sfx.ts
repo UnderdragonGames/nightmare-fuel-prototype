@@ -15,6 +15,7 @@ export type SfxName =
 	| 'block'
 	| 'action'
 	| 'ability'
+	| 'turn-end'
 	| 'your-turn'
 	| 'game-start'
 	| 'game-over'
@@ -22,7 +23,7 @@ export type SfxName =
 	| 'undo';
 
 const ALL_SOUNDS: SfxName[] = [
-	'place', 'rotate', 'block', 'action', 'ability',
+	'place', 'rotate', 'block', 'action', 'ability', 'turn-end',
 	'your-turn', 'game-start', 'game-over', 'cancel', 'undo',
 ];
 
@@ -32,6 +33,7 @@ const VOLUMES: Record<SfxName, number> = {
 	block: 0.5,
 	action: 0.45,
 	ability: 0.5,
+	'turn-end': 0.55,
 	'your-turn': 0.5,
 	'game-start': 0.55,
 	'game-over': 0.55,

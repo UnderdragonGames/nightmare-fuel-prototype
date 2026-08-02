@@ -666,11 +666,25 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		else if (G.lanes.length < prev) playSfx('block');
 	}, [G.lanes.length]);
 
+	// A turn ended (any player's): dramatic hit for everyone; then, if the new
+	// turn is yours, the chime rings on top a beat later.
+	const prevPlayerRef = React.useRef<string | null>(null);
+	React.useEffect(() => {
+		const was = prevPlayerRef.current;
+		prevPlayerRef.current = currentPlayer;
+		if (was === null || was === currentPlayer) return; // initial mount / no change
+		if (ctx.gameover || !allSeatsJoined) return;
+		playSfx('turn-end');
+	}, [currentPlayer, ctx.gameover, allSeatsJoined]);
+
 	const prevMyTurnRef = React.useRef(isMyTurn);
 	React.useEffect(() => {
 		const was = prevMyTurnRef.current;
 		prevMyTurnRef.current = isMyTurn;
-		if (!was && isMyTurn && !ctx.gameover && allSeatsJoined) playSfx('your-turn');
+		if (!was && isMyTurn && !ctx.gameover && allSeatsJoined) {
+			const t = setTimeout(() => playSfx('your-turn'), 380);
+			return () => clearTimeout(t);
+		}
 	}, [isMyTurn, ctx.gameover, allSeatsJoined]);
 
 	React.useEffect(() => {
