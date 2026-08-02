@@ -1094,6 +1094,39 @@
 	text-align: center;
 }
 
+/* ── Nightmare ability ── */
+
+.hand-nightmare__use-btn {
+	margin-top: 8px;
+	width: 100%;
+	padding: 8px 12px;
+	border-radius: 10px;
+	background: rgba(139, 92, 246, 0.2);
+	border: 1px solid rgba(139, 92, 246, 0.5);
+	color: var(--text-primary);
+	font-weight: 700;
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+.hand-nightmare__use-btn:hover:not(:disabled) {
+	background: rgba(139, 92, 246, 0.3);
+}
+
+.hand-nightmare__use-btn:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.ability-color-btn {
+	width: 26px;
+	height: 26px;
+	border-radius: 6px;
+	border: 2px solid rgba(255, 255, 255, 0.7);
+	cursor: pointer;
+	padding: 0;
+}
+
 .network-invite-code {
 	font-size: 1.05rem;
 	font-weight: 700;

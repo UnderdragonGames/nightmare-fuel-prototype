@@ -14,7 +14,7 @@ import type {
 } from './types';
 import { emitEvent, registerHook } from './hooks';
 import { resolveCardEffects } from './cardActions';
-import { canPlace, inferPlacementRotation, inBounds, key } from './helpers';
+import { canPlace, canPlacePath, dirToColor, inferPlacementRotation, inBounds, key } from './helpers';
 import { buildColorToDir } from './rulesConfig';
 
 export type EffectContext = {
@@ -405,9 +405,20 @@ export type NightmareActionContext = {
 	currentPlayer: PlayerID;
 	targetPlayerId?: PlayerID;
 	coord?: Co;
+	source?: Co;
 	laneIndex?: number;
 	color?: Color;
 	rng?: () => number;
+};
+
+// Free lane placement (no card spent): the direction dictates the color, and
+// every normal placement constraint still applies.
+export const placeFreeLane = (G: GState, source: Co, dest: Co): boolean => {
+	const color = dirToColor(G.rules, { q: dest.q - source.q, r: dest.r - source.r });
+	if (!color) return false;
+	if (!canPlacePath(G, source, dest, color, G.rules)) return false;
+	G.lanes.push({ from: source, to: dest, color });
+	return true;
 };
 
 export const applyNightmareActions = (G: GState, actions: NightmareAction[], context: NightmareActionContext): void => {
@@ -437,6 +448,9 @@ export const applyNightmareActions = (G: GState, actions: NightmareAction[], con
 				break;
 			case 'grantExtraPlacements':
 				grantExtraPlacements(G, context.currentPlayer, action.count);
+				break;
+			case 'placeFreeLane':
+				if (context.source && context.coord) placeFreeLane(G, context.source, context.coord);
 				break;
 			case 'randomStealCard':
 				if (!context.targetPlayerId) break;

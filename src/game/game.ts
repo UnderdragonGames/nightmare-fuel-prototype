@@ -1,8 +1,9 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
 import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, isRotatableNode, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
-import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, PlayerPrefs, PlayerState, HexTile, Co, Rules } from './types';
-import { drawOne, initActionState, playActionCardFromHand } from './effects';
+import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, MoveUseAbilityArgs, PlayerPrefs, PlayerState, HexTile, Co, Rules, NightmareAction } from './types';
+import { drawOne, initActionState, playActionCardFromHand, applyNightmareActions } from './effects';
+import { resolveNightmareActions } from './nightmareActions';
 import { emitEvent } from './hooks';
 import { enumerateActions } from './ai';
 import { buildDeck } from './deck';
@@ -184,6 +185,46 @@ const filterOpponentState = (rules: Rules, state: PlayerState): PlayerState => {
 	return visible;
 };
 
+// Validate a nightmare ability's inputs BEFORE consuming a use: an invalid
+// target must leave the ability charge intact.
+const abilityArgsValid = (G: GState, pid: PlayerID, actions: NightmareAction[], args: MoveUseAbilityArgs): boolean => {
+	const laneTouches = (co: Co): boolean =>
+		G.lanes.some((ln) => (ln.from.q === co.q && ln.from.r === co.r) || (ln.to.q === co.q && ln.to.r === co.r));
+	for (const action of actions) {
+		switch (action.type) {
+			case 'destroyPath':
+			case 'destroyNode':
+				if (!args.coord || !laneTouches(args.coord)) return false;
+				break;
+			case 'removeLane':
+				if (args.laneIndex === undefined || !G.lanes[args.laneIndex]) return false;
+				break;
+			case 'changeLaneColor': {
+				if (args.laneIndex === undefined || !args.color) return false;
+				const lane = G.lanes[args.laneIndex];
+				if (!lane || lane.color === args.color) return false;
+				if (!G.rules.COLORS.includes(args.color)) return false;
+				break;
+			}
+			case 'placeFreeLane': {
+				if (!args.source || !args.coord) return false;
+				const color = dirToColor(G.rules, { q: args.coord.q - args.source.q, r: args.coord.r - args.source.r });
+				if (!color || !canPlacePath(G, args.source, args.coord, color, G.rules)) return false;
+				break;
+			}
+			case 'randomStealCard': {
+				const target = args.targetPlayerId;
+				if (!target || target === pid) return false;
+				if ((G.players[target]?.hand.length ?? 0) === 0) return false;
+				break;
+			}
+			default:
+				break; // no-target abilities are always valid
+		}
+	}
+	return true;
+};
+
 // Any seated player may cancel; endIf turns the flag into a gameover. The
 // move itself runs as the CURRENT player (non-current players are routed
 // through the server's /cancel endpoint, which performs it on their behalf —
@@ -352,6 +393,32 @@ export const HexStringsGame: Game<GState> = {
 								p.actionPlaysThisTurn += 1;
 							}
 							playActionCardFromHand(G, ctx, pid, args.handIndex, effects);
+						},
+					},
+					useNightmareAbility: {
+						// Randomized outcomes (steal, direction shuffle) and revealed
+						// cards can't be taken back.
+						undoable: false,
+						move: (context, args: MoveUseAbilityArgs) => {
+							const { G, ctx } = context;
+							const pid = ctx.currentPlayer;
+							const p = G.players[pid];
+							if (!p) return;
+							const nightmare = getNightmareByName(p.nightmare);
+							if (!nightmare) return;
+							if (p.nightmareState.abilityUsesRemaining <= 0) return;
+							const actions = resolveNightmareActions(nightmare);
+							if (actions.length === 0) return;
+							if (!abilityArgsValid(G, pid, actions, args ?? {})) return;
+							applyNightmareActions(G, actions, {
+								currentPlayer: pid,
+								targetPlayerId: args?.targetPlayerId,
+								coord: args?.coord,
+								source: args?.source,
+								laneIndex: args?.laneIndex,
+								color: args?.color,
+							});
+							p.nightmareState.abilityUsesRemaining -= 1;
 						},
 					},
 					rotateTile: {
