@@ -13,9 +13,9 @@ later playtest confirms or refutes the change.
 - **Feedback (Julian):** "Re-examine Priorities should raise an error if the person's own colors aren't included."
 - **Change:** the reorder is now validated as a permutation of the player's current three colors — swapping in a color you don't have (or duplicating one) is rejected at three layers: the modal dropdowns only offer your own colors, an invalid combination shows an error before Play, and the engine refuses the move (card stays in hand) and the effect itself.
 
-### [ux] Card art points where the colors actually go
-- **Feedback (Julian):** "When placing a card, the path direction should line up with the colors that they will become."
-- **Change:** the mini path drawn on each lane card was decorative (a fan spread from the top); each color's segment now points in the direction that color actually travels on the board, using the board's own axial→pixel transform — including per-match shuffled directions. Cards now double as placement previews.
+### [ux] Placement previews on the board point where the colors go
+- **Feedback (Julian):** "When placing a card, the path direction should line up with the colors that they will become. […] I didn't mean on the card art, I meant when you place it on the board."
+- **Change:** after picking a source dot, each valid destination now shows a dashed ghost lane from the source in the color that lane would become (the preview layer existed but was gated on a color selection that path mode never sets — only dotted rings ever showed). The card-art change (segments drawn in each color's true board direction) shipped alongside and stays.
 
 ### [ux] Use Ability button no longer vanishes off-turn
 - **Feedback (Julian, screenshot):** "What happened to the use ability button? I used it once, now I don't see it."
