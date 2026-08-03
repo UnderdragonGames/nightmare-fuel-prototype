@@ -1,4 +1,5 @@
 import { Server, FlatFile } from 'boardgame.io/server';
+import webpush from 'web-push';
 import { Client } from 'boardgame.io/client';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { PostgresStore } from 'bgio-postgres';
@@ -53,6 +54,91 @@ const server = Server({
 });
 
 const distDir = resolve(new URL('.', import.meta.url).pathname, 'dist');
+
+// ─── Web push (turn alerts) ─────────────────────────────────────────────────
+//
+// Subscriptions are per matchID:seat, held in memory. Clients re-register on
+// every app load, so a restart self-heals as players open the app. Set
+// VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY in the environment so subscriptions
+// survive deploys; without them a fresh pair is generated (and logged) and
+// existing browser subscriptions go stale until re-created.
+const vapidKeys = (() => {
+	const pub = process.env.VAPID_PUBLIC_KEY;
+	const priv = process.env.VAPID_PRIVATE_KEY;
+	if (pub && priv) return { publicKey: pub, privateKey: priv };
+	const generated = webpush.generateVAPIDKeys();
+	console.warn('VAPID keys not set — generated a temporary pair. Set these env vars to keep push subscriptions across deploys:');
+	console.warn(`  VAPID_PUBLIC_KEY=${generated.publicKey}`);
+	console.warn(`  VAPID_PRIVATE_KEY=${generated.privateKey}`);
+	return generated;
+})();
+webpush.setVapidDetails('mailto:julian.kingman@gmail.com', vapidKeys.publicKey, vapidKeys.privateKey);
+
+type StoredSubscription = { endpoint: string; keys: { p256dh: string; auth: string } };
+const pushSubscriptions = new Map<string, StoredSubscription>(); // `${matchID}:${seat}`
+
+const sendPush = async (matchID: string, seat: string, payload: { title: string; body: string; tag?: string }): Promise<void> => {
+	const key = `${matchID}:${seat}`;
+	const sub = pushSubscriptions.get(key);
+	if (!sub) return;
+	try {
+		await webpush.sendNotification(sub as webpush.PushSubscription, JSON.stringify({ ...payload, tag: payload.tag ?? `nf-${matchID}`, url: '/' }));
+	} catch (err) {
+		const status = (err as { statusCode?: number }).statusCode;
+		if (status === 404 || status === 410) {
+			pushSubscriptions.delete(key); // subscription expired/revoked
+		} else {
+			console.error(`push to ${key} failed:`, err);
+		}
+	}
+};
+
+// Register/unregister endpoints (credential-checked against the seat).
+server.app.use(async (ctx, next) => {
+	if (ctx.method === 'GET' && ctx.path === '/push/public-key') {
+		ctx.body = { key: vapidKeys.publicKey };
+		return;
+	}
+	const match = ctx.path.match(new RegExp(`^/games/${GAME_NAME}/([^/]+)/push-(subscribe|unsubscribe)$`));
+	if (!match || ctx.method !== 'POST') {
+		await next();
+		return;
+	}
+	const [, matchID, action] = match;
+	try {
+		const chunks: Uint8Array[] = [];
+		for await (const chunk of ctx.req) chunks.push(chunk as Uint8Array);
+		const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}') as {
+			playerID?: string;
+			credentials?: string;
+			subscription?: StoredSubscription;
+		};
+		const db = dbConfig as unknown as AsyncStorage;
+		const { metadata } = await db.fetch(matchID!, { metadata: true });
+		const seatMeta = body.playerID !== undefined ? metadata?.players[Number(body.playerID)] : undefined;
+		if (!metadata || !seatMeta || !body.credentials || seatMeta.credentials !== body.credentials) {
+			ctx.status = 403;
+			ctx.body = { error: 'invalid seat credentials' };
+			return;
+		}
+		const key = `${matchID}:${body.playerID}`;
+		if (action === 'subscribe') {
+			if (!body.subscription?.endpoint || !body.subscription.keys) {
+				ctx.status = 400;
+				ctx.body = { error: 'missing subscription' };
+				return;
+			}
+			pushSubscriptions.set(key, body.subscription);
+		} else {
+			pushSubscriptions.delete(key);
+		}
+		ctx.body = { ok: true };
+	} catch (err) {
+		console.error(`push ${action} for ${matchID} failed:`, err);
+		ctx.status = 500;
+		ctx.body = { error: 'push registration failed' };
+	}
+});
 
 // ─── Cancel endpoint ────────────────────────────────────────────────────────
 //
@@ -319,9 +405,63 @@ const ensureServerBots = async (): Promise<void> => {
 	}
 };
 
+// ─── Turn-alert push loop ───────────────────────────────────────────────────
+//
+// Rides the same cadence as the bot scan: watch each subscribed match for
+// "who must act" changes (turn owner, Mystery Box picker/placer) and push to
+// that seat. The first observation of a match only records state — nobody is
+// notified for merely being current when the server starts.
+type NotifyState = {
+	state?: {
+		ctx: { currentPlayer: string; turn: number; gameover?: unknown };
+		G: { action?: { pendingDraft?: { order: string[]; position: number; placing: { playerId: string } | null } | null } };
+	};
+};
+const lastNotifyKey = new Map<string, string>();
+
+const notifyTurnChanges = async (): Promise<void> => {
+	if (pushSubscriptions.size === 0) return;
+	const db = dbConfig as unknown as AsyncStorage & {
+		fetch: (id: string, opts: { state: true }) => Promise<NotifyState>;
+	};
+	const matchIDs = await db.listMatches({ gameName: GAME_NAME, where: { isGameover: false } });
+	const liveMatches = new Set(matchIDs);
+	const subscribedMatches = new Set<string>();
+	for (const key of pushSubscriptions.keys()) subscribedMatches.add(key.split(':')[0]!);
+
+	for (const matchID of matchIDs) {
+		if (!subscribedMatches.has(matchID)) continue;
+		const { state } = await db.fetch(matchID, { state: true });
+		if (!state || state.ctx.gameover) continue;
+		const draft = state.G.action?.pendingDraft ?? null;
+		const target = draft
+			? (draft.placing ? draft.placing.playerId : draft.order[draft.position])
+			: state.ctx.currentPlayer;
+		const key = draft
+			? `draft:${target}:${draft.position}:${draft.placing ? 'place' : 'pick'}`
+			: `turn:${state.ctx.turn}:${target}`;
+		const prev = lastNotifyKey.get(matchID);
+		lastNotifyKey.set(matchID, key);
+		if (prev === undefined || prev === key || !target) continue;
+		const body = draft
+			? (draft.placing ? 'Mystery Box: place your drafted card!' : 'Mystery Box: your pick!')
+			: "It's your turn!";
+		await sendPush(matchID, target, { title: 'Nightmare Fuel', body });
+	}
+
+	// Forget finished/deleted matches (and their subscriptions).
+	for (const matchID of [...lastNotifyKey.keys()]) {
+		if (!liveMatches.has(matchID)) lastNotifyKey.delete(matchID);
+	}
+	for (const key of [...pushSubscriptions.keys()]) {
+		if (!liveMatches.has(key.split(':')[0]!)) pushSubscriptions.delete(key);
+	}
+};
+
 server.run(port, () => {
 	console.log(`Server running on port ${port} — nightmare-fuel-prototype v${APP_VERSION}`);
 	setInterval(() => {
 		ensureServerBots().catch((err) => console.error('bot scan failed:', err));
+		notifyTurnChanges().catch((err) => console.error('push scan failed:', err));
 	}, 3000);
 });
