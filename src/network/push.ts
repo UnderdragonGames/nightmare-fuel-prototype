@@ -28,6 +28,15 @@ const urlBase64ToUint8Array = (base64: string): Uint8Array => {
 	return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 };
 
+/** Whether an existing subscription was created under this VAPID key. */
+const sameKey = (subscription: PushSubscription, serverKey: Uint8Array): boolean => {
+	const current = subscription.options?.applicationServerKey;
+	if (!current) return false;
+	const bytes = new Uint8Array(current);
+	if (bytes.length !== serverKey.length) return false;
+	return bytes.every((b, i) => b === serverKey[i]);
+};
+
 const subscribeEndpoint = (serverURL: string, matchID: string, action: 'subscribe' | 'unsubscribe'): string =>
 	`${serverURL}/games/hex-strings/${matchID}/push-${action}`;
 
@@ -41,12 +50,18 @@ export const enableTurnAlerts = async (session: NetworkSession): Promise<TurnAle
 		if (!keyRes.ok) return 'failed';
 		const { key } = (await keyRes.json()) as { key: string };
 		const registration = await navigator.serviceWorker.ready;
-		const subscription =
-			(await registration.pushManager.getSubscription()) ??
-			(await registration.pushManager.subscribe({
-				userVisibleOnly: true,
-				applicationServerKey: urlBase64ToUint8Array(key) as BufferSource,
-			}));
+		const serverKey = urlBase64ToUint8Array(key);
+		let subscription = await registration.pushManager.getSubscription();
+		// A subscription made under different VAPID keys (server redeployed
+		// without pinned keys) is dead — replace it, don't reuse it.
+		if (subscription && !sameKey(subscription, serverKey)) {
+			await subscription.unsubscribe().catch(() => {});
+			subscription = null;
+		}
+		subscription = subscription ?? (await registration.pushManager.subscribe({
+			userVisibleOnly: true,
+			applicationServerKey: serverKey as BufferSource,
+		}));
 		const res = await fetch(subscribeEndpoint(serverURL, session.matchID, 'subscribe'), {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
