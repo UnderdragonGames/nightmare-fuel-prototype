@@ -457,20 +457,21 @@
 	justify-content: center;
 	position: relative;
 	overflow: hidden;
-	transition: opacity 0.3s ease, filter 0.3s ease;
 	padding: 16px;
 	/* Desktop: keep the board clear of the persistent hand shelf */
 	padding-bottom: 165px;
 }
 
+/* No dimming: the board is the game state and its colors must always read
+   true (they used to drop to 50% opacity + saturation with no card selected,
+   which muted lanes vs the cards). Highlights signal clickability instead. */
+.game-board--inactive .hex-cursor,
 .game-board--inactive {
-	opacity: 0.5;
-	filter: saturate(0.5);
+	cursor: default;
 }
 
 .game-board--active {
-	opacity: 1;
-	filter: saturate(1);
+	cursor: pointer;
 }
 
 .game-board svg {
