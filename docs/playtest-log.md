@@ -7,12 +7,16 @@ later playtest confirms or refutes the change.
 
 ---
 
-## 2026-08-02 — v0.4.0
+## 2026-08-06 — v0.5.0
 
-### [ux] Turn-alert push notifications (installable PWA)
-- **Feedback (Julian):** "I think we can do push notifications, right?"
-- **Change:** the app is now an installable PWA (manifest + icons + service worker), and a "Notify me on my turn" toggle in the network menu subscribes the device to web push for its match: it's-your-turn, Mystery Box your-pick, and place-your-drafted-card alerts, sent by the game server on its existing 3-second match scan. iOS requirement (Apple's rule): push only reaches apps **added to the Home Screen** (iOS 16.4+) — the toggle explains this when tapped in plain Safari. Subscriptions live in server memory and self-re-register on app load, so deploys self-heal; set `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` on Railway (the server logs a generated pair on first boot) to keep subscriptions valid across restarts.
-- **Known v1 edge:** alerts also fire on the device you're actively playing on (no presence detection yet) — the notification replaces rather than stacks, so it's mild; revisit if it annoys.
+### In-game playtest feedback (post-game form + database)
+- **Feedback (Julian):** "I'd like to build feedback into the game. So a db table, it should take note of the game ruleset, and should ask useful questions." Question design refined together: qualitative categories instead of numeric scales ("they will tend to lie to protect feelings"), engagement-posture and primary-feeling word grids, plus Schell's Wand and Doing questions.
+- **Change:** the game-over screen now carries a short feedback form — four taps (posture: zoning out/casual/invested/scheming; feeling: 10-word mixed-valence grid, pick up to 2; length feel; play again right away?) with optional free text behind "Add details" (why, painful moment, delightful moment, magic wand, what-were-you-doing). Every submission stores the full rules snapshot, app version, questions version, match/seat/name, scores, turn count, and wall-clock duration — Postgres table `playtest_feedback` in production, JSONL locally. Offline submissions queue in the browser and retry on next load. Read back with `GET /feedback/export?key=$FEEDBACK_EXPORT_KEY` (set the env var on Railway to enable).
+- **Design rationale:** grounded in Schell Games' FFWWDD and Microsoft's Product Reaction Cards (mixed-valence word choice avoids the politeness bias of numeric scales); one submission per finished game per device.
+
+### Local bots could never make the opening move
+- **Diagnosis (found while testing the form):** local bot clients only acted on state *changes* — when a bot was the game's opening player nothing ever changed, so the game deadlocked before the first move. Randomized starting order (v0.3.0) turned this from "never happens" (P0 was always human and always started) into a coin flip in every local game with bots.
+- **Change:** bots get an immediate kick plus a periodic nudge, so a bot that should act always notices — including after React StrictMode's dev-mode double-mount.
 
 ## 2026-08-02 — v0.4.0
 

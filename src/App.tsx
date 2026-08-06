@@ -37,6 +37,8 @@ import {
 	shareInvite,
 } from './network/lobby';
 import { enableTurnAlerts, disableTurnAlerts, resyncTurnAlerts } from './network/push';
+import { FeedbackForm } from './ui/FeedbackForm';
+import { flushFeedbackOutbox } from './feedback/submit';
 import type { BotMode, NetworkSession } from './ui/useUIStore';
 import { playSfx, primeSfx, setSfxMuted } from './sound/sfx';
 
@@ -140,6 +142,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const setAiPaused = useUIStore((s) => s.setAiPaused);
 	const [rotatable, setRotatable] = React.useState<Co[]>([]);
 	const [gameOverDismissed, setGameOverDismissed] = React.useState(false);
+	// Playtest feedback: one form per finished game (per device for network
+	// matches — the guard is keyed by matchID in localStorage).
+	const [feedbackDone, setFeedbackDone] = React.useState(false);
+	const gameStartRef = React.useRef<number>(Date.now());
 	const [abilityFlow, setAbilityFlow] = React.useState<AbilityFlow | null>(null);
 	const [discardModalOpen, setDiscardModalOpen] = React.useState(false);
 	const [exportCopied, setExportCopied] = React.useState(false);
@@ -205,6 +211,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 
 	const nameOf = (pid: PlayerID): string | null =>
 		matchData?.find((p) => String(p.id) === pid)?.name ?? null;
+
+	// Reset the feedback form for each new game; restart the wall clock when a
+	// fresh game begins (mid-game refreshes fall back to time-since-load).
+	React.useEffect(() => {
+		if (!ctx.gameover) {
+			setFeedbackDone(false);
+			if (ctx.turn <= 1) gameStartRef.current = Date.now();
+		}
+	}, [ctx.gameover, ctx.turn]);
 
 	const handleRematch = async () => {
 		if (!network) return;
@@ -2160,6 +2175,31 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									))}
 								</ul>
 							)}
+							{!gameover.cancelled && !feedbackDone
+								&& !(network && localStorage.getItem(`feedback-sent-${network.matchID}`) === '1') && (
+								<FeedbackForm
+									context={{
+										appVersion: __APP_VERSION__,
+										matchID: network?.matchID ?? null,
+										seat: myID ?? null,
+										playerName: (isNetworked ? nameOf(myID) : null) ?? (playerName.trim() || null),
+										networked: isNetworked,
+										rules: G.rules,
+										scores: (gameover.scores as Record<string, number> | undefined) ?? null,
+										turns: ctx.turn,
+										durationSeconds: (Date.now() - gameStartRef.current) / 1000,
+										gameover: true,
+									}}
+									onDone={(submitted) => {
+										setFeedbackDone(true);
+										if (submitted && network) {
+											try {
+												localStorage.setItem(`feedback-sent-${network.matchID}`, '1');
+											} catch { /* storage full — the in-memory flag still holds */ }
+										}
+									}}
+								/>
+							)}
 							{isNetworked && (
 								<button className="game-over-rematch" onClick={handleRematch} disabled={rematchBusy}>
 									{rematchBusy ? 'Setting up rematch…' : 'Rematch'}
@@ -2499,6 +2539,11 @@ const App: React.FC = () => {
 			setNetworkModalOpen(true);
 		})();
 	}, [serverURL]);
+
+	// Feedback queued while offline gets another delivery attempt on load.
+	React.useEffect(() => {
+		void flushFeedbackOutbox();
+	}, []);
 
 	// Turn-alert push subscriptions live in server memory — re-register on
 	// load so a server restart/deploy self-heals without a new prompt.
