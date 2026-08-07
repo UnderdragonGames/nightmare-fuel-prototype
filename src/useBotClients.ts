@@ -72,7 +72,7 @@ export function useBotClients(
 			const botKind = botByPlayer[pid] ?? 'None';
 			if (botKind === 'None') continue;
 
-			const unsub = client.subscribe((state) => {
+			const onState = (state: ReturnType<typeof client.getState>) => {
 				if (!state) return;
 				if (aiPaused) return;
 				// Mystery Box draft: the bot may need to pick/place mid-turn of
@@ -117,13 +117,27 @@ export function useBotClients(
 						} else if (botKind === 'EvaluatorPlus') {
 							await playOneEvaluatorPlus(bgioClient, pid);
 						}
+					} catch (err) {
+						console.error('bot play failed:', pid, err);
 					} finally {
 						playingRef.current.delete(pid);
 					}
 				})();
-			});
+			};
 
-			unsubs.push(unsub);
+			const unsub = client.subscribe(onState);
+			// subscribe() only fires on CHANGES — when this bot is the game's
+			// opening player nothing ever changes, so nothing would ever wake it
+			// (random start order made bot-opens-the-game a coin flip). Kick now
+			// and re-nudge periodically; the in-flight guard makes nudges cheap,
+			// and the interval also survives StrictMode's mount/cleanup race.
+			onState(client.getState());
+			const nudge = setInterval(() => onState(client.getState()), 1500);
+
+			unsubs.push(() => {
+				clearInterval(nudge);
+				unsub();
+			});
 		}
 
 		return () => {

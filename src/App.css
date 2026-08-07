@@ -1981,6 +1981,95 @@ button .icon {
 }
 
 /* Coord picking banner */
+/* ── Playtest feedback form (inside the game-over modal) ── */
+.feedback-form {
+	margin-top: 14px;
+	padding-top: 14px;
+	border-top: 1px solid var(--border-subtle);
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	text-align: left;
+	max-height: 55vh;
+	overflow-y: auto;
+}
+
+.feedback-form__title {
+	font-size: 0.9rem;
+	font-weight: 700;
+	color: var(--text-primary);
+}
+
+.feedback-form__prompt {
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+	margin-bottom: 6px;
+}
+
+.feedback-form__hint {
+	font-weight: 400;
+	color: var(--text-muted);
+}
+
+.feedback-form__options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.feedback-form__pill {
+	padding: 6px 12px;
+	border-radius: 999px;
+	border: 1px solid var(--border-subtle);
+	background: rgba(30, 30, 42, 0.8);
+	color: var(--text-secondary);
+	font-size: 0.78rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.feedback-form__pill:hover {
+	border-color: var(--accent-primary);
+}
+
+.feedback-form__pill--on {
+	background: var(--accent-primary);
+	border-color: var(--accent-primary);
+	color: #fff;
+}
+
+.feedback-form__more {
+	align-self: flex-start;
+	padding: 4px 0;
+	border: none;
+	background: none;
+	color: var(--accent-primary);
+	font-size: 0.78rem;
+	font-weight: 600;
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+.feedback-form__text {
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--border-subtle);
+	background: rgba(22, 22, 31, 0.8);
+	color: var(--text-primary);
+	font-size: 0.8rem;
+	font-family: inherit;
+	resize: vertical;
+}
+
+.feedback-form__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
 /* ── Mystery Box draft overlay ── */
 .draft-overlay {
 	position: fixed;

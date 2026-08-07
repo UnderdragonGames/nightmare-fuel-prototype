@@ -140,6 +140,150 @@ server.app.use(async (ctx, next) => {
 	}
 });
 
+// ─── Playtest feedback ──────────────────────────────────────────────────────
+//
+// One row per submitted form, with the full rules snapshot so answers can be
+// compared across rulesets. Postgres in production (raw table via the store's
+// sequelize handle); JSONL file under USE_FLATFILE for local dev.
+// Read it back with GET /feedback/export?key=$FEEDBACK_EXPORT_KEY (endpoint
+// is disabled unless the env var is set).
+
+const feedbackFile = resolve(process.env.FLATFILE_DIR || './matches', 'feedback.jsonl');
+const usingPostgres = !process.env.USE_FLATFILE;
+
+const initFeedbackStore = async (): Promise<void> => {
+	if (!usingPostgres) return;
+	const { sequelize } = dbConfig as unknown as { sequelize: { query: (sql: string) => Promise<unknown> } };
+	await sequelize.query(`
+		CREATE TABLE IF NOT EXISTS playtest_feedback (
+			id UUID PRIMARY KEY,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			app_version TEXT NOT NULL,
+			questions_version INTEGER NOT NULL,
+			match_id TEXT,
+			seat TEXT,
+			player_name TEXT,
+			networked BOOLEAN NOT NULL DEFAULT false,
+			gameover BOOLEAN NOT NULL DEFAULT false,
+			turns INTEGER,
+			duration_seconds INTEGER,
+			scores JSONB,
+			rules JSONB,
+			answers JSONB NOT NULL
+		)
+	`);
+	console.log('playtest_feedback table ready');
+};
+
+type FeedbackBody = {
+	questionsVersion?: number;
+	answers?: Record<string, unknown>;
+	appVersion?: string;
+	matchID?: string | null;
+	seat?: string | null;
+	playerName?: string | null;
+	networked?: boolean;
+	rules?: unknown;
+	scores?: Record<string, number> | null;
+	turns?: number | null;
+	durationSeconds?: number | null;
+	gameover?: boolean;
+};
+
+const storeFeedback = async (body: FeedbackBody): Promise<void> => {
+	const row = {
+		id: randomUUID(),
+		created_at: new Date().toISOString(),
+		app_version: String(body.appVersion ?? 'unknown').slice(0, 40),
+		questions_version: Number(body.questionsVersion) || 0,
+		match_id: body.matchID ? String(body.matchID).slice(0, 40) : null,
+		seat: body.seat != null ? String(body.seat).slice(0, 8) : null,
+		player_name: body.playerName ? String(body.playerName).slice(0, 64) : null,
+		networked: !!body.networked,
+		gameover: !!body.gameover,
+		turns: Number.isFinite(body.turns) ? Number(body.turns) : null,
+		duration_seconds: Number.isFinite(body.durationSeconds) ? Math.round(Number(body.durationSeconds)) : null,
+		scores: body.scores ?? null,
+		rules: body.rules ?? null,
+		answers: body.answers ?? {},
+	};
+	if (usingPostgres) {
+		const { sequelize } = dbConfig as unknown as {
+			sequelize: { query: (sql: string, opts: { bind: unknown[] }) => Promise<unknown> };
+		};
+		await sequelize.query(
+			`INSERT INTO playtest_feedback
+				(id, created_at, app_version, questions_version, match_id, seat, player_name, networked, gameover, turns, duration_seconds, scores, rules, answers)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			{
+				bind: [
+					row.id, row.created_at, row.app_version, row.questions_version, row.match_id,
+					row.seat, row.player_name, row.networked, row.gameover, row.turns,
+					row.duration_seconds, JSON.stringify(row.scores), JSON.stringify(row.rules), JSON.stringify(row.answers),
+				],
+			},
+		);
+	} else {
+		const { appendFile, mkdir } = await import('fs/promises');
+		await mkdir(resolve(feedbackFile, '..'), { recursive: true });
+		await appendFile(feedbackFile, `${JSON.stringify(row)}\n`, 'utf-8');
+	}
+};
+
+server.app.use(async (ctx, next) => {
+	if (ctx.path === '/feedback' && ctx.method === 'POST') {
+		try {
+			const chunks: Uint8Array[] = [];
+			for await (const chunk of ctx.req) chunks.push(chunk as Uint8Array);
+			const raw = Buffer.concat(chunks).toString('utf-8');
+			if (raw.length > 64 * 1024) {
+				ctx.status = 413;
+				ctx.body = { error: 'feedback too large' };
+				return;
+			}
+			const body = JSON.parse(raw || '{}') as FeedbackBody;
+			if (!body.answers || typeof body.answers !== 'object' || Object.keys(body.answers).length === 0) {
+				ctx.status = 400;
+				ctx.body = { error: 'no answers' };
+				return;
+			}
+			await storeFeedback(body);
+			ctx.body = { ok: true };
+		} catch (err) {
+			console.error('feedback store failed:', err);
+			ctx.status = 500;
+			ctx.body = { error: 'feedback store failed' };
+		}
+		return;
+	}
+	if (ctx.path === '/feedback/export' && ctx.method === 'GET') {
+		const exportKey = process.env.FEEDBACK_EXPORT_KEY;
+		if (!exportKey || ctx.query.key !== exportKey) {
+			ctx.status = 403;
+			ctx.body = { error: 'export disabled or bad key' };
+			return;
+		}
+		try {
+			if (usingPostgres) {
+				const { sequelize } = dbConfig as unknown as {
+					sequelize: { query: (sql: string, opts: { type: string }) => Promise<unknown[]> };
+				};
+				const rows = await sequelize.query('SELECT * FROM playtest_feedback ORDER BY created_at DESC', { type: 'SELECT' });
+				ctx.body = rows;
+			} else {
+				const text = await readFile(feedbackFile, 'utf-8').catch(() => '');
+				ctx.body = text.trim().length > 0 ? text.trim().split('\n').map((l) => JSON.parse(l)) : [];
+			}
+		} catch (err) {
+			console.error('feedback export failed:', err);
+			ctx.status = 500;
+			ctx.body = { error: 'export failed' };
+		}
+		return;
+	}
+	await next();
+});
+
 // ─── Cancel endpoint ────────────────────────────────────────────────────────
 //
 // Any seated player may cancel a match, but boardgame.io only lets the
@@ -460,6 +604,7 @@ const notifyTurnChanges = async (): Promise<void> => {
 
 server.run(port, () => {
 	console.log(`Server running on port ${port} — nightmare-fuel-prototype v${APP_VERSION}`);
+	initFeedbackStore().catch((err) => console.error('feedback table init failed:', err));
 	setInterval(() => {
 		ensureServerBots().catch((err) => console.error('bot scan failed:', err));
 		notifyTurnChanges().catch((err) => console.error('push scan failed:', err));
