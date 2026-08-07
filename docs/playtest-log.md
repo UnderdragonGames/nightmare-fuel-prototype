@@ -7,6 +7,12 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-06 — v0.6.0
+
+### [ux] Mobile install banner (PWA)
+- **Feedback (Julian):** "I'd like to add a banner for mobile to install the PWA if it's not already installed. So it should detect it, show the banner if it's not in a PWA, dismissable of course, and when pressed to show instructions."
+- **Change:** on mobile browsers that are NOT already running as an installed app (display-mode / iOS `navigator.standalone` detection), a dismissible banner sits in the quiet band between board and controls: "Add to Home Screen for the full game — and turn alerts." Tapping it triggers the real Chromium install prompt when available (`beforeinstallprompt`), otherwise platform-matched instructions (iOS: Share → Add to Home Screen; Android: menu → Install app). Dismissal is remembered per device; the banner also disappears live if the app gets installed.
+
 ## 2026-08-06 — v0.5.0
 
 ### In-game playtest feedback (post-game form + database)
