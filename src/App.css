@@ -1981,6 +1981,80 @@ button .icon {
 }
 
 /* Coord picking banner */
+/* ── PWA install banner (mobile, not-installed only) ── */
+.install-banner {
+	position: fixed;
+	left: 8px;
+	right: 8px;
+	/* Sit in the quiet band between the board and the mode strip — never on
+	   top of End Turn / the tab bar. */
+	bottom: 200px;
+	z-index: 85;
+	display: flex;
+	align-items: stretch;
+	border-radius: 12px;
+	background: rgba(28, 24, 44, 0.97);
+	border: 1px solid var(--accent-primary);
+	box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35);
+	overflow: hidden;
+}
+
+.install-banner__body {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	border: none;
+	background: none;
+	color: var(--text-primary);
+	font-size: 0.78rem;
+	text-align: left;
+	cursor: pointer;
+}
+
+.install-banner__body b {
+	color: var(--accent-primary);
+}
+
+.install-banner__close {
+	display: flex;
+	align-items: center;
+	padding: 0 12px;
+	border: none;
+	border-left: 1px solid var(--border-subtle);
+	background: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.install-help__steps {
+	margin: 0 0 12px;
+	padding-left: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	font-size: 0.85rem;
+	color: var(--text-primary);
+}
+
+.install-help__glyph {
+	display: inline-block;
+	transform: rotate(90deg);
+	color: var(--accent-primary);
+	font-weight: 700;
+}
+
+.install-help__note {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+	margin: 0 0 14px;
+}
+
+.install-help__done {
+	width: 100%;
+}
+
 /* ── Playtest feedback form (inside the game-over modal) ── */
 .feedback-form {
 	margin-top: 14px;

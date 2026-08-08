@@ -38,6 +38,7 @@ import {
 } from './network/lobby';
 import { enableTurnAlerts, disableTurnAlerts, resyncTurnAlerts } from './network/push';
 import { FeedbackForm } from './ui/FeedbackForm';
+import { InstallBanner } from './ui/InstallBanner';
 import { flushFeedbackOutbox } from './feedback/submit';
 import type { BotMode, NetworkSession } from './ui/useUIStore';
 import { playSfx, primeSfx, setSfxMuted } from './sound/sfx';
@@ -2506,6 +2507,7 @@ const App: React.FC = () => {
 	const setSoundMuted = useUIStore((s) => s.setSoundMuted);
 	const [networkModalOpen, setNetworkModalOpen] = React.useState(false);
 	const [isLabRoute, setIsLabRoute] = React.useState(false);
+	const appIsMobile = useIsMobile();
 	const [joinPrefill, setJoinPrefill] = React.useState<{ code: string; error: string | null; invited?: boolean } | null>(null);
 
 	// Sounds: preload on first gesture (iOS unlock) and honor the mute setting.
@@ -2589,6 +2591,8 @@ const App: React.FC = () => {
 
 	return (
 		<div className="app-root">
+			{/* Mobile: nudge toward installing the PWA (full screen + push). */}
+			{appIsMobile && !isLabRoute && <InstallBanner />}
 			{/* Setup controls in top-left corner */}
 			{!isLabRoute && (
 				<div className="setup-controls">
