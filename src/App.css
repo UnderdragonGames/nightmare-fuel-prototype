@@ -14,7 +14,9 @@
 	position: fixed;
 	top: 12px;
 	left: 12px;
-	z-index: 100;
+	/* Above the waiting-room overlay (300): with multiple games held, the
+	   globe must stay reachable while one match waits for players. */
+	z-index: 310;
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -731,7 +733,9 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	z-index: 300;
+	/* Above the waiting-room overlay (300) and toolbar (310): the network
+	   modal must open on top even while a match waits for players. */
+	z-index: 320;
 	animation: fadeIn 0.2s ease-out;
 }
 
@@ -2053,6 +2057,122 @@ button .icon {
 
 .install-help__done {
 	width: 100%;
+}
+
+/* ── My Games (multi-session) + globe badge ── */
+.setup-controls__network {
+	position: relative;
+}
+
+.network-badge {
+	position: absolute;
+	top: -5px;
+	right: -5px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border-radius: 999px;
+	background: #ef4444;
+	color: #fff;
+	font-size: 0.62rem;
+	font-weight: 800;
+	line-height: 16px;
+	text-align: center;
+	pointer-events: none;
+}
+
+/* One-shot attention bounce when the waiting count rises. */
+.setup-controls__network--bounce {
+	animation: globe-bounce 0.9s cubic-bezier(0.28, 0.84, 0.42, 1);
+}
+
+@keyframes globe-bounce {
+	0%, 100% { transform: translateY(0); }
+	20% { transform: translateY(-7px); }
+	40% { transform: translateY(0); }
+	60% { transform: translateY(-3px); }
+	80% { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.setup-controls__network--bounce {
+		animation: none;
+	}
+}
+
+.my-games {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.my-games__row {
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+}
+
+.my-games__switch {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--border-subtle);
+	background: rgba(30, 30, 42, 0.7);
+	color: var(--text-secondary);
+	font-size: 0.8rem;
+	cursor: pointer;
+	transition: border-color 0.15s ease;
+}
+
+.my-games__switch:hover:not(:disabled) {
+	border-color: var(--accent-primary);
+}
+
+.my-games__row--active .my-games__switch {
+	border-color: var(--accent-primary);
+	cursor: default;
+}
+
+.my-games__code {
+	font-weight: 700;
+	letter-spacing: 1px;
+	color: var(--text-primary);
+}
+
+.my-games__seat {
+	color: var(--text-muted);
+	font-size: 0.72rem;
+}
+
+.my-games__status {
+	margin-left: auto;
+	font-size: 0.72rem;
+	color: var(--text-muted);
+}
+
+.my-games__status--you {
+	color: #4ade80;
+	font-weight: 700;
+}
+
+.my-games__drop {
+	padding: 0 8px;
+	border-radius: 8px;
+	border: 1px solid var(--border-subtle);
+	background: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.my-games__drop:hover {
+	border-color: #ef4444;
+	color: #ef4444;
 }
 
 /* ── Playtest feedback form (inside the game-over modal) ── */

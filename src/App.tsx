@@ -40,6 +40,7 @@ import { enableTurnAlerts, disableTurnAlerts, resyncTurnAlerts } from './network
 import { FeedbackForm } from './ui/FeedbackForm';
 import { InstallBanner } from './ui/InstallBanner';
 import { flushFeedbackOutbox } from './feedback/submit';
+import { useMatchStatuses, type MatchStatus } from './network/useMatchStatuses';
 import type { BotMode, NetworkSession } from './ui/useUIStore';
 import { playSfx, primeSfx, setSfxMuted } from './sound/sfx';
 
@@ -155,6 +156,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// multiplayer server, so its presence — not the store — gates network UI.
 	const network = useUIStore((s) => s.network);
 	const setNetwork = useUIStore((s) => s.setNetwork);
+	const removeSession = useUIStore((s) => s.removeSession);
 	const playerName = useUIStore((s) => s.playerName);
 	const [rematchBusy, setRematchBusy] = React.useState(false);
 	const [rematchError, setRematchError] = React.useState<string | null>(null);
@@ -174,9 +176,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// (credential-checked) so undo can stay single-active-player.
 	const handleLeaveMatch = async () => {
 		if (network) {
-			await leaveMatch(getServerURL(), network.matchID, network.seat, network.credentials);
+			await leaveMatch(getServerURL(), network.matchID, network.seat, network.credentials).catch(() => {});
+			removeSession(network.matchID); // falls back to the next held game
+		} else {
+			setNetwork(null);
 		}
-		setNetwork(null);
 	};
 	const handleCancelMatch = async () => {
 		if (!window.confirm('Cancel this match for everyone?')) return;
@@ -2235,9 +2239,14 @@ const NetworkModal: React.FC<{
 	onClose: () => void;
 	/** Seed from a ?join= invite link: focused join prompt with name entry. */
 	prefill?: { code: string; error: string | null; invited?: boolean } | null;
-}> = ({ isOpen, onClose, prefill = null }) => {
+	/** Per-match status snapshots (polled at App level). */
+	statuses?: Record<string, MatchStatus>;
+}> = ({ isOpen, onClose, prefill = null, statuses = {} }) => {
 	const network = useUIStore((s) => s.network);
 	const setNetwork = useUIStore((s) => s.setNetwork);
+	const sessions = useUIStore((s) => s.sessions);
+	const switchSession = useUIStore((s) => s.switchSession);
+	const removeSession = useUIStore((s) => s.removeSession);
 	const numPlayers = useUIStore((s) => s.numPlayers);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const playerName = useUIStore((s) => s.playerName);
@@ -2330,14 +2339,19 @@ const NetworkModal: React.FC<{
 		try {
 			// Forgiving lookup: handles pasted invite links and any letter case.
 			const match = await findMatchByCode(serverURL, inputMatchID);
+			// Already seated here? Just switch back — don't grab a second seat.
+			const held = sessions.find((s) => s.matchID === match.matchID);
+			if (held) {
+				switchSession(held.matchID);
+				onClose();
+				return;
+			}
 			const seat = firstFreeSeat(match);
 			if (seat === null) {
 				throw new Error('Match is full — every seat is taken.');
 			}
-			// Following an invite while seated elsewhere: free the old seat.
-			if (network && network.matchID !== match.matchID) {
-				await leaveMatch(serverURL, network.matchID, network.seat, network.credentials);
-			}
+			// Joining another match keeps the old seat: games run in parallel and
+			// "My games" switches between them. Only Leave Match frees a seat.
 			const credentials = await joinMatch(serverURL, match.matchID, seat, nameFor(seat));
 			setNetwork({ matchID: match.matchID, seat, credentials, numPlayers: match.players.length });
 			onClose();
@@ -2359,9 +2373,12 @@ const NetworkModal: React.FC<{
 
 	const handleDisconnect = async () => {
 		if (network) {
-			await leaveMatch(serverURL, network.matchID, network.seat, network.credentials);
+			await leaveMatch(serverURL, network.matchID, network.seat, network.credentials).catch(() => {});
+			// removeSession falls back to the next held game (or null).
+			removeSession(network.matchID);
+		} else {
+			setNetwork(null);
 		}
-		setNetwork(null);
 		setInputMatchID('');
 		setError(null);
 	};
@@ -2375,6 +2392,48 @@ const NetworkModal: React.FC<{
 				</div>
 
 				<div className="modal-body">
+					{sessions.length > 0 && (
+						<div className="network-section">
+							<h3>My Games</h3>
+							<ul className="my-games">
+								{sessions.map((s) => {
+									const st = statuses[s.matchID];
+									const isActive = network?.matchID === s.matchID;
+									const yourMove = !!st && !st.gameover && !st.missing && st.allSeatsJoined && st.actionOn === s.seat;
+									const label = !st ? '…'
+										: st.missing ? 'Gone'
+										: st.gameover ? 'Finished'
+										: !st.allSeatsJoined ? 'Waiting for players'
+										: yourMove ? 'Your move!'
+										: 'Their move';
+									return (
+										<li key={s.matchID} className={`my-games__row ${isActive ? 'my-games__row--active' : ''}`}>
+											<button
+												className="my-games__switch"
+												onClick={() => { switchSession(s.matchID); onClose(); }}
+												disabled={isActive}
+											>
+												<code className="my-games__code">{s.matchID}</code>
+												<span className="my-games__seat">P{s.seat}</span>
+												<span className={`my-games__status ${yourMove ? 'my-games__status--you' : ''}`}>
+													{isActive ? 'Current' : label}
+												</span>
+											</button>
+											{(st?.missing || st?.gameover) && (
+												<button
+													className="my-games__drop"
+													onClick={() => removeSession(s.matchID)}
+													title="Remove from list"
+												>
+													<Icon name="x" size={12} />
+												</button>
+											)}
+										</li>
+									);
+								})}
+							</ul>
+						</div>
+					)}
 					{prefill?.invited && (!network || network.matchID !== prefill.code) ? (
 						<div className="network-section">
 							<h3>You're invited!</h3>
@@ -2396,7 +2455,9 @@ const NetworkModal: React.FC<{
 								{busy ? 'Joining…' : 'Join Match'}
 							</button>
 						</div>
-					) : network ? (
+					) : (
+						<>
+						{network && (
 						<div className="network-status">
 							<div className="network-status__connected">
 								<span className="network-status__dot" />
@@ -2426,11 +2487,10 @@ const NetworkModal: React.FC<{
 							</button>
 							{alertsNote && <p className="network-hint">{alertsNote}</p>}
 							<button className="btn btn--danger" onClick={handleDisconnect}>
-								Leave Match
+								Leave This Match
 							</button>
 						</div>
-					) : (
-						<>
+						)}
 							<div className="network-section">
 								<h3>Your Name</h3>
 								<input
@@ -2550,9 +2610,58 @@ const App: React.FC = () => {
 	// Turn-alert push subscriptions live in server memory — re-register on
 	// load so a server restart/deploy self-heals without a new prompt.
 	const turnAlertsOn = useUIStore((s) => s.turnAlerts);
+	const heldSessions = useUIStore((s) => s.sessions);
+	const switchSession = useUIStore((s) => s.switchSession);
+	// Re-register push for EVERY held match (server memory is deploy-ephemeral).
+	const heldKey = heldSessions.map((s) => s.matchID).join(',');
 	React.useEffect(() => {
-		if (network && turnAlertsOn) void resyncTurnAlerts(network);
-	}, [network, turnAlertsOn]);
+		if (!turnAlertsOn) return;
+		for (const session of heldSessions) void resyncTurnAlerts(session);
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- heldKey covers sessions identity
+	}, [heldKey, turnAlertsOn]);
+
+	// Deep-switch into a match: ?resume=<matchID> (from a tapped notification)
+	// or a service-worker message when the app was already open.
+	React.useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		const resume = params.get('resume');
+		if (resume) {
+			switchSession(resume);
+			params.delete('resume');
+			const qs = params.toString();
+			window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+		}
+		const onMessage = (event: MessageEvent): void => {
+			const data = event.data as { type?: string; matchID?: string } | null;
+			if (data?.type === 'resume-match' && data.matchID) switchSession(data.matchID);
+		};
+		navigator.serviceWorker?.addEventListener('message', onMessage);
+		return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+	}, [switchSession]);
+
+	// Status of every held match → globe badge ("games waiting on you", the
+	// active one excluded — you're already looking at it).
+	const matchStatuses = useMatchStatuses(heldSessions);
+	const waitingCount = heldSessions.filter((s) =>
+		s.matchID !== network?.matchID
+		&& matchStatuses[s.matchID]
+		&& !matchStatuses[s.matchID]!.missing
+		&& !matchStatuses[s.matchID]!.gameover
+		&& matchStatuses[s.matchID]!.allSeatsJoined
+		&& matchStatuses[s.matchID]!.actionOn === s.seat,
+	).length;
+	// One-shot bounce when the count RISES (continuous motion is noise).
+	const [badgeBounce, setBadgeBounce] = React.useState(false);
+	const prevWaitingRef = React.useRef(0);
+	React.useEffect(() => {
+		if (waitingCount > prevWaitingRef.current) {
+			setBadgeBounce(true);
+			const t = setTimeout(() => setBadgeBounce(false), 900);
+			prevWaitingRef.current = waitingCount;
+			return () => clearTimeout(t);
+		}
+		prevWaitingRef.current = waitingCount;
+	}, [waitingCount]);
 
 	// Local games: the human is always seat "0" and bots run in-browser.
 	// Network games: the seat was claimed through the lobby (with credentials),
@@ -2596,17 +2705,19 @@ const App: React.FC = () => {
 			{/* Setup controls in top-left corner */}
 			{!isLabRoute && (
 				<div className="setup-controls">
+					{/* Player-count setup applies to the NEXT match you create; the
+					    active network match keeps its own count. */}
 					<button onClick={() => {
 						const next = Math.min(8, numPlayers + 1);
 						setNumPlayers(next);
 						resetBotsForCount(next);
-					}} disabled={network !== null} title={network ? 'Leave the network match to change players' : undefined}>+</button>
+					}}>+</button>
 					<span className="setup-controls__count">{clientNumPlayers}P</span>
 					<button onClick={() => {
 						const next = Math.max(2, numPlayers - 1);
 						setNumPlayers(next);
 						resetBotsForCount(next);
-					}} disabled={network !== null || numPlayers <= 2} title={network ? 'Leave the network match to change players' : undefined}>−</button>
+					}} disabled={numPlayers <= 2}>−</button>
 					<button
 						className="setup-controls__network"
 						onClick={() => setSoundMuted(!soundMuted)}
@@ -2615,11 +2726,14 @@ const App: React.FC = () => {
 						<Icon name={soundMuted ? 'volume-off' : 'volume'} />
 					</button>
 					<button
-						className={`setup-controls__network ${network ? 'setup-controls__network--connected' : ''}`}
+						className={`setup-controls__network ${network ? 'setup-controls__network--connected' : ''} ${badgeBounce ? 'setup-controls__network--bounce' : ''}`}
 						onClick={() => setNetworkModalOpen(true)}
-						title={network ? 'Connected to network game' : 'Network game'}
+						title={waitingCount > 0
+							? `${waitingCount} game${waitingCount > 1 ? 's' : ''} waiting on you`
+							: network ? 'Connected to network game' : 'Network game'}
 					>
 						<Icon name="globe" />
+						{waitingCount > 0 && <span className="network-badge">{waitingCount}</span>}
 					</button>
 				</div>
 			)}
@@ -2638,6 +2752,7 @@ const App: React.FC = () => {
 					isOpen={networkModalOpen}
 					onClose={() => setNetworkModalOpen(false)}
 					prefill={joinPrefill}
+					statuses={matchStatuses}
 				/>
 			)}
 			<div

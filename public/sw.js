@@ -25,18 +25,24 @@ self.addEventListener('push', (event) => {
 			badge: '/icons/icon-192.png',
 			// One notification per match — a newer one replaces the older.
 			tag: data.tag || 'nightmare-fuel',
-			data: { url: data.url || '/' },
+			data: { url: data.url || '/', matchID: data.matchID || null },
 		}),
 	);
 });
 
 self.addEventListener('notificationclick', (event) => {
 	event.notification.close();
-	const url = (event.notification.data && event.notification.data.url) || '/';
+	const data = event.notification.data || {};
+	const url = data.url || '/';
 	event.waitUntil(
 		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
 			for (const client of list) {
-				if ('focus' in client) return client.focus();
+				if ('focus' in client) {
+					// App already open: tell it to switch to the notifying match
+					// (a focus alone would leave it on whatever game was active).
+					if (data.matchID) client.postMessage({ type: 'resume-match', matchID: data.matchID });
+					return client.focus();
+				}
 			}
 			return self.clients.openWindow(url);
 		}),

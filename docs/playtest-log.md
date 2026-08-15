@@ -13,6 +13,17 @@ later playtest confirms or refutes the change.
 - **Feedback (Julian):** "I'd like to add a banner for mobile to install the PWA if it's not already installed. So it should detect it, show the banner if it's not in a PWA, dismissable of course, and when pressed to show instructions."
 - **Change:** on mobile browsers that are NOT already running as an installed app (display-mode / iOS `navigator.standalone` detection), a dismissible banner sits in the quiet band between board and controls: "Add to Home Screen for the full game — and turn alerts." Tapping it triggers the real Chromium install prompt when available (`beforeinstallprompt`), otherwise platform-matched instructions (iOS: Share → Add to Home Screen; Android: menu → Install app). Dismissal is remembered per device; the banner also disappears live if the app gets installed.
 
+## 2026-08-06 — v0.6.0
+
+### Multiple games per device ("My games")
+- **Feedback (Julian):** asked what happens when a user opens a different game in the PWA; answer was ugly — joining game B silently freed the seat in game A, re-gating A behind its waiting room and stopping its bots. Approved the fix and the mobile treatment: "Use the globe icon and add a badge and bouncing?"
+- **Change:** the device now holds a seat in every joined match. Joining or creating another game keeps existing seats; the network menu gets a **My Games** list (code, your seat, whose move / finished / waiting) with one-tap switching, and Create/Join stay available while connected. The globe icon shows a **badge counting games waiting on you** (active game excluded) and does a **one-shot bounce when the count rises** — deliberately not a continuous bounce (noise, battery, and `prefers-reduced-motion` all argue against it). Turn-alert notifications now carry the match code, so tapping one switches the app to that game. Legacy single-session storage migrates automatically.
+- **Also fixed on the way:** the waiting-room overlay used to cover the toolbar, locking you out of the network menu while a match waited for players; custom server endpoints (status/cancel/push/feedback) were missing CORS headers (invisible in same-origin production, broken in dev).
+
+### [ux] Mobile install banner (Add to Home Screen)
+- **Feedback (Julian):** "I'd like to add a banner for mobile to install the PWA if it's not already installed… dismissable of course, and when pressed to show instructions."
+- **Change:** on mobile browsers (not the installed app), a slim dismissable banner offers "Add to Home Screen for the full game — and turn alerts." Tapping it fires Chromium's native install prompt when available; otherwise (notably iOS Safari) it opens platform-matched step-by-step instructions. Dismissal is remembered per device; the banner also hides itself live if the user installs.
+
 ## 2026-08-06 — v0.5.0
 
 ### In-game playtest feedback (post-game form + database)
