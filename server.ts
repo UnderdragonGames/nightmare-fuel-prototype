@@ -511,10 +511,10 @@ const spawnBot = (matchID: string, seat: string, kind: BotKind, credentials: str
 	});
 	client.start();
 
-	const unsubscribe = client.subscribe((state) => {
+	const handle = (state: ReturnType<typeof client.getState>): void => {
 		if (!state) return;
 		if (state.ctx.gameover) return;
-		// Mystery Box draft: the bot may need to pick/place during ANY turn.
+		// Reveal-and-pick draft: the bot may need to pick/place during ANY turn.
 		if ((state.ctx.activePlayers as Record<string, string> | null)?.[seat] === 'draft') {
 			if (!botsPlaying.has(key)) {
 				botsPlaying.add(key);
@@ -549,10 +549,17 @@ const spawnBot = (matchID: string, seat: string, kind: BotKind, credentials: str
 				botsPlaying.delete(key);
 			}
 		})();
-	});
+	};
+
+	const unsubscribe = client.subscribe(handle);
+	// Nudge: when the bot itself plays a reveal-and-pick card, its turn loop
+	// exits and no further state change would re-trigger the subscription —
+	// without this the draft (and the game) would hang on the bot's own pick.
+	const nudge = setInterval(() => handle(client.getState()), 2000);
 
 	botRunners.set(key, {
 		stop: () => {
+			clearInterval(nudge);
 			unsubscribe();
 			client.stop();
 		},

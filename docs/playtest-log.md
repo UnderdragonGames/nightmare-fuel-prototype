@@ -15,6 +15,11 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-06 — v0.6.0
 
+### Bots now initiate reveal-and-pick cards
+- **Feedback (Julian):** "Why don't bots initiate those? They should play it if it's in their hand, doesn't seem unsolvable."
+- **Change:** it wasn't — v1 caution, now removed. Bots enumerate Mystery Box and Alter Fate as playable; when a bot plays one, its turn loop yields to the draft stage, it makes its own pick (and placement) via the same handler that already covered human-initiated drafts, then resumes its turn. The evaluator gets a small bonus for these cards (the simulator can't see the pick-back, so the raw delta reads as card loss). Server bots get a periodic nudge so a bot's own pick can't hang the game.
+- **Outcome:** _pending — watch a bot game for a Mystery Box played by the bot._
+
 ### [ux] Your-turn visual flash
 - **Feedback (Julian):** "we need visual feedback for when it's your turn in addition to the sound and notification."
 - **Change:** when the turn passes to you, the screen edges pulse with a purple vignette and a large "Your turn" label fades in and out (~1.6s), on the same trigger as the chime. Non-blocking (clicks pass through), sits under every modal, and `prefers-reduced-motion` gets a motionless fade instead.
