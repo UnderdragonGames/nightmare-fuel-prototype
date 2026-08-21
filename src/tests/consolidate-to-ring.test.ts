@@ -22,6 +22,8 @@ const baseRules = {
 	RANDOM_CARDINAL_DIRECTIONS: false,
 	EDGE_COLORS,
 	COLOR_TO_DIR: buildColorToDir(EDGE_COLORS),
+	// This suite tests ring gating, not the conversion cost — pin it off.
+	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, COST_TO_CONSOLIDATE: 1 },
 };
 
 // Lanes:

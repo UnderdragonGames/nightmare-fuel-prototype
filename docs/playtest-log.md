@@ -7,6 +7,19 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-21 — v0.9.0
+
+### Consolidation ending restored at 3; a conversion now costs 2 cards
+- **Feedback (Julian):** "Let's keep consolidation at 3 actually… but maybe a consolidation move should cost extra, 2 perhaps. So it's cheaper to make more paths than consolidate."
+- **Change:** `CONSOLIDATION_END` defaults back to **3** — three consolidated rim-to-center paths end the game again (the v0.7.0 "deck exhaust only" experiment lasted one review cycle). The trigger-advantage worry is now addressed through price instead: new `PLACEMENT.COST_TO_CONSOLIDATE` (default **2**, `VITE_CONSOLIDATION_COST`, 1 restores free conversions) makes every conversion cost the played card **plus one extra discard**. Building a new lane still costs one card, so extending paths is strictly cheaper than taking over existing ones. UI: tapping a convertible edge now opens a gold "Consolidate — discard 1 more card" tray (like block/rotate); bots pay the same price and only consolidate when their hand can afford it.
+- **Outcome:** _pending — does the 2-card price actually slow the consolidation race, and is the ending fun again?_
+
+### [ux] One "Games" dialog for starting, joining, and switching games
+- **Feedback (Julian):** "It's not very intuitive how to start a new game, and the +/- buttons for players don't make sense. There should be a single 'game' dialogue for adding players and starting games, in particular for single player, as it's ambiguous right now. I think we also have a menu for multiple network games right? So they could all probably share an intuitive ux?"
+- **Diagnosis:** worse than unintuitive — the +/- buttons never actually restarted anything. Local matches live in an in-memory store keyed by match ID, and the ID never changed, so changing the player count just re-attached to the old board.
+- **Change:** the toolbar's +/- and globe collapse into one **Games** button (player count + online status shown inline, badge/bounce kept). The dialog now covers everything: **New Game** with a This device / Online with friends toggle, player-count chips, and per-seat rows (You / Human / AI — "Solo game" and "Hotseat" hints spell out the single-player case); **Join Existing Match**; **My Games** switching. Starting a local game generates a fresh match ID, so it genuinely resets — and the seat setup carries into the Players panel (AI seats arrive as Eval+).
+- **Outcome:** _pending — watch a new playtester start a solo game without help._
+
 ## 2026-08-21 — v0.8.0
 
 ### Consolidated paths are fixed (no re-consolidation)
@@ -36,7 +49,7 @@ later playtest confirms or refutes the change.
 - **Feedback (Julian):** "the player whose turn it is always has an advantage and will likely be the one to end the game, and when they end the game, they will likely have more points because they've taken their turn." On the mitigation options: final-round variants rejected ("not necessarily fair to give extra turns to everyone… there's still an advantage to the last player"); decision: "don't end with consolidation, but only with deck run out, and have more card drawing."
 - **Change:** `CONSOLIDATION_END` now defaults to **0** — completing rim-to-center paths still scores but no longer ends the game (re-enable with `VITE_CONSOLIDATION_END=3`). The only ending is deck exhaustion, which already grants **equal turns** to every player. To keep games from dragging, every end of turn draws `TURN_DRAW_BONUS` (default 1, `VITE_TURN_DRAW_BONUS`) extra cards on top of the refill; at `HAND_LIMIT` (default 10, `VITE_HAND_LIMIT`) the bonus card burns to the discard instead, so hoarding can't stall the game clock. Rough pacing: ~116-card deck ÷ (≈2 spent + 1 bonus per turn) ≈ 38 turns total, split equally.
 - **Also noted:** `DECK_SIZE`/`DECK_COUNTS` in the config were dead — `buildDeck` deals one copy of every non-excluded card (~116) regardless; left as-is, documented here.
-- **Outcome:** the ending change stuck, but the pacing half was rejected on review before ever being played (2026-08-21): "Hand cap, is that new? Not sure I like that … Not sure I like bonus draw either, I'd rather add more draw cards." Bonus draw and hand cap removed in v0.8.0, replaced with extra copies of the draw action cards in the deck.
+- **Outcome:** fully reverted within two review cycles, before ever being played. The pacing half first (2026-08-21): "Hand cap, is that new? Not sure I like that … Not sure I like bonus draw either, I'd rather add more draw cards" — bonus draw and hand cap removed in v0.8.0, replaced with extra copies of the draw action cards. Then the ending half: "Let's keep consolidation at 3 actually" — restored in v0.9.0, with the trigger advantage priced away via the 2-card consolidation cost instead.
 
 ## 2026-08-06 — v0.6.0
 

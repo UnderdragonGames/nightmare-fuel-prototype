@@ -20,6 +20,7 @@ export function useBotClients(
 	numPlayers: number,
 	botByPlayer: Record<PlayerID, BotKind>,
 	aiPaused: boolean,
+	matchID?: string,
 ): void {
 	const clientsRef = useRef<Map<PlayerID, RawClientInstance>>(new Map());
 	const playingRef = useRef<Set<PlayerID>>(new Set());
@@ -41,6 +42,7 @@ export function useBotClients(
 						numPlayers,
 						multiplayer: Local(),
 						playerID: pid,
+						matchID,
 					});
 					client.start();
 					clients.set(pid, client);
@@ -61,7 +63,7 @@ export function useBotClients(
 			for (const client of clients.values()) client.stop();
 			clients.clear();
 		};
-	}, [game, numPlayers, botByPlayer]);
+	}, [game, numPlayers, botByPlayer, matchID]);
 
 	// Subscribe to state changes and auto-play when it's a bot's turn
 	useEffect(() => {
@@ -143,5 +145,7 @@ export function useBotClients(
 		return () => {
 			for (const fn of unsubs) fn();
 		};
-	}, [botByPlayer, aiPaused]);
+		// game/numPlayers/matchID recreate the clients above; re-subscribe to the
+		// new instances or the fresh match's bots never wake.
+	}, [botByPlayer, aiPaused, game, numPlayers, matchID]);
 }

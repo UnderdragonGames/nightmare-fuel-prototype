@@ -81,6 +81,11 @@ const HEX_PLACEMENT: PlacementRules = {
 	STARTING_RING: 0,
 	COST_TO_BLOCK: 2,
 	COST_TO_ROTATE: 1,
+	// Total cards a consolidation conversion costs (the played card counts;
+	// 2 = discard one extra card). Makes consolidating dearer than building
+	// new paths (2026-08: "it's cheaper to make more paths than consolidate").
+	// VITE_CONSOLIDATION_COST tunes; 1 restores the old free conversion.
+	COST_TO_CONSOLIDATE: envInt('VITE_CONSOLIDATION_COST') ?? 2,
 };
 
 const HEX_SCORING: ObjectiveScoringRules = {
@@ -172,12 +177,12 @@ export const PATH_RULES: Rules = {
 		NO_BUILD_FROM_RIM: true,
 		// Consolidation: once a color reaches the rim, it may CONVERT existing lanes along its path back toward center (recolor in place)
 		CONSOLIDATION: true,
-		// Consolidation no longer ENDS the game by default (2026-08 playtest:
-		// the player completing the 3rd path ended it right after their own
-		// best turn — an unfair "trigger advantage"; the deck-exhaust ending
-		// with EQUAL_TURNS is the only fair one). Consolidation still scores.
-		// Re-enable per-deploy with VITE_CONSOLIDATION_END=3.
-		CONSOLIDATION_END: envInt('VITE_CONSOLIDATION_END') ?? 0,
+		// The game ends when this many colors have consolidated rim-to-center
+		// paths (0 disables — deck exhaust becomes the only ending). Briefly
+		// defaulted to 0 over "trigger advantage" concerns (2026-08); restored
+		// to 3 ("Let's keep consolidation at 3 actually") with the advantage
+		// addressed by COST_TO_CONSOLIDATE instead. VITE_CONSOLIDATION_END tunes.
+		CONSOLIDATION_END: envInt('VITE_CONSOLIDATION_END') ?? 3,
 		// Consolidation can reach center ring (ring 0) for game-ending paths
 		CONSOLIDATE_TO_RING: 0,
 		// New branches must start from ring 1 or further out (not from center ring 0)

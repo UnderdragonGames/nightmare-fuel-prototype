@@ -17,6 +17,12 @@ export type UIState = {
 	viewer: PlayerID;
 	numPlayers: number;
 	botByPlayer: Record<PlayerID, BotMode>;
+	/**
+	 * Match ID of the current LOCAL game. Local matches live in the in-memory
+	 * Local() master keyed by matchID, so starting a NEW local game means
+	 * switching to a fresh ID — mutating numPlayers alone never resets state.
+	 */
+	localMatchID: string;
 	/** The ACTIVE network session (the match this client is connected to). */
 	network: NetworkSession | null;
 	/**
@@ -34,6 +40,8 @@ export type UIState = {
 	setNumPlayers: (n: number) => void;
 	setBotFor: (pid: PlayerID, bot: BotMode) => void;
 	resetBotsForCount: (count: number) => void;
+	/** Start a fresh local match with this seat setup (and leave any active network view). */
+	newLocalGame: (count: number, bots: Record<PlayerID, BotMode>) => void;
 	/** Set the active session; non-null sessions are upserted into the held list. */
 	setNetwork: (session: NetworkSession | null) => void;
 	/** Make a held session active (no-op for unknown matchIDs). */
@@ -67,6 +75,7 @@ export const useUIStore = create<UIState>()(
 			viewer: '0',
 			numPlayers: 2,
 			botByPlayer: { '0': 'None', '1': 'None' },
+			localMatchID: 'local-default',
 			network: null,
 			sessions: [],
 			playerName: '',
@@ -81,6 +90,14 @@ export const useUIStore = create<UIState>()(
 				for (let i = 0; i < count; i += 1) bots[String(i) as PlayerID] = 'None';
 				set({ botByPlayer: bots });
 			},
+			newLocalGame: (count, bots) =>
+				set({
+					numPlayers: count,
+					botByPlayer: bots,
+					network: null,
+					viewer: '0',
+					localMatchID: `local-${Date.now().toString(36)}`,
+				}),
 			setNetwork: (session) =>
 				set((state) => ({
 					network: session,

@@ -38,6 +38,7 @@ import {
 	shareInvite,
 } from './network/lobby';
 import { enableTurnAlerts, disableTurnAlerts, resyncTurnAlerts } from './network/push';
+import { RULES } from './game/rulesConfig';
 import { FeedbackForm } from './ui/FeedbackForm';
 import { InstallBanner } from './ui/InstallBanner';
 import { flushFeedbackOutbox } from './feedback/submit';
@@ -133,6 +134,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
 	const [actionMode, setActionMode] = React.useState<ActionMode>('place');
 	const [discardSelection, setDiscardSelection] = React.useState<number[]>([]);
+	// Consolidation conversion awaiting its extra-card cost: the board target is
+	// chosen, the player still owes (COST_TO_CONSOLIDATE - 1) discards from hand.
+	const [pendingConvert, setPendingConvert] = React.useState<{ handIndex: number; pick: Color; source: Co; coord: Co; convert: Color } | null>(null);
 	const [pendingRotationTile, setPendingRotationTile] = React.useState<Co | null>(null);
 	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null);
 	const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
@@ -357,6 +361,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// Derived values for action modes
 	const rotateCost = rules.PLACEMENT.COST_TO_ROTATE;
 	const blockCost = rules.PLACEMENT.COST_TO_BLOCK;
+	// Total cards a consolidation conversion costs (played card included).
+	const consolidateCost = Math.max(1, rules.PLACEMENT.COST_TO_CONSOLIDATE ?? 1);
 	const canRotateRule = rules.PLACEMENT.DISCARD_TO_ROTATE !== false;
 	const canBlockRule = blockCost > 0;
 	const discardNeeded = actionMode === 'rotate' ? rotateCost : actionMode === 'block' ? blockCost : 0;
@@ -674,8 +680,42 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		setDiscardSelection([]);
 		setSelectedCard(null);
 		setSelectedColor(null);
+		setPendingConvert(null);
 		setPendingRotationTile(null);
 		setSelectedSourceDot(null);
+	};
+
+	const cancelPendingConvert = () => {
+		setPendingConvert(null);
+		setDiscardSelection([]);
+	};
+
+	// A conversion prompt can't outlive your turn (or an opponent's move).
+	React.useEffect(() => {
+		if (!isMyTurn) cancelPendingConvert();
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- reset-only effect
+	}, [isMyTurn]);
+
+	// Hand tap while a conversion awaits its cost: toggle the extra discard;
+	// once the cost is covered the move fires. Returns true when handled.
+	const handleConvertDiscardTap = (index: number): boolean => {
+		if (!pendingConvert) return false;
+		if (index === pendingConvert.handIndex) return true; // played card can't pay its own cost
+		const next = discardSelection.includes(index)
+			? discardSelection.filter((i) => i !== index)
+			: [...discardSelection, index];
+		if (next.length >= consolidateCost - 1) {
+			moves.playCard({ ...pendingConvert, extraDiscards: next.slice(0, consolidateCost - 1) });
+			setPendingConvert(null);
+			setDiscardSelection([]);
+			setSelectedCard(null);
+			setSelectedColor(null);
+			setSelectedSourceDot(null);
+			setExpandedZone(null);
+			return true;
+		}
+		setDiscardSelection(next);
+		return true;
 	};
 
 	const humanizeActionError = (msg: string): string => {
@@ -710,11 +750,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// level per press. Every state must be cancellable.
 	const escStateRef = React.useRef({
 		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
-		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
+		pendingConvert, pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
 	});
 	escStateRef.current = {
 		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
-		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
+		pendingConvert, pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
 	};
 	const shortcutRef = React.useRef<{ undo: () => void; endTurn: () => void; isMyTurn: boolean }>({ undo: () => {}, endTurn: () => {}, isMyTurn: false });
 	React.useEffect(() => {
@@ -729,6 +769,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			if (s.actionPickingCoord !== null) { setActionPickingCoord(null); return; }
 			if (s.discardModalOpen) { setDiscardModalOpen(false); return; }
 			if (s.actionModalOpen) { setActionModalOpen(false); setSelectedCard(null); setSelectedColor(null); return; }
+			if (s.pendingConvert !== null) { setPendingConvert(null); setDiscardSelection([]); return; }
 			if (s.pendingRotationTile !== null) { setPendingRotationTile(null); return; }
 			if (s.actionMode !== 'place') {
 				setActionMode('place');
@@ -1013,11 +1054,23 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					}
 					const fromColor = findConvertibleColor(selectedSourceDot, coord, col);
 					if (fromColor) {
-						moves.playCard({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord, convert: fromColor });
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setSelectedSourceDot(null);
-						return;
+						if (consolidateCost <= 1) {
+							moves.playCard({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord, convert: fromColor, extraDiscards: [] });
+							setSelectedCard(null);
+							setSelectedColor(null);
+							setSelectedSourceDot(null);
+							return;
+						}
+						if (myHand.length >= consolidateCost) {
+							// The conversion still owes extra discards — hold it and
+							// send the player to their hand to pay.
+							setPendingConvert({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord, convert: fromColor });
+							setDiscardSelection([]);
+							setSelectedSourceDot(null);
+							if (isMobile) setExpandedZone('hand');
+							return;
+						}
+						// Hand can't cover the cost — not offerable; try other colors.
 					}
 				}
 			}
@@ -1446,6 +1499,33 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="zone-backdrop-dim" onClick={() => setExpandedZone(null)} />
 			)}
 
+			{/* Consolidation-cost tray: the conversion is targeted; the extra
+			    discard(s) are still owed from the hand. */}
+			{pendingConvert && (
+				<div className="discard-tray discard-tray--convert">
+					<span className="discard-tray__title">
+						<Icon name="sparkles" size={14} /> Consolidate — discard {consolidateCost - 1} more card{consolidateCost - 1 > 1 ? 's' : ''}
+					</span>
+					<div className="discard-tray__slots">
+						{Array.from({ length: consolidateCost - 1 }, (_, i) => {
+							const idx = discardSelection[i];
+							return (
+								<div
+									key={`ct-${i}`}
+									className={`discard-tray__slot ${idx !== undefined ? 'discard-tray__slot--filled' : ''}`}
+								>
+									{idx !== undefined ? myHand[idx]?.name : '+'}
+								</div>
+							);
+						})}
+					</div>
+					<span className="discard-tray__hint">Consolidating is costly — tap the card to give up</span>
+					<button className="discard-tray__cancel" onClick={cancelPendingConvert}>
+						Cancel (Esc)
+					</button>
+				</div>
+			)}
+
 			{/* CARD SHELF — persistent desktop hand (mobile uses the tab bar) */}
 			{!isMobile && (
 				<>
@@ -1454,8 +1534,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						cards={myHand}
 						selectedIndex={actionMode === 'place' ? selectedCard : null}
 						discardSelection={discardSelection}
-						discardMode={actionMode !== 'place'}
+						discardMode={actionMode !== 'place' || pendingConvert !== null}
 						onSelect={(index) => {
+							if (handleConvertDiscardTap(index)) return;
 							if (actionMode !== 'place') {
 								// Multi-select for discard cost
 								setDiscardSelection((prev) => {
@@ -1589,9 +1670,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									<NeuralCard
 										key={`${serializeCard(card)}-${i}`}
 										card={card}
-										isSelected={actionMode !== 'place' ? discardSelection.includes(i) : i === selectedCard}
+										isSelected={(actionMode !== 'place' || pendingConvert !== null) ? discardSelection.includes(i) : i === selectedCard}
 										rules={rules}
 										onSelect={() => {
+											if (handleConvertDiscardTap(i)) return;
 											if (actionMode !== 'place') {
 												setDiscardSelection((prev) => {
 													if (prev.includes(i)) return prev.filter((idx) => idx !== i);
@@ -2292,10 +2374,21 @@ const NetworkModal: React.FC<{
 	const removeSession = useUIStore((s) => s.removeSession);
 	const numPlayers = useUIStore((s) => s.numPlayers);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
+	const newLocalGame = useUIStore((s) => s.newLocalGame);
 	const playerName = useUIStore((s) => s.playerName);
 	const setPlayerName = useUIStore((s) => s.setPlayerName);
 	const turnAlerts = useUIStore((s) => s.turnAlerts);
 	const setTurnAlerts = useUIStore((s) => s.setTurnAlerts);
+	// New Game config (persists while the app is open; seeded from the store).
+	const [newGameMode, setNewGameMode] = React.useState<'local' | 'online'>('local');
+	const [newCount, setNewCount] = React.useState(() => Math.min(Math.max(numPlayers, 2), RULES.MAX_PLAYERS));
+	const [newSeatAI, setNewSeatAI] = React.useState<Record<number, boolean>>(() => {
+		const seats: Record<number, boolean> = {};
+		for (let i = 1; i < RULES.MAX_PLAYERS; i += 1) {
+			seats[i] = (botByPlayer[String(i) as PlayerID] ?? 'None') !== 'None';
+		}
+		return seats;
+	});
 	const [inputMatchID, setInputMatchID] = React.useState('');
 	const [busy, setBusy] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
@@ -2340,30 +2433,36 @@ const NetworkModal: React.FC<{
 
 	const nameFor = (seat: PlayerID): string => playerName.trim() || `Player ${seat}`;
 
-	// Seats configured as bots are reserved for the server's AI players.
-	const botSeats = (): Record<string, BotMode> => {
-		const bots: Record<string, BotMode> = {};
-		for (let i = 0; i < numPlayers; i += 1) {
-			const pid = String(i) as PlayerID;
-			const kind = botByPlayer[pid] ?? 'None';
-			if (kind !== 'None') bots[pid] = kind;
+	// New Game config: seat 0 is always you; every other seat is a person or an
+	// AI. "This device" starts a fresh local match; "Online" creates a server
+	// match where human seats are open for friends and AI seats are server-run.
+	const seatBots = (): Record<PlayerID, BotMode> => {
+		const bots: Record<PlayerID, BotMode> = {};
+		for (let i = 0; i < newCount; i += 1) {
+			bots[String(i) as PlayerID] = i !== 0 && newSeatAI[i] ? 'EvaluatorPlus' : 'None';
 		}
 		return bots;
 	};
+	const aiCount = Array.from({ length: newCount }, (_, i) => i).filter((i) => i !== 0 && newSeatAI[i]).length;
 
-	const handleCreate = async () => {
+	const handleStartNewGame = async () => {
+		const bots = seatBots();
+		if (newGameMode === 'local') {
+			newLocalGame(newCount, bots);
+			onClose();
+			return;
+		}
 		setBusy(true);
 		setError(null);
 		try {
-			const bots = botSeats();
-			const creatorSeat = Array.from({ length: numPlayers }, (_, i) => String(i) as PlayerID)
-				.find((pid) => !bots[pid]);
-			if (!creatorSeat) {
-				throw new Error('Every seat is set to AI — leave at least one human seat.');
+			const serverBots: Record<string, BotMode> = {};
+			for (const [pid, kind] of Object.entries(bots)) {
+				if (kind !== 'None') serverBots[pid] = kind;
 			}
-			const matchID = await createMatch(serverURL, numPlayers, bots);
+			const creatorSeat = '0' as PlayerID; // seat 0 is always human ("You")
+			const matchID = await createMatch(serverURL, newCount, serverBots);
 			const credentials = await joinMatch(serverURL, matchID, creatorSeat, nameFor(creatorSeat));
-			setNetwork({ matchID, seat: creatorSeat, credentials, numPlayers });
+			setNetwork({ matchID, seat: creatorSeat, credentials, numPlayers: newCount });
 			onClose();
 		} catch (e) {
 			setError(e instanceof Error ? e.message : 'Failed to create match');
@@ -2430,7 +2529,7 @@ const NetworkModal: React.FC<{
 		<div className="modal-overlay" onClick={onClose}>
 			<div className="modal-content network-modal" onClick={(e) => e.stopPropagation()}>
 				<div className="modal-header">
-					<h2>Network Game</h2>
+					<h2>Games</h2>
 					<button className="modal-close" onClick={onClose}>×</button>
 				</div>
 
@@ -2547,20 +2646,75 @@ const NetworkModal: React.FC<{
 							</div>
 
 							<div className="network-section">
-								<h3>Create New Match</h3>
+								<h3>New Game</h3>
+								<div className="new-game__modes">
+									<button
+										className={`new-game__mode ${newGameMode === 'local' ? 'new-game__mode--on' : ''}`}
+										onClick={() => setNewGameMode('local')}
+									>
+										This device
+									</button>
+									<button
+										className={`new-game__mode ${newGameMode === 'online' ? 'new-game__mode--on' : ''}`}
+										onClick={() => setNewGameMode('online')}
+									>
+										Online with friends
+									</button>
+								</div>
+								<div className="new-game__row">
+									<span className="new-game__label">Players</span>
+									<div className="new-game__counts">
+										{Array.from({ length: RULES.MAX_PLAYERS - 1 }, (_, i) => i + 2).map((n) => (
+											<button
+												key={n}
+												className={`new-game__count ${newCount === n ? 'new-game__count--on' : ''}`}
+												onClick={() => setNewCount(n)}
+											>
+												{n}
+											</button>
+										))}
+									</div>
+								</div>
+								<ul className="new-game__seats">
+									{Array.from({ length: newCount }, (_, i) => (
+										<li key={i} className="new-game__seat">
+											<span className="new-game__seat-name">
+												{i === 0 ? 'You' : `Seat ${i + 1}`}
+											</span>
+											{i === 0 ? (
+												<span className="new-game__seat-fixed">Human</span>
+											) : (
+												<div className="new-game__seat-kind">
+													<button
+														className={`new-game__kind ${!newSeatAI[i] ? 'new-game__kind--on' : ''}`}
+														onClick={() => setNewSeatAI((prev) => ({ ...prev, [i]: false }))}
+													>
+														{newGameMode === 'local' ? 'Human (this device)' : 'Friend'}
+													</button>
+													<button
+														className={`new-game__kind ${newSeatAI[i] ? 'new-game__kind--on' : ''}`}
+														onClick={() => setNewSeatAI((prev) => ({ ...prev, [i]: true }))}
+													>
+														AI
+													</button>
+												</div>
+											)}
+										</li>
+									))}
+								</ul>
 								<p className="network-hint">
-									Starts a {numPlayers}-player match using the current player setup
-									{Object.keys(botSeats()).length > 0
-										? ` (${Object.keys(botSeats()).length} AI seat${Object.keys(botSeats()).length > 1 ? 's' : ''} played by the server)`
-										: ''}
-									. Share the match ID with the other players.
+									{newGameMode === 'local'
+										? (aiCount === newCount - 1
+											? 'Solo game — you against the AI, all on this device.'
+											: 'Hotseat game on this device: pass it around; AI seats play themselves.')
+										: `Creates an online match${aiCount > 0 ? ` (${aiCount} AI seat${aiCount > 1 ? 's' : ''} played by the server)` : ''} — you get a code and link to invite the others.`}
 								</p>
 								<button
 									className="btn btn--primary"
-									onClick={handleCreate}
+									onClick={handleStartNewGame}
 									disabled={busy}
 								>
-									{busy ? 'Working…' : 'Create Match'}
+									{busy ? 'Working…' : newGameMode === 'local' ? 'Start Game' : 'Create & Get Invite Code'}
 								</button>
 							</div>
 
@@ -2600,8 +2754,7 @@ const NetworkModal: React.FC<{
 // App
 const App: React.FC = () => {
 	const numPlayers = useUIStore((s) => s.numPlayers);
-	const setNumPlayers = useUIStore((s) => s.setNumPlayers);
-	const resetBotsForCount = useUIStore((s) => s.resetBotsForCount);
+	const localMatchID = useUIStore((s) => s.localMatchID);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const aiPaused = useUIStore((s) => s.aiPaused);
 	const network = useUIStore((s) => s.network);
@@ -2724,7 +2877,7 @@ const App: React.FC = () => {
 
 	// Create headless bot clients that auto-play when it's their turn
 	// (local games only — network bot seats are driven by the server).
-	useBotClients(HexStringsGame, numPlayers, network ? EMPTY_BOTS : botByPlayer, aiPaused);
+	useBotClients(HexStringsGame, numPlayers, network ? EMPTY_BOTS : botByPlayer, aiPaused, localMatchID);
 
 	React.useEffect(() => {
 		const update = () => {
@@ -2748,19 +2901,20 @@ const App: React.FC = () => {
 			{/* Setup controls in top-left corner */}
 			{!isLabRoute && (
 				<div className="setup-controls">
-					{/* Player-count setup applies to the NEXT match you create; the
-					    active network match keeps its own count. */}
-					<button onClick={() => {
-						const next = Math.min(8, numPlayers + 1);
-						setNumPlayers(next);
-						resetBotsForCount(next);
-					}}>+</button>
-					<span className="setup-controls__count">{clientNumPlayers}P</span>
-					<button onClick={() => {
-						const next = Math.max(2, numPlayers - 1);
-						setNumPlayers(next);
-						resetBotsForCount(next);
-					}} disabled={numPlayers <= 2}>−</button>
+					{/* One Games button: new game (local or online), join, switch.
+					    The old +/- player buttons never actually restarted a match. */}
+					<button
+						className={`setup-controls__games ${badgeBounce ? 'setup-controls__network--bounce' : ''}`}
+						onClick={() => setNetworkModalOpen(true)}
+						title={waitingCount > 0
+							? `${waitingCount} game${waitingCount > 1 ? 's' : ''} waiting on you`
+							: 'Games — new, join, switch'}
+					>
+						<Icon name="globe" />
+						<span className="setup-controls__games-label">Games</span>
+						<span className="setup-controls__count">{clientNumPlayers}P{network ? ' · online' : ''}</span>
+						{waitingCount > 0 && <span className="network-badge">{waitingCount}</span>}
+					</button>
 					<button
 						className="setup-controls__network"
 						onClick={() => setSoundMuted(!soundMuted)}
@@ -2768,23 +2922,13 @@ const App: React.FC = () => {
 					>
 						<Icon name={soundMuted ? 'volume-off' : 'volume'} />
 					</button>
-					<button
-						className={`setup-controls__network ${network ? 'setup-controls__network--connected' : ''} ${badgeBounce ? 'setup-controls__network--bounce' : ''}`}
-						onClick={() => setNetworkModalOpen(true)}
-						title={waitingCount > 0
-							? `${waitingCount} game${waitingCount > 1 ? 's' : ''} waiting on you`
-							: network ? 'Connected to network game' : 'Network game'}
-					>
-						<Icon name="globe" />
-						{waitingCount > 0 && <span className="network-badge">{waitingCount}</span>}
-					</button>
 				</div>
 			)}
 			{isLabRoute
 				? <StateLab onExit={() => window.location.assign('/')} />
 				: <ClientComp
 						playerID={humanPlayerID}
-						matchID={network?.matchID}
+						matchID={network?.matchID ?? localMatchID}
 						credentials={network?.credentials}
 						viewer={humanPlayerID}
 						onSetViewer={() => {}}

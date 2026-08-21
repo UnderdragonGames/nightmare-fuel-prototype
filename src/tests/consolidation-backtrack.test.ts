@@ -22,7 +22,7 @@ const rules = {
 	RANDOM_CARDINAL_DIRECTIONS: false,
 	EDGE_COLORS,
 	COLOR_TO_DIR: buildColorToDir(EDGE_COLORS),
-	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: 0, FORK_SUPPORT: true },
+	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: 0, FORK_SUPPORT: true, COST_TO_CONSOLIDATE: 1 },
 };
 
 // Board state with 3 complete radial paths from origin to rim (doubled first segments).

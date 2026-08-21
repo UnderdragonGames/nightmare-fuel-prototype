@@ -15,7 +15,7 @@ const rules = {
   RANDOM_CARDINAL_DIRECTIONS: false,
   EDGE_COLORS,
   COLOR_TO_DIR: buildColorToDir(EDGE_COLORS),
-  PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: 0, FORK_SUPPORT: true },
+  PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: 0, FORK_SUPPORT: true, COST_TO_CONSOLIDATE: 1 },
   // Score deltas here measure raw counts only — pin the completed-path bonus off.
   SCORING: { ...MODE_RULESETS.path.SCORING, CONSOLIDATION_BONUS: 0 },
 };

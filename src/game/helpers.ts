@@ -556,6 +556,44 @@ export const canConsolidate = (G: GState, a: Co, b: Co, fromColor: Color, toColo
 };
 
 /**
+ * A conversion costs COST_TO_CONSOLIDATE cards total: the played card plus
+ * (cost - 1) extra discards. Validate the extra hand indices for a convert
+ * move — distinct, in range, and not the played card itself. Returns the
+ * validated list (possibly empty), or null when the move must be rejected.
+ */
+export const validateConvertExtras = (
+	handLength: number,
+	handIndex: number,
+	extraDiscards: number[] | undefined,
+	rules: Rules,
+): number[] | null => {
+	const extraCost = Math.max(0, (rules.PLACEMENT.COST_TO_CONSOLIDATE ?? 1) - 1);
+	const extras = extraDiscards ?? [];
+	if (extras.length !== extraCost) return null;
+	const seen = new Set<number>();
+	for (const i of extras) {
+		if (!Number.isInteger(i) || i < 0 || i >= handLength) return null;
+		if (i === handIndex || seen.has(i)) return null;
+		seen.add(i);
+	}
+	return extras;
+};
+
+/**
+ * Discard the extra conversion-cost cards AFTER the played card has already
+ * been spliced out at `handIndex` (indices above it have shifted down by one).
+ */
+export const discardConvertExtras = <C,>(hand: C[], discard: C[], handIndex: number, extras: number[]): void => {
+	const adjusted = extras
+		.map((i) => (i > handIndex ? i - 1 : i))
+		.sort((x, y) => y - x);
+	for (const i of adjusted) {
+		const [card] = hand.splice(i, 1);
+		if (card) discard.push(card);
+	}
+};
+
+/**
  * Apply a consolidation conversion: recolor one lane of `fromColor` on edge (a, b)
  * to `toColor`. Caller must have validated with canConsolidate. Returns true if a
  * lane was converted.

@@ -12,7 +12,7 @@ import type { GState, Color, Co, MovePlayCardArgs, MovePlayActionArgs, MoveStash
 import { emitEvent } from './hooks';
 import { playActionCardFromHand } from './effects';
 import { resolveCardEffects, type CardActionResolveContext } from './cardActions';
-import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, countRimToCenterPaths, isRotatableNode, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, validateConvertExtras, discardConvertExtras, countRimToCenterPaths, isRotatableNode, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
 import { computeScores, computeScoresRaw } from './scoring';
 
 // =============================================================================
@@ -119,13 +119,23 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 				}
 				e.colors.add(ln.color);
 			}
-			for (let i = 0; i < hand.length; i += 1) {
-				const card = hand[i]!;
-				for (const color of card.colors) {
-					for (const e of edges.values()) {
-						for (const fromColor of e.colors) {
-							if (canConsolidate(G, e.a, e.b, fromColor, color as Color, rules)) {
-								actions.push({ type: 'playCard', args: { handIndex: i, pick: color, source: e.a, coord: e.b, convert: fromColor } });
+			// Conversions cost COST_TO_CONSOLIDATE cards total; only enumerable
+			// when the hand can pay. Extra discards: lowest indices ≠ the played
+			// card (deterministic — the evaluator sees the full hand loss).
+			const convertCost = Math.max(1, rules.PLACEMENT.COST_TO_CONSOLIDATE ?? 1);
+			if (hand.length >= convertCost) {
+				for (let i = 0; i < hand.length; i += 1) {
+					const card = hand[i]!;
+					const extraDiscards: number[] = [];
+					for (let j = 0; j < hand.length && extraDiscards.length < convertCost - 1; j += 1) {
+						if (j !== i) extraDiscards.push(j);
+					}
+					for (const color of card.colors) {
+						for (const e of edges.values()) {
+							for (const fromColor of e.colors) {
+								if (canConsolidate(G, e.a, e.b, fromColor, color as Color, rules)) {
+									actions.push({ type: 'playCard', args: { handIndex: i, pick: color, source: e.a, coord: e.b, convert: fromColor, extraDiscards: [...extraDiscards] } });
+								}
 							}
 						}
 					}
@@ -310,10 +320,15 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			const card = hand[args.handIndex];
 			if (!card) return null;
 			if (rules.ONE_COLOR_PER_CARD_PLAY && !card.colors.includes(args.pick)) return null;
+			let convertExtras: number[] = [];
 			if (rules.MODE === 'path') {
 				if (!('source' in args)) return null;
 				if (args.convert) {
 					// Consolidation: convert one existing lane's color in place.
+					// Costs COST_TO_CONSOLIDATE cards total (extra discards).
+					const extras = validateConvertExtras(hand.length, args.handIndex, args.extraDiscards, rules);
+					if (extras === null) return null;
+					convertExtras = extras;
 					if (!canConsolidate(newG, args.source, args.coord, args.convert, args.pick, rules)) return null;
 					if (!applyConsolidation(newG, args.source, args.coord, args.convert, args.pick)) return null;
 				} else {
@@ -338,6 +353,7 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			emitEvent(newG, { type: 'onPlacement', playerId: playerID, coord, color: args.pick });
 			const [used] = hand.splice(args.handIndex, 1);
 			if (used) newG.discard.push(used);
+			discardConvertExtras(hand, newG.discard, args.handIndex, convertExtras);
 			break;
 		}
 

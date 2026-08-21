@@ -281,6 +281,9 @@ export type PlacementRules = {
 	COST_TO_BLOCK: number;
 	// Number of cards to discard to rotate a tile. Must match DISCARD_TO_ROTATE being enabled.
 	COST_TO_ROTATE: number;
+	// Total cards a consolidation conversion costs, played card included
+	// (2 = play one + discard one extra). 1 = no extra cost.
+	COST_TO_CONSOLIDATE: number;
 };
 
 export type Rules = {
@@ -374,7 +377,9 @@ export type MovePlayCardArgs =
 	// Path mode: place a lane from -> coord (must be adjacent).
 	// When `convert` is set, this is a consolidation CONVERSION instead: recolor one
 	// existing `convert`-colored lane on the edge (source, coord) to `pick`.
-	| { handIndex: number; pick: Color; coord: Co; source: Co; convert?: Color };
+	// Conversions cost COST_TO_CONSOLIDATE cards total: `extraDiscards` names the
+	// (cost - 1) additional hand indices to discard alongside the played card.
+	| { handIndex: number; pick: Color; coord: Co; source: Co; convert?: Color; extraDiscards?: number[] };
 export type MovePlayActionArgs = { handIndex: number; effects?: GameEffect[] };
 export type MoveDraftPickArgs = { index: number };
 export type MoveDraftPlaceArgs = { source: Co; coord: Co; pick: Color };
