@@ -15,6 +15,10 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-06 — v0.6.0
 
+### [ux] Tap treasure/discard cards to view them full-size
+- **Feedback (Julian):** "You should be able to tap on an action card in the treasure or discard and view it."
+- **Change:** tapping any card in the treasure zone or the discard browser (desktop and mobile) opens a full-size inspector — name, action text, color pips. Treasure taps no longer take the card instantly: the inspector carries an explicit "Take to hand" button (disabled off-turn, with the reason shown), so viewing can't accidentally consume a treasure; the small Take button on the card remains as the quick path. Esc/backdrop closes just the inspector.
+
 ### Multiple games per device ("My games")
 - **Feedback (Julian):** asked what happens when a user opens a different game in the PWA; answer was ugly — joining game B silently freed the seat in game A, re-gating A behind its waiting room and stopping its bots. Approved the fix and the mobile treatment: "Use the globe icon and add a badge and bouncing?"
 - **Change:** the device now holds a seat in every joined match. Joining or creating another game keeps existing seats; the network menu gets a **My Games** list (code, your seat, whose move / finished / waiting) with one-tap switching, and Create/Join stay available while connected. The globe icon shows a **badge counting games waiting on you** (active game excluded) and does a **one-shot bounce when the count rises** — deliberately not a continuous bounce (noise, battery, and `prefers-reduced-motion` all argue against it). Turn-alert notifications now carry the match code, so tapping one switches the app to that game. Legacy single-session storage migrates automatically.

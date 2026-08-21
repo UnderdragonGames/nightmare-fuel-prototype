@@ -6,10 +6,11 @@ import { Local, SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
 import { useBotClients } from './useBotClients';
 import { Board as HexBoard } from './ui/Board';
-import type { CardAction, Color, Co, GState, MoveUseAbilityArgs, PlayerPrefs, Stat } from './game/types';
+import type { Card, CardAction, Color, Co, GState, MoveUseAbilityArgs, PlayerPrefs, Stat } from './game/types';
 import { NeuralCard } from './ui/Hand';
 import { Shelf } from './ui/Shelf';
 import { Treasure, TreasureCard } from './ui/Treasure';
+import { CardInspector } from './ui/CardInspector';
 import { ActionCardModal } from './ui/ActionCardModal';
 import { PlayerHandModal } from './ui/PlayerHandModal';
 import { computeScores } from './game/scoring';
@@ -150,6 +151,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const gameStartRef = React.useRef<number>(Date.now());
 	const [abilityFlow, setAbilityFlow] = React.useState<AbilityFlow | null>(null);
 	const [discardModalOpen, setDiscardModalOpen] = React.useState(false);
+	// Tap-to-view for treasure/discard cards (action text is unreadable small).
+	const [inspected, setInspected] = React.useState<{ card: Card; source: 'treasure' | 'discard'; index: number } | null>(null);
 	const [exportCopied, setExportCopied] = React.useState(false);
 
 	// Network session (null in local games). matchData is only provided by the
@@ -1527,6 +1530,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						rules={rules}
 						cards={G.treasure}
 						onTake={onTakeTreasure}
+						onInspect={(i) => G.treasure[i] && setInspected({ card: G.treasure[i]!, source: 'treasure', index: i })}
 						isExpanded={expandedZone === 'treasure'}
 						onExpandChange={handleZoneExpand('treasure')}
 					/>
@@ -1546,8 +1550,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 											card={card}
 											isSelected={false}
 											rules={rules}
-											onSelect={() => {}}
-											onPickColor={() => {}}
+											onSelect={() => setInspected({ card, source: 'discard', index: i })}
+											onPickColor={() => setInspected({ card, source: 'discard', index: i })}
 										/>
 									))}
 									{G.discard.length === 0 && <div className="discard-modal__empty">Nothing discarded yet</div>}
@@ -1621,6 +1625,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 										card={card}
 										rules={rules}
 										onTake={() => onTakeTreasure(i)}
+										onInspect={() => setInspected({ card, source: 'treasure', index: i })}
 									/>
 								))}
 								{G.treasure.length === 0 && (
@@ -1638,8 +1643,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 										card={card}
 										isSelected={false}
 										rules={rules}
-										onSelect={() => {}}
-										onPickColor={() => {}}
+										onSelect={() => setInspected({ card, source: 'discard', index: i })}
+										onPickColor={() => setInspected({ card, source: 'discard', index: i })}
 									/>
 								))}
 								{G.discard.length === 0 && (
@@ -2156,6 +2161,26 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						</>
 					)}
 				</div>
+			)}
+
+			{/* CARD INSPECTOR — tap-to-view for treasure/discard cards */}
+			{inspected && (
+				<CardInspector
+					card={inspected.card}
+					rules={rules}
+					source={inspected.source}
+					action={inspected.source === 'treasure' ? {
+						label: 'Take to hand',
+						onAct: () => {
+							onTakeTreasure(inspected.index);
+							setInspected(null);
+						},
+						disabledReason: !isMyTurn
+							? 'Wait for your turn to take treasure.'
+							: locked ? 'Waiting for the current move to finish.' : null,
+					} : undefined}
+					onClose={() => setInspected(null)}
+				/>
 			)}
 
 			{/* Game Over overlay */}
