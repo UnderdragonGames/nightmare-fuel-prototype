@@ -3,16 +3,16 @@ import { FEEDBACK_QUESTIONS, QUESTIONS_VERSION, type FeedbackAnswers, type Feedb
 import { submitFeedback } from '../feedback/submit';
 
 /**
- * Post-game playtest form. Taps first (required), free text collapsed behind
- * "Add details" (optional) — completion rate beats completeness. Submitting
- * with only the taps answered is a valid, useful data point.
+ * Post-game playtest form. Taps first (required), free text below — always
+ * visible, never collapsed (2026-08 playtest: "the additional text feedback…
+ * that's the most important feedback"). Text stays optional: submitting with
+ * only the taps answered is still a valid data point.
  */
 export const FeedbackForm: React.FC<{
 	context: Omit<FeedbackSubmission, 'questionsVersion' | 'answers'>;
 	onDone: (submitted: boolean) => void;
 }> = ({ context, onDone }) => {
 	const [answers, setAnswers] = React.useState<FeedbackAnswers>({});
-	const [showText, setShowText] = React.useState(false);
 	const [busy, setBusy] = React.useState(false);
 
 	const tapQuestions = FEEDBACK_QUESTIONS.filter((q): q is TapQuestion => q.kind === 'tap');
@@ -72,24 +72,21 @@ export const FeedbackForm: React.FC<{
 				);
 			})}
 
-			{!showText ? (
-				<button className="feedback-form__more" onClick={() => setShowText(true)}>
-					Add details (optional)
-				</button>
-			) : (
-				textQuestions.map((q) => (
-					<div key={q.id} className="feedback-form__q">
-						<div className="feedback-form__prompt">{q.prompt}</div>
-						<textarea
-							className="feedback-form__text"
-							rows={2}
-							placeholder={'placeholder' in q ? q.placeholder ?? '' : ''}
-							value={(answers[q.id] as string | undefined) ?? ''}
-							onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-						/>
+			{textQuestions.map((q) => (
+				<div key={q.id} className="feedback-form__q">
+					<div className="feedback-form__prompt">
+						{q.prompt}
+						<span className="feedback-form__hint"> (optional)</span>
 					</div>
-				))
-			)}
+					<textarea
+						className="feedback-form__text"
+						rows={2}
+						placeholder={'placeholder' in q ? q.placeholder ?? '' : ''}
+						value={(answers[q.id] as string | undefined) ?? ''}
+						onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+					/>
+				</div>
+			))}
 
 			<div className="feedback-form__actions">
 				<button className="btn" onClick={() => onDone(false)} disabled={busy}>
