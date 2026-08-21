@@ -689,7 +689,13 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 		case 'beginDraft':
 			// Vacuous when the reveal came up empty (deck exhausted).
 			if (G.action.revealed.length > 0) {
-				G.action.pendingDraft = { order: effect.order, position: 0, placing: null };
+				G.action.pendingDraft = {
+					order: effect.order,
+					position: 0,
+					placing: null,
+					take: effect.take ?? 'play',
+					title: effect.title,
+				};
 			}
 			break;
 		case 'moveHex':

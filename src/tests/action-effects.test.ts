@@ -111,12 +111,14 @@ describe('action effects', () => {
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
 			playerOrder: ['0'],
-			revealedPickIndex: 2,
 			lastPlacedColor: null,
 		});
 
-		expect(G.players['0']!.hand.length).toBe(1);
-		expect(G.discard.length).toBe(5);
+		// Interactive flow: reveal + solo hand-pick opens; the pick itself is
+		// a draft-stage move (covered in cards/04-alter-fate).
+		expect(G.action.revealed.length).toBe(5);
+		expect(G.action.pendingDraft).toMatchObject({ order: ['0'], take: 'hand', title: 'Alter Fate' });
+		expect(G.discard.length).toBe(1); // the played card itself
 	});
 
 	it('moves the played card to another hand instead of discarding', () => {

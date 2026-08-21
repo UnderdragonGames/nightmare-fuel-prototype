@@ -11,7 +11,7 @@ const choice = (...options: CardAction[][]): CardAction => ({ type: 'choice', op
 
 export const CARD_ACTIONS_BY_ID: Record<number, CardAction[]> = {
 	2: [drawEach(1)],
-	4: [{ type: 'revealTop', count: 5 }, { type: 'pickOneToHand' }, { type: 'discardRest' }],
+	4: [{ type: 'revealTop', count: 5 }, { type: 'beginDraft', take: 'hand', solo: true }],
 	8: [drawCurrent(5)],
 	10: [
 		{ type: 'placeOnDrawPileTopFaceUp' },
@@ -188,11 +188,14 @@ export const resolveCardEffects = (card: Card, ctx: CardActionResolveContext): G
 				pushEffect({ type: 'autoPlayDrafted', order: [...ctx.playerOrder] });
 				break;
 			case 'beginDraft': {
-				// Interactive sequential draft in play order, starting with the
-				// player of the card (Mystery Box).
+				// Interactive reveal-and-pick. Mystery Box: every player in play
+				// order starting with the card's player. Alter Fate (solo): just
+				// the current player, keeping the pick in hand.
 				const start = Math.max(0, ctx.playerOrder.indexOf(ctx.currentPlayerId));
-				const order = [...ctx.playerOrder.slice(start), ...ctx.playerOrder.slice(0, start)];
-				pushEffect({ type: 'beginDraft', order });
+				const order = action.solo
+					? [ctx.currentPlayerId]
+					: [...ctx.playerOrder.slice(start), ...ctx.playerOrder.slice(0, start)];
+				pushEffect({ type: 'beginDraft', order, take: action.take ?? 'play', title: card.name });
 				break;
 			}
 			case 'chooseAgenda':

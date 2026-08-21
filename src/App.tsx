@@ -765,12 +765,20 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	}, [currentPlayer, ctx.gameover, allSeatsJoined]);
 
 	const prevMyTurnRef = React.useRef(isMyTurn);
+	const [turnFlash, setTurnFlash] = React.useState(false);
 	React.useEffect(() => {
 		const was = prevMyTurnRef.current;
 		prevMyTurnRef.current = isMyTurn;
 		if (!was && isMyTurn && !ctx.gameover && allSeatsJoined) {
+			// Chime + visual flash on the same rising edge: the sound can be
+			// missed (muted phone), the notification only fires off-app.
+			setTurnFlash(true);
+			const flashT = setTimeout(() => setTurnFlash(false), 1600);
 			const t = setTimeout(() => playSfx('your-turn'), 380);
-			return () => clearTimeout(t);
+			return () => {
+				clearTimeout(t);
+				clearTimeout(flashT);
+			};
 		}
 	}, [isMyTurn, ctx.gameover, allSeatsJoined]);
 
@@ -2124,11 +2132,12 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="game-start-banner">All players in — game on!</div>
 			)}
 
-			{/* MYSTERY BOX DRAFT — revealed cards + whose pick/placement it is.
-			    Non-blocking: during placement the board must stay clickable. */}
+			{/* REVEAL-AND-PICK DRAFT (Mystery Box, Alter Fate) — revealed cards +
+			    whose pick/placement it is. Non-blocking: during placement the
+			    board must stay clickable. */}
 			{pendingDraft && !ctx.gameover && (
 				<div className={`draft-overlay ${pendingDraft.placing ? 'draft-overlay--slim' : ''}`}>
-					<div className="draft-overlay__title"><Icon name="sparkles" size={14} /> Mystery Box</div>
+					<div className="draft-overlay__title"><Icon name="sparkles" size={14} /> {pendingDraft.title ?? 'Mystery Box'}</div>
 					{pendingDraft.placing ? (
 						<div className="draft-overlay__hint">
 							{isMyDraftPlace
@@ -2139,7 +2148,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						<>
 							<div className="draft-overlay__hint">
 								{isMyDraftPick
-									? 'Your pick — choose a card:'
+									? (pendingDraft.take === 'hand'
+										? 'Choose a card to keep — the rest are discarded:'
+										: 'Your pick — choose a card:')
 									: `${(draftPicker && (nameOf(draftPicker) ?? `P${draftPicker}`)) ?? '…'} is picking…`}
 							</div>
 							<div className="draft-overlay__cards">
@@ -2160,6 +2171,13 @@ const GameBoard: React.FC<AppBoardProps> = ({
 							</div>
 						</>
 					)}
+				</div>
+			)}
+
+			{/* YOUR-TURN FLASH — non-blocking visual pulse on the turn hand-off */}
+			{turnFlash && (
+				<div className="turn-flash" aria-hidden="true">
+					<div className="turn-flash__text">Your turn</div>
 				</div>
 			)}
 

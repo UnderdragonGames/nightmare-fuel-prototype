@@ -632,7 +632,10 @@ export const HexStringsGame: Game<GState> = {
 							const hand = G.players[picker]!.hand;
 							hand.push(card);
 							const handIndex = hand.length - 1;
-							if (card.isAction) {
+							if (draft.take === 'hand') {
+								// Alter Fate-style: the pick simply joins the hand.
+								advanceDraftAndSetStage(G, events);
+							} else if (card.isAction) {
 								// "Immediately plays it" — cards needing input stay in hand.
 								tryAutoPlayDraftedAction(G, ctx, picker, handIndex);
 								advanceDraftAndSetStage(G, events);

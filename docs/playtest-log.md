@@ -15,6 +15,16 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-06 — v0.6.0
 
+### [ux] Your-turn visual flash
+- **Feedback (Julian):** "we need visual feedback for when it's your turn in addition to the sound and notification."
+- **Change:** when the turn passes to you, the screen edges pulse with a purple vignette and a large "Your turn" label fades in and out (~1.6s), on the same trigger as the chime. Non-blocking (clicks pass through), sits under every modal, and `prefers-reduced-motion` gets a motionless fade instead.
+
+### Alter Fate becomes an interactive top-5 selector
+- **Feedback (Julian):** "that card should bring up a little selector for the top five cards of the deck."
+- **Diagnosis:** the old flow required typing a blind numeric pick *before* the reveal (same disease Mystery Box had).
+- **Change:** playing Alter Fate reveals the top 5 face-up in the reveal-and-pick overlay (now card-agnostic: it shows the card's own name and a take-mode-specific hint). You tap the card to keep — "the rest are discarded" happens automatically. Built as a `take: 'hand'` / solo mode of the Mystery Box draft machinery, so bots handle the pick too (they no longer initiate Alter Fate themselves, consistent with other interactive cards).
+- **Outcome:** _pending — first live Alter Fate play._
+
 ### [ux] Tap treasure/discard cards to view them full-size
 - **Feedback (Julian):** "You should be able to tap on an action card in the treasure or discard and view it."
 - **Change:** tapping any card in the treasure zone or the discard browser (desktop and mobile) opens a full-size inspector — name, action text, color pips. Treasure taps no longer take the card instantly: the inspector carries an explicit "Take to hand" button (disabled off-turn, with the reason shown), so viewing can't accidentally consume a treasure; the small Take button on the card remains as the quick path. Esc/backdrop closes just the inspector.

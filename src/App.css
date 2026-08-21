@@ -2059,6 +2059,58 @@ button .icon {
 	width: 100%;
 }
 
+/* ── Your-turn flash: edge vignette pulse + label, never blocks input ── */
+.turn-flash {
+	position: fixed;
+	inset: 0;
+	z-index: 250; /* above the board, below every modal/overlay (300+) */
+	pointer-events: none;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding-top: 18vh;
+	box-shadow: inset 0 0 120px 30px rgba(139, 92, 246, 0.55);
+	animation: turn-flash-vignette 1.6s ease-out forwards;
+}
+
+.turn-flash__text {
+	font-size: clamp(1.6rem, 5vw, 2.6rem);
+	font-weight: 900;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: #fff;
+	text-shadow: 0 0 24px rgba(139, 92, 246, 0.9), 0 2px 8px rgba(0, 0, 0, 0.6);
+	animation: turn-flash-text 1.6s ease-out forwards;
+}
+
+@keyframes turn-flash-vignette {
+	0% { opacity: 0; }
+	12% { opacity: 1; }
+	55% { opacity: 0.8; }
+	100% { opacity: 0; }
+}
+
+@keyframes turn-flash-text {
+	0% { opacity: 0; transform: translateY(14px) scale(0.92); }
+	14% { opacity: 1; transform: translateY(0) scale(1.04); }
+	22% { transform: translateY(0) scale(1); }
+	70% { opacity: 1; }
+	100% { opacity: 0; transform: translateY(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.turn-flash,
+	.turn-flash__text {
+		animation: turn-flash-fade 1.6s ease-out forwards;
+	}
+
+	@keyframes turn-flash-fade {
+		0% { opacity: 1; }
+		80% { opacity: 1; }
+		100% { opacity: 0; }
+	}
+}
+
 /* ── Card inspector (tap-to-view for treasure/discard cards) ── */
 .card-inspector {
 	position: fixed;

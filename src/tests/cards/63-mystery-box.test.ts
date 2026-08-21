@@ -110,7 +110,7 @@ describe('Mystery Box — interactive draft', () => {
 		const { G, events, playMysteryBox } = setup([byId(8), byId(82)]);
 		playMysteryBox();
 		expect(G.action.revealed).toHaveLength(2);
-		expect(G.action.pendingDraft).toEqual({ order: ['0', '1'], position: 0, placing: null });
+		expect(G.action.pendingDraft).toMatchObject({ order: ['0', '1'], position: 0, placing: null, take: 'play' });
 		expect(G.discard.map((c) => c.id)).toContain(63);
 		expect(events.calls).toContainEqual({ value: { '0': 'draft' } });
 	});

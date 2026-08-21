@@ -654,7 +654,7 @@ const notifyTurnChanges = async (): Promise<void> => {
 		lastNotifyKey.set(matchID, key);
 		if (prev === undefined || prev === key || !target) continue;
 		const body = draft
-			? (draft.placing ? 'Mystery Box: place your drafted card!' : 'Mystery Box: your pick!')
+			? (draft.placing ? 'Place your drafted card!' : 'Your pick — choose a card!')
 			: "It's your turn!";
 		await sendPush(matchID, target, { title: 'Nightmare Fuel', body });
 	}
