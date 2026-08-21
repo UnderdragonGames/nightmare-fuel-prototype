@@ -15,6 +15,12 @@ later playtest confirms or refutes the change.
 
 ## 2026-08-06 — v0.6.0
 
+### Endgame fairness: deck exhaustion is the only ending; per-turn bonus draw
+- **Feedback (Julian):** "the player whose turn it is always has an advantage and will likely be the one to end the game, and when they end the game, they will likely have more points because they've taken their turn." On the mitigation options: final-round variants rejected ("not necessarily fair to give extra turns to everyone… there's still an advantage to the last player"); decision: "don't end with consolidation, but only with deck run out, and have more card drawing."
+- **Change:** `CONSOLIDATION_END` now defaults to **0** — completing rim-to-center paths still scores but no longer ends the game (re-enable with `VITE_CONSOLIDATION_END=3`). The only ending is deck exhaustion, which already grants **equal turns** to every player. To keep games from dragging, every end of turn draws `TURN_DRAW_BONUS` (default 1, `VITE_TURN_DRAW_BONUS`) extra cards on top of the refill; at `HAND_LIMIT` (default 10, `VITE_HAND_LIMIT`) the bonus card burns to the discard instead, so hoarding can't stall the game clock. Rough pacing: ~116-card deck ÷ (≈2 spent + 1 bonus per turn) ≈ 38 turns total, split equally.
+- **Also noted:** `DECK_SIZE`/`DECK_COUNTS` in the config were dead — `buildDeck` deals one copy of every non-excluded card (~116) regardless; left as-is, documented here.
+- **Outcome:** _pending — watch game length and whether consolidation still feels worth racing for without the ending attached._
+
 ### Bots now initiate reveal-and-pick cards
 - **Feedback (Julian):** "Why don't bots initiate those? They should play it if it's in their hand, doesn't seem unsolvable."
 - **Change:** it wasn't — v1 caution, now removed. Bots enumerate Mystery Box and Alter Fate as playable; when a bot plays one, its turn loop yields to the draft stage, it makes its own pick (and placement) via the same handler that already covered human-initiated drafts, then resumes its turn. The evaluator gets a small bonus for these cards (the simulator can't see the pick-back, so the raw delta reads as card loss). Server bots get a periodic nudge so a bot's own pick can't hang the game.

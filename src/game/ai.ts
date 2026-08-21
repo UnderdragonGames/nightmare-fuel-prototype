@@ -516,6 +516,14 @@ export const applyEndTurn = (G: GState, ctx: Ctx, playerID: PlayerID): { G: GSta
 	}
 	p.stashBonus = 0;
 
+	// Turn draw bonus (mirrors endTurnAndRefill: burn to discard at the cap)
+	for (let i = 0; i < rules.TURN_DRAW_BONUS; i += 1) {
+		const c = newG.secret.deck.pop() ?? null;
+		if (!c) break;
+		if (p.hand.length < rules.HAND_LIMIT) p.hand.push(c);
+		else newG.discard.push(c);
+	}
+
 	// Mark deck exhaustion if needed
 	if (rules.END_ON_DECK_EXHAUST && newG.secret.deck.length === 0 && newG.meta.deckExhaustionCycle === null) {
 		newG.meta.deckExhaustionCycle = ctx.turn;

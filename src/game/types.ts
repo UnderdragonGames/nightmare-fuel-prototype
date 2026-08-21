@@ -290,6 +290,8 @@ export type Rules = {
 	// If true, shuffle EDGE_COLORS once per new game (and derive COLOR_TO_DIR from that shuffled order).
 	RANDOM_CARDINAL_DIRECTIONS: boolean;
 	RANDOM_START_ORDER: boolean;
+	TURN_DRAW_BONUS: number;
+	HAND_LIMIT: number;
 	// Maps each color to its directional offset vector in hex coordinates
 	COLOR_TO_DIR: Record<Color, Co>;
 	// Number of cards each player holds in hand

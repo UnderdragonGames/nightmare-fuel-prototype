@@ -34,6 +34,14 @@ const envFlag = (name: string): boolean | null => {
 	return value === '1' || value === 'true' || value === 'on';
 };
 
+// Integer rules knob: unset/invalid → null.
+const envInt = (name: string): number | null => {
+	const value = envValue(name);
+	if (value === undefined || value === '') return null;
+	const n = Number(value);
+	return Number.isInteger(n) ? n : null;
+};
+
 export const buildColorToDir = (edgeColors: readonly Color[]): Record<Color, Co> => {
 	if (edgeColors.length !== 6) {
 		throw new Error(`EDGE_COLORS must be length 6, got ${edgeColors.length}`);
@@ -100,6 +108,13 @@ export const HEX_RULES: Rules = {
 	COLOR_TO_DIR: buildColorToDir(BASE_EDGE_COLORS),
 	// Number of cards each player holds in hand
 	HAND_SIZE: 3,
+	// Extra cards drawn at end of turn ON TOP of the refill: burns the deck
+	// toward the exhaust ending at a steady pace and feeds multi-path play.
+	// Tune per-deploy with VITE_TURN_DRAW_BONUS (0 restores old pacing).
+	TURN_DRAW_BONUS: envInt('VITE_TURN_DRAW_BONUS') ?? 1,
+	// Bonus draws stop at this hand size (the drawn card burns to the discard
+	// instead, so deck pace stays constant and hands can't balloon forever).
+	HAND_LIMIT: envInt('VITE_HAND_LIMIT') ?? 10,
 	// Maximum number of cards that can be stashed in the treasure pile
 	TREASURE_MAX: 4,
 	// Target total number of cards in the deck
@@ -155,8 +170,12 @@ export const PATH_RULES: Rules = {
 		NO_BUILD_FROM_RIM: true,
 		// Consolidation: once a color reaches the rim, it may CONVERT existing lanes along its path back toward center (recolor in place)
 		CONSOLIDATION: true,
-		// Game ends when this many continuous paths reach from rim back to center
-		CONSOLIDATION_END: 3,
+		// Consolidation no longer ENDS the game by default (2026-08 playtest:
+		// the player completing the 3rd path ended it right after their own
+		// best turn — an unfair "trigger advantage"; the deck-exhaust ending
+		// with EQUAL_TURNS is the only fair one). Consolidation still scores.
+		// Re-enable per-deploy with VITE_CONSOLIDATION_END=3.
+		CONSOLIDATION_END: envInt('VITE_CONSOLIDATION_END') ?? 0,
 		// Consolidation can reach center ring (ring 0) for game-ending paths
 		CONSOLIDATE_TO_RING: 0,
 		// New branches must start from ring 1 or further out (not from center ring 0)

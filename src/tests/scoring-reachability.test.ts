@@ -18,7 +18,9 @@ const makeRules = (startingRing: number) => ({
 	RANDOM_CARDINAL_DIRECTIONS: false,
 	EDGE_COLORS,
 	COLOR_TO_DIR: buildColorToDir(EDGE_COLORS),
-	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: startingRing },
+	// Pin the consolidation ending on: this suite exercises the end trigger,
+	// which now defaults off (deck-exhaust is the only default ending).
+	PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: startingRing, CONSOLIDATION_END: 3 },
 });
 
 const makeG = (startingRing: number, lanes: PathLane[]): GState => ({

@@ -608,6 +608,15 @@ export const HexStringsGame: Game<GState> = {
 							p.hand.push(c);
 						}
 						p.stashBonus = 0;
+						// Turn draw bonus: burns the deck toward the (fair, equal-turns)
+						// exhaust ending. At HAND_LIMIT the card burns to the discard
+						// instead so hoarding can't stall the game clock.
+						for (let i = 0; i < rules.TURN_DRAW_BONUS; i += 1) {
+							const c = drawOne(G, pid);
+							if (!c) break;
+							if (p.hand.length < rules.HAND_LIMIT) p.hand.push(c);
+							else G.discard.push(c);
+						}
 						afterRefillMaybeMarkExhaust(G, ctx, rules);
 						events?.endTurn?.();
 					},
