@@ -107,28 +107,14 @@ describe('real moves: basic lifecycle', () => {
 		expect(JSON.stringify(G)).toBe(before);
 	});
 
-	it('endTurnAndRefill refills to HAND_SIZE plus banked stash bonus plus turn draw bonus', () => {
+	it('endTurnAndRefill refills to HAND_SIZE plus banked stash bonus', () => {
 		const G = setupGame();
 		const ctx = makeCtx();
 		realMove('stashToTreasure', G, ctx, { handIndex: 0 }); // stashBonus 1
 		G.players['0']!.hand.splice(0, 2); // burn two cards
 		realMove('endTurnAndRefill', G, ctx);
-		expect(G.players['0']!.hand.length).toBe(G.rules.HAND_SIZE + 1 + G.rules.TURN_DRAW_BONUS);
+		expect(G.players['0']!.hand.length).toBe(G.rules.HAND_SIZE + 1);
 		expect(G.players['0']!.stashBonus).toBe(0); // bonus consumed
-	});
-
-	it('turn draw bonus burns to the discard at HAND_LIMIT', () => {
-		const G = setupGame();
-		const ctx = makeCtx();
-		// Fill the hand to the cap with filler.
-		const p = G.players['0']!;
-		while (p.hand.length < G.rules.HAND_LIMIT) p.hand.push({ ...p.hand[0]! });
-		const discardBefore = G.discard.length;
-		const deckBefore = G.secret.deck.length;
-		realMove('endTurnAndRefill', G, ctx);
-		expect(p.hand.length).toBe(G.rules.HAND_LIMIT); // no growth past the cap
-		expect(G.secret.deck.length).toBe(deckBefore - G.rules.TURN_DRAW_BONUS); // deck still burns
-		expect(G.discard.length).toBe(discardBefore + G.rules.TURN_DRAW_BONUS);
 	});
 
 	it('deck exhaustion marks the cycle and endIf fires after equal turns', () => {

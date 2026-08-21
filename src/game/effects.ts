@@ -350,6 +350,7 @@ export const findLaneIndex = (G: GState, from: Co, to: Co): number => {
 export const replaceLaneColor = (G: GState, from: Co, to: Co, color: Color): boolean => {
 	const idx = findLaneIndex(G, from, to);
 	if (idx === -1) return false;
+	if (G.lanes[idx]!.consolidated) return false; // consolidated lanes are fixed
 	G.lanes[idx] = { ...G.lanes[idx]!, color };
 	return true;
 };
@@ -522,6 +523,9 @@ export const actionEffectsInvalidReason = (G: GState, effects: GameEffect[]): st
 			const idx = findLaneIndex(G, effect.from, effect.to);
 			if (idx === -1) {
 				return 'No lane connects those two spots.';
+			}
+			if (G.lanes[idx]!.consolidated) {
+				return 'That lane is consolidated — it is fixed and cannot change color.';
 			}
 			if (G.lanes[idx]!.color === effect.color) {
 				return 'The lane is already that color — pick a different one.';

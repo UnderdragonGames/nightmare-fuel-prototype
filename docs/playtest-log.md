@@ -7,19 +7,38 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-21 — v0.8.0
+
+### Consolidated paths are fixed (no re-consolidation)
+- **Feedback (Julian):** "Consolidated paths shouldn't be re-consolidatable (they should be fixed)."
+- **Change:** a lane converted by consolidation is now marked `consolidated` and locked for good: it can never be consolidated again by any color, and lane-recoloring action cards (This Prey is Mine) refuse it with "That lane is consolidated — it is fixed and cannot change color." Un-consolidated lanes on the same edge (doubled segments) still convert normally, and geometry moves (rotation, nightmare effects) are untouched.
+- **Outcome:** _pending — watch whether locking consolidations changes the takeover tug-of-war feel._
+
+### Consolidation completion bonus is now a codified setting
+- **Feedback (Julian):** "Extra points for consolidation needs to be a setting. I like the idea of extra points. Needs to be codified."
+- **Change:** new scoring knob `SCORING.CONSOLIDATION_BONUS` (default **5**, tune per-deploy with `VITE_CONSOLIDATION_BONUS`, 0 disables): each color with a completed rim-to-center path adds the bonus to that color's raw count before preference weighting (so a completed primary color is worth `5 × 3 = 15` extra points by default). This gives consolidation a scoring race to run now that it no longer ends the game (v0.7.0).
+- **Outcome:** _pending — is 5 the right size relative to ~1-point-per-lane placement scoring?_
+
+### Rollback: hand cap and per-turn bonus draw removed; extra draw cards instead
+- **Feedback (Julian):** "Hand cap, is that new? Not sure I like that" — yes, `HAND_LIMIT` was new, introduced alongside the v0.7.0 bonus draw; both are gone. "Not sure I like bonus draw either, I'd rather add more draw cards, there are action cards that draw, right? I haven't seen them come up, but they should be in there."
+- **Change:** `TURN_DRAW_BONUS` and `HAND_LIMIT` are removed (end-of-turn refill is back to plain HAND_SIZE + stash bonus, no cap). The draw action cards were already in the deck but as single copies each in ~116 cards — easy to never see. The deck now mixes in `EXTRA_DRAW_CARD_COPIES` (default **2**, `VITE_EXTRA_DRAW_COPIES`) extra copies of each draw card: Allow a Brief Reprieve (everyone draws 1), Armed to the Teeth (draw 5), Embrace Chaos (all discard and draw 3) — 6 extra cards, so a draw effect surfaces roughly every other hand-cycle instead of almost never. Deck-exhaust pacing now flows through cards players actually play.
+- **Outcome:** _pending — watch game length without the automatic burn-down._
+
 ## 2026-08-06 — v0.6.0
 
 ### [ux] Mobile install banner (PWA)
 - **Feedback (Julian):** "I'd like to add a banner for mobile to install the PWA if it's not already installed. So it should detect it, show the banner if it's not in a PWA, dismissable of course, and when pressed to show instructions."
 - **Change:** on mobile browsers that are NOT already running as an installed app (display-mode / iOS `navigator.standalone` detection), a dismissible banner sits in the quiet band between board and controls: "Add to Home Screen for the full game — and turn alerts." Tapping it triggers the real Chromium install prompt when available (`beforeinstallprompt`), otherwise platform-matched instructions (iOS: Share → Add to Home Screen; Android: menu → Install app). Dismissal is remembered per device; the banner also disappears live if the app gets installed.
 
-## 2026-08-06 — v0.6.0
+## 2026-08-06 — v0.7.0
 
 ### Endgame fairness: deck exhaustion is the only ending; per-turn bonus draw
 - **Feedback (Julian):** "the player whose turn it is always has an advantage and will likely be the one to end the game, and when they end the game, they will likely have more points because they've taken their turn." On the mitigation options: final-round variants rejected ("not necessarily fair to give extra turns to everyone… there's still an advantage to the last player"); decision: "don't end with consolidation, but only with deck run out, and have more card drawing."
 - **Change:** `CONSOLIDATION_END` now defaults to **0** — completing rim-to-center paths still scores but no longer ends the game (re-enable with `VITE_CONSOLIDATION_END=3`). The only ending is deck exhaustion, which already grants **equal turns** to every player. To keep games from dragging, every end of turn draws `TURN_DRAW_BONUS` (default 1, `VITE_TURN_DRAW_BONUS`) extra cards on top of the refill; at `HAND_LIMIT` (default 10, `VITE_HAND_LIMIT`) the bonus card burns to the discard instead, so hoarding can't stall the game clock. Rough pacing: ~116-card deck ÷ (≈2 spent + 1 bonus per turn) ≈ 38 turns total, split equally.
 - **Also noted:** `DECK_SIZE`/`DECK_COUNTS` in the config were dead — `buildDeck` deals one copy of every non-excluded card (~116) regardless; left as-is, documented here.
-- **Outcome:** _pending — watch game length and whether consolidation still feels worth racing for without the ending attached._
+- **Outcome:** the ending change stuck, but the pacing half was rejected on review before ever being played (2026-08-21): "Hand cap, is that new? Not sure I like that … Not sure I like bonus draw either, I'd rather add more draw cards." Bonus draw and hand cap removed in v0.8.0, replaced with extra copies of the draw action cards in the deck.
+
+## 2026-08-06 — v0.6.0
 
 ### Bots now initiate reveal-and-pick cards
 - **Feedback (Julian):** "Why don't bots initiate those? They should play it if it's in their hand, doesn't seem unsolvable."

@@ -120,6 +120,19 @@ const undirectedHasColor = (G: GState, a: Co, b: Co, color: Color): boolean => {
 	return false;
 };
 
+// Like undirectedHasColor, but only counts lanes that consolidation may still
+// convert (consolidated lanes are fixed for good).
+const undirectedHasConvertibleLane = (G: GState, a: Co, b: Co, color: Color): boolean => {
+	for (const ln of G.lanes) {
+		if (ln.color !== color || ln.consolidated) continue;
+		const ab =
+			(ln.from.q === a.q && ln.from.r === a.r && ln.to.q === b.q && ln.to.r === b.r) ||
+			(ln.from.q === b.q && ln.from.r === b.r && ln.to.q === a.q && ln.to.r === a.r);
+		if (ab) return true;
+	}
+	return false;
+};
+
 const nodeHasColorLane = (G: GState, coord: Co, color: Color): boolean => {
 	for (const ln of G.lanes) {
 		if (ln.color !== color) continue;
@@ -519,7 +532,8 @@ export const canConsolidate = (G: GState, a: Co, b: Co, fromColor: Color, toColo
 
 	// Something to convert, and no duplicate: once toColor spans the edge,
 	// continuity exists and further conversion is neither needed nor allowed.
-	if (!undirectedHasColor(G, a, b, fromColor)) return false;
+	// Already-consolidated lanes are fixed — they can never convert again.
+	if (!undirectedHasConvertibleLane(G, a, b, fromColor)) return false;
 	if (undirectedHasColor(G, a, b, toColor)) return false;
 
 	// Only a rim-connected color may consolidate.
@@ -549,11 +563,13 @@ export const canConsolidate = (G: GState, a: Co, b: Co, fromColor: Color, toColo
 export const applyConsolidation = (G: GState, a: Co, b: Co, fromColor: Color, toColor: Color): boolean => {
 	for (const ln of G.lanes) {
 		if (ln.color !== fromColor) continue;
+		if (ln.consolidated) continue; // fixed — can never convert again
 		const onEdge =
 			(ln.from.q === a.q && ln.from.r === a.r && ln.to.q === b.q && ln.to.r === b.r) ||
 			(ln.from.q === b.q && ln.from.r === b.r && ln.to.q === a.q && ln.to.r === a.r);
 		if (!onEdge) continue;
 		ln.color = toColor;
+		ln.consolidated = true;
 		return true;
 	}
 	return false;
@@ -735,17 +751,18 @@ const countOutgoing = (nodeKey: string, caps: EdgeCaps, allNodes: Set<string>): 
 const DEBUG_FORK_SUPPORT = false; // Set to true to enable debug logging
 
 /**
- * Count colors that have a continuous same-color path from rim to center (origin at 0,0).
- * Used for CONSOLIDATION_END rule: game ends when this count meets the threshold.
+ * List colors that have a continuous same-color path from rim to center (origin at 0,0).
+ * Used for the CONSOLIDATION_END rule (count meets threshold) and the
+ * CONSOLIDATION_BONUS scoring setting (each completed color scores extra).
  */
-export const countRimToCenterPaths = (G: GState): number => {
+export const listRimToCenterColors = (G: GState): Color[] => {
 	const radius = G.radius;
 	const colors: readonly Color[] = G.rules.COLORS;
-	let total = 0;
+	const completed: Color[] = [];
 
 	// Check if center (0,0) is an origin
 	const centerIsOrigin = G.origins.some((o) => o.q === 0 && o.r === 0);
-	if (!centerIsOrigin) return 0;
+	if (!centerIsOrigin) return completed;
 
 	// Path mode: lanes are explicit; treat same-color connectivity as undirected on lane endpoints.
 	if (G.rules.MODE === 'path') {
@@ -782,7 +799,7 @@ export const countRimToCenterPaths = (G: GState): number => {
 			while (queue.length) {
 				const cur = queue.shift()!;
 				if (cur === centerK) {
-					total += 1;
+					completed.push(color);
 					break;
 				}
 				const nbrs = adj.get(cur);
@@ -794,7 +811,7 @@ export const countRimToCenterPaths = (G: GState): number => {
 				}
 			}
 		}
-		return total;
+		return completed;
 	}
 
 	for (const color of colors) {
@@ -826,7 +843,7 @@ export const countRimToCenterPaths = (G: GState): number => {
 			// Check if adjacent to center origin
 			for (const n of neighbors(cur)) {
 				if (n.q === 0 && n.r === 0) {
-					total += 1;
+					completed.push(color);
 					found = true;
 					break;
 				}
@@ -845,8 +862,14 @@ export const countRimToCenterPaths = (G: GState): number => {
 		}
 	}
 
-	return total;
+	return completed;
 };
+
+/**
+ * Count colors that have a continuous same-color path from rim to center.
+ * Used for CONSOLIDATION_END rule: game ends when this count meets the threshold.
+ */
+export const countRimToCenterPaths = (G: GState): number => listRimToCenterColors(G).length;
 
 /**
  * Check if a color has a continuous same-color segment from the rim that connects to the origin network.

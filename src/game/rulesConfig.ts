@@ -89,6 +89,11 @@ const HEX_SCORING: ObjectiveScoringRules = {
 	SHORTEST_PATH: true,
 	// Primary / secondary / tertiary weights (legacy behaviour)
 	COLOR_POINTS: [3, 2, 1],
+	// Completed rim-to-center path (the consolidation goal) adds this flat
+	// bonus to that color's raw count before pref weighting (2026-08 playtest:
+	// "I like the idea of extra points. Needs to be codified").
+	// Tune per-deploy with VITE_CONSOLIDATION_BONUS; 0 disables.
+	CONSOLIDATION_BONUS: envInt('VITE_CONSOLIDATION_BONUS') ?? 5,
 };
 
 export const HEX_RULES: Rules = {
@@ -108,13 +113,10 @@ export const HEX_RULES: Rules = {
 	COLOR_TO_DIR: buildColorToDir(BASE_EDGE_COLORS),
 	// Number of cards each player holds in hand
 	HAND_SIZE: 3,
-	// Extra cards drawn at end of turn ON TOP of the refill: burns the deck
-	// toward the exhaust ending at a steady pace and feeds multi-path play.
-	// Tune per-deploy with VITE_TURN_DRAW_BONUS (0 restores old pacing).
-	TURN_DRAW_BONUS: envInt('VITE_TURN_DRAW_BONUS') ?? 1,
-	// Bonus draws stop at this hand size (the drawn card burns to the discard
-	// instead, so deck pace stays constant and hands can't balloon forever).
-	HAND_LIMIT: envInt('VITE_HAND_LIMIT') ?? 10,
+	// Extra copies of the draw-flavored action cards mixed into the deck
+	// (2026-08 decision: pace the deck-exhaust ending through draw CARDS, not
+	// an automatic per-turn bonus draw). VITE_EXTRA_DRAW_COPIES tunes it.
+	EXTRA_DRAW_CARD_COPIES: envInt('VITE_EXTRA_DRAW_COPIES') ?? 2,
 	// Maximum number of cards that can be stashed in the treasure pile
 	TREASURE_MAX: 4,
 	// Target total number of cards in the deck

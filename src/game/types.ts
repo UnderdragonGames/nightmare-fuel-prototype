@@ -161,7 +161,9 @@ export type ActionState = {
 };
 
 // Path-mode lane segment between adjacent nodes.
-export type PathLane = { from: Co; to: Co; color: Color };
+// `consolidated` marks a lane fixed by consolidation: it can never be
+// consolidated again (or recolored by lane-targeting cards).
+export type PathLane = { from: Co; to: Co; color: Color; consolidated?: boolean };
 
 export type HexTile = {
 	colors: Color[];
@@ -240,6 +242,9 @@ export type BaseScoringRules = {
 export type ObjectiveScoringRules = BaseScoringRules & {
 	// Primary / secondary / tertiary color point multipliers
 	COLOR_POINTS: [number, number, number];
+	// Flat bonus added to a color's raw count when it has a completed
+	// rim-to-center path (the consolidation goal). 0 disables the bonus.
+	CONSOLIDATION_BONUS: number;
 };
 
 export type PlacementRules = {
@@ -290,8 +295,7 @@ export type Rules = {
 	// If true, shuffle EDGE_COLORS once per new game (and derive COLOR_TO_DIR from that shuffled order).
 	RANDOM_CARDINAL_DIRECTIONS: boolean;
 	RANDOM_START_ORDER: boolean;
-	TURN_DRAW_BONUS: number;
-	HAND_LIMIT: number;
+	EXTRA_DRAW_CARD_COPIES: number;
 	// Maps each color to its directional offset vector in hex coordinates
 	COLOR_TO_DIR: Record<Color, Co>;
 	// Number of cards each player holds in hand
