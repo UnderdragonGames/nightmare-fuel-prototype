@@ -2513,18 +2513,6 @@ button .icon {
 	color: #fff;
 }
 
-.feedback-form__more {
-	align-self: flex-start;
-	padding: 4px 0;
-	border: none;
-	background: none;
-	color: var(--accent-primary);
-	font-size: 0.78rem;
-	font-weight: 600;
-	cursor: pointer;
-	text-decoration: underline;
-}
-
 .feedback-form__text {
 	width: 100%;
 	padding: 8px 10px;

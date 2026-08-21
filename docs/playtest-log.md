@@ -7,6 +7,13 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-21 — v0.9.1
+
+### [ux] Feedback form: free-text questions always visible
+- **Feedback (Julian):** "I don't want the additional text feedback to be hidden, that's the most important feedback. Why would we hide it?"
+- **Diagnosis:** the v0.5.0 form collapsed the five free-text questions (why, painful moment, delightful moment, magic wand, what-were-you-doing) behind an "Add details (optional)" link — a completion-rate-over-completeness bet that buried the richest answers.
+- **Change:** the text questions now always render below the tap questions, each marked "(optional)". Nothing about the requirements changed — taps still gate the Send button, text stays optional, and the form area scrolls — the prompts are just in plain sight where they invite an answer.
+
 ## 2026-08-21 — v0.9.0
 
 ### Consolidation ending restored at 3; a conversion now costs 2 cards
