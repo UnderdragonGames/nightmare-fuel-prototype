@@ -350,6 +350,7 @@ export const findLaneIndex = (G: GState, from: Co, to: Co): number => {
 export const replaceLaneColor = (G: GState, from: Co, to: Co, color: Color): boolean => {
 	const idx = findLaneIndex(G, from, to);
 	if (idx === -1) return false;
+	if (G.lanes[idx]!.consolidated) return false; // consolidated lanes are fixed
 	G.lanes[idx] = { ...G.lanes[idx]!, color };
 	return true;
 };
@@ -523,6 +524,9 @@ export const actionEffectsInvalidReason = (G: GState, effects: GameEffect[]): st
 			if (idx === -1) {
 				return 'No lane connects those two spots.';
 			}
+			if (G.lanes[idx]!.consolidated) {
+				return 'That lane is consolidated — it is fixed and cannot change color.';
+			}
 			if (G.lanes[idx]!.color === effect.color) {
 				return 'The lane is already that color — pick a different one.';
 			}
@@ -689,7 +693,13 @@ export const applyGameEffect = (G: GState, effect: GameEffect, context: EffectCo
 		case 'beginDraft':
 			// Vacuous when the reveal came up empty (deck exhausted).
 			if (G.action.revealed.length > 0) {
-				G.action.pendingDraft = { order: effect.order, position: 0, placing: null };
+				G.action.pendingDraft = {
+					order: effect.order,
+					position: 0,
+					placing: null,
+					take: effect.take ?? 'play',
+					title: effect.title,
+				};
 			}
 			break;
 		case 'moveHex':

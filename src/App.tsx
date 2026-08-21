@@ -6,10 +6,11 @@ import { Local, SocketIO } from 'boardgame.io/multiplayer';
 import { HexStringsGame } from './game/game';
 import { useBotClients } from './useBotClients';
 import { Board as HexBoard } from './ui/Board';
-import type { CardAction, Color, Co, GState, MoveUseAbilityArgs, PlayerPrefs, Stat } from './game/types';
+import type { Card, CardAction, Color, Co, GState, MoveUseAbilityArgs, PlayerPrefs, Stat } from './game/types';
 import { NeuralCard } from './ui/Hand';
 import { Shelf } from './ui/Shelf';
 import { Treasure, TreasureCard } from './ui/Treasure';
+import { CardInspector } from './ui/CardInspector';
 import { ActionCardModal } from './ui/ActionCardModal';
 import { PlayerHandModal } from './ui/PlayerHandModal';
 import { computeScores } from './game/scoring';
@@ -37,9 +38,11 @@ import {
 	shareInvite,
 } from './network/lobby';
 import { enableTurnAlerts, disableTurnAlerts, resyncTurnAlerts } from './network/push';
+import { RULES } from './game/rulesConfig';
 import { FeedbackForm } from './ui/FeedbackForm';
 import { InstallBanner } from './ui/InstallBanner';
 import { flushFeedbackOutbox } from './feedback/submit';
+import { useMatchStatuses, type MatchStatus } from './network/useMatchStatuses';
 import type { BotMode, NetworkSession } from './ui/useUIStore';
 import { playSfx, primeSfx, setSfxMuted } from './sound/sfx';
 
@@ -131,6 +134,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const [selectedColor, setSelectedColor] = React.useState<Color | null>(null);
 	const [actionMode, setActionMode] = React.useState<ActionMode>('place');
 	const [discardSelection, setDiscardSelection] = React.useState<number[]>([]);
+	// Consolidation conversion awaiting its extra-card cost: the board target is
+	// chosen, the player still owes (COST_TO_CONSOLIDATE - 1) discards from hand.
+	const [pendingConvert, setPendingConvert] = React.useState<{ handIndex: number; pick: Color; source: Co; coord: Co; convert: Color } | null>(null);
 	const [pendingRotationTile, setPendingRotationTile] = React.useState<Co | null>(null);
 	const [selectedSourceDot, setSelectedSourceDot] = React.useState<Co | null>(null);
 	const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
@@ -149,12 +155,15 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	const gameStartRef = React.useRef<number>(Date.now());
 	const [abilityFlow, setAbilityFlow] = React.useState<AbilityFlow | null>(null);
 	const [discardModalOpen, setDiscardModalOpen] = React.useState(false);
+	// Tap-to-view for treasure/discard cards (action text is unreadable small).
+	const [inspected, setInspected] = React.useState<{ card: Card; source: 'treasure' | 'discard'; index: number } | null>(null);
 	const [exportCopied, setExportCopied] = React.useState(false);
 
 	// Network session (null in local games). matchData is only provided by the
 	// multiplayer server, so its presence — not the store — gates network UI.
 	const network = useUIStore((s) => s.network);
 	const setNetwork = useUIStore((s) => s.setNetwork);
+	const removeSession = useUIStore((s) => s.removeSession);
 	const playerName = useUIStore((s) => s.playerName);
 	const [rematchBusy, setRematchBusy] = React.useState(false);
 	const [rematchError, setRematchError] = React.useState<string | null>(null);
@@ -174,9 +183,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// (credential-checked) so undo can stay single-active-player.
 	const handleLeaveMatch = async () => {
 		if (network) {
-			await leaveMatch(getServerURL(), network.matchID, network.seat, network.credentials);
+			await leaveMatch(getServerURL(), network.matchID, network.seat, network.credentials).catch(() => {});
+			removeSession(network.matchID); // falls back to the next held game
+		} else {
+			setNetwork(null);
 		}
-		setNetwork(null);
 	};
 	const handleCancelMatch = async () => {
 		if (!window.confirm('Cancel this match for everyone?')) return;
@@ -350,6 +361,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// Derived values for action modes
 	const rotateCost = rules.PLACEMENT.COST_TO_ROTATE;
 	const blockCost = rules.PLACEMENT.COST_TO_BLOCK;
+	// Total cards a consolidation conversion costs (played card included).
+	const consolidateCost = Math.max(1, rules.PLACEMENT.COST_TO_CONSOLIDATE ?? 1);
 	const canRotateRule = rules.PLACEMENT.DISCARD_TO_ROTATE !== false;
 	const canBlockRule = blockCost > 0;
 	const discardNeeded = actionMode === 'rotate' ? rotateCost : actionMode === 'block' ? blockCost : 0;
@@ -667,8 +680,42 @@ const GameBoard: React.FC<AppBoardProps> = ({
 		setDiscardSelection([]);
 		setSelectedCard(null);
 		setSelectedColor(null);
+		setPendingConvert(null);
 		setPendingRotationTile(null);
 		setSelectedSourceDot(null);
+	};
+
+	const cancelPendingConvert = () => {
+		setPendingConvert(null);
+		setDiscardSelection([]);
+	};
+
+	// A conversion prompt can't outlive your turn (or an opponent's move).
+	React.useEffect(() => {
+		if (!isMyTurn) cancelPendingConvert();
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- reset-only effect
+	}, [isMyTurn]);
+
+	// Hand tap while a conversion awaits its cost: toggle the extra discard;
+	// once the cost is covered the move fires. Returns true when handled.
+	const handleConvertDiscardTap = (index: number): boolean => {
+		if (!pendingConvert) return false;
+		if (index === pendingConvert.handIndex) return true; // played card can't pay its own cost
+		const next = discardSelection.includes(index)
+			? discardSelection.filter((i) => i !== index)
+			: [...discardSelection, index];
+		if (next.length >= consolidateCost - 1) {
+			moves.playCard({ ...pendingConvert, extraDiscards: next.slice(0, consolidateCost - 1) });
+			setPendingConvert(null);
+			setDiscardSelection([]);
+			setSelectedCard(null);
+			setSelectedColor(null);
+			setSelectedSourceDot(null);
+			setExpandedZone(null);
+			return true;
+		}
+		setDiscardSelection(next);
+		return true;
 	};
 
 	const humanizeActionError = (msg: string): string => {
@@ -703,11 +750,11 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	// level per press. Every state must be cancellable.
 	const escStateRef = React.useRef({
 		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
-		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
+		pendingConvert, pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
 	});
 	escStateRef.current = {
 		abilityFlow, actionPickingCoord, actionModalOpen, discardModalOpen,
-		pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
+		pendingConvert, pendingRotationTile, actionMode, selectedSourceDot, selectedCard, expandedZone,
 	};
 	const shortcutRef = React.useRef<{ undo: () => void; endTurn: () => void; isMyTurn: boolean }>({ undo: () => {}, endTurn: () => {}, isMyTurn: false });
 	React.useEffect(() => {
@@ -722,6 +769,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 			if (s.actionPickingCoord !== null) { setActionPickingCoord(null); return; }
 			if (s.discardModalOpen) { setDiscardModalOpen(false); return; }
 			if (s.actionModalOpen) { setActionModalOpen(false); setSelectedCard(null); setSelectedColor(null); return; }
+			if (s.pendingConvert !== null) { setPendingConvert(null); setDiscardSelection([]); return; }
 			if (s.pendingRotationTile !== null) { setPendingRotationTile(null); return; }
 			if (s.actionMode !== 'place') {
 				setActionMode('place');
@@ -758,12 +806,20 @@ const GameBoard: React.FC<AppBoardProps> = ({
 	}, [currentPlayer, ctx.gameover, allSeatsJoined]);
 
 	const prevMyTurnRef = React.useRef(isMyTurn);
+	const [turnFlash, setTurnFlash] = React.useState(false);
 	React.useEffect(() => {
 		const was = prevMyTurnRef.current;
 		prevMyTurnRef.current = isMyTurn;
 		if (!was && isMyTurn && !ctx.gameover && allSeatsJoined) {
+			// Chime + visual flash on the same rising edge: the sound can be
+			// missed (muted phone), the notification only fires off-app.
+			setTurnFlash(true);
+			const flashT = setTimeout(() => setTurnFlash(false), 1600);
 			const t = setTimeout(() => playSfx('your-turn'), 380);
-			return () => clearTimeout(t);
+			return () => {
+				clearTimeout(t);
+				clearTimeout(flashT);
+			};
 		}
 	}, [isMyTurn, ctx.gameover, allSeatsJoined]);
 
@@ -998,11 +1054,23 @@ const GameBoard: React.FC<AppBoardProps> = ({
 					}
 					const fromColor = findConvertibleColor(selectedSourceDot, coord, col);
 					if (fromColor) {
-						moves.playCard({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord, convert: fromColor });
-						setSelectedCard(null);
-						setSelectedColor(null);
-						setSelectedSourceDot(null);
-						return;
+						if (consolidateCost <= 1) {
+							moves.playCard({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord, convert: fromColor, extraDiscards: [] });
+							setSelectedCard(null);
+							setSelectedColor(null);
+							setSelectedSourceDot(null);
+							return;
+						}
+						if (myHand.length >= consolidateCost) {
+							// The conversion still owes extra discards — hold it and
+							// send the player to their hand to pay.
+							setPendingConvert({ handIndex: selectedCard, pick: col, source: selectedSourceDot, coord, convert: fromColor });
+							setDiscardSelection([]);
+							setSelectedSourceDot(null);
+							if (isMobile) setExpandedZone('hand');
+							return;
+						}
+						// Hand can't cover the cost — not offerable; try other colors.
 					}
 				}
 			}
@@ -1431,6 +1499,33 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="zone-backdrop-dim" onClick={() => setExpandedZone(null)} />
 			)}
 
+			{/* Consolidation-cost tray: the conversion is targeted; the extra
+			    discard(s) are still owed from the hand. */}
+			{pendingConvert && (
+				<div className="discard-tray discard-tray--convert">
+					<span className="discard-tray__title">
+						<Icon name="sparkles" size={14} /> Consolidate — discard {consolidateCost - 1} more card{consolidateCost - 1 > 1 ? 's' : ''}
+					</span>
+					<div className="discard-tray__slots">
+						{Array.from({ length: consolidateCost - 1 }, (_, i) => {
+							const idx = discardSelection[i];
+							return (
+								<div
+									key={`ct-${i}`}
+									className={`discard-tray__slot ${idx !== undefined ? 'discard-tray__slot--filled' : ''}`}
+								>
+									{idx !== undefined ? myHand[idx]?.name : '+'}
+								</div>
+							);
+						})}
+					</div>
+					<span className="discard-tray__hint">Consolidating is costly — tap the card to give up</span>
+					<button className="discard-tray__cancel" onClick={cancelPendingConvert}>
+						Cancel (Esc)
+					</button>
+				</div>
+			)}
+
 			{/* CARD SHELF — persistent desktop hand (mobile uses the tab bar) */}
 			{!isMobile && (
 				<>
@@ -1439,8 +1534,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						cards={myHand}
 						selectedIndex={actionMode === 'place' ? selectedCard : null}
 						discardSelection={discardSelection}
-						discardMode={actionMode !== 'place'}
+						discardMode={actionMode !== 'place' || pendingConvert !== null}
 						onSelect={(index) => {
+							if (handleConvertDiscardTap(index)) return;
 							if (actionMode !== 'place') {
 								// Multi-select for discard cost
 								setDiscardSelection((prev) => {
@@ -1523,6 +1619,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						rules={rules}
 						cards={G.treasure}
 						onTake={onTakeTreasure}
+						onInspect={(i) => G.treasure[i] && setInspected({ card: G.treasure[i]!, source: 'treasure', index: i })}
 						isExpanded={expandedZone === 'treasure'}
 						onExpandChange={handleZoneExpand('treasure')}
 					/>
@@ -1542,8 +1639,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 											card={card}
 											isSelected={false}
 											rules={rules}
-											onSelect={() => {}}
-											onPickColor={() => {}}
+											onSelect={() => setInspected({ card, source: 'discard', index: i })}
+											onPickColor={() => setInspected({ card, source: 'discard', index: i })}
 										/>
 									))}
 									{G.discard.length === 0 && <div className="discard-modal__empty">Nothing discarded yet</div>}
@@ -1573,9 +1670,10 @@ const GameBoard: React.FC<AppBoardProps> = ({
 									<NeuralCard
 										key={`${serializeCard(card)}-${i}`}
 										card={card}
-										isSelected={actionMode !== 'place' ? discardSelection.includes(i) : i === selectedCard}
+										isSelected={(actionMode !== 'place' || pendingConvert !== null) ? discardSelection.includes(i) : i === selectedCard}
 										rules={rules}
 										onSelect={() => {
+											if (handleConvertDiscardTap(i)) return;
 											if (actionMode !== 'place') {
 												setDiscardSelection((prev) => {
 													if (prev.includes(i)) return prev.filter((idx) => idx !== i);
@@ -1617,6 +1715,7 @@ const GameBoard: React.FC<AppBoardProps> = ({
 										card={card}
 										rules={rules}
 										onTake={() => onTakeTreasure(i)}
+										onInspect={() => setInspected({ card, source: 'treasure', index: i })}
 									/>
 								))}
 								{G.treasure.length === 0 && (
@@ -1634,8 +1733,8 @@ const GameBoard: React.FC<AppBoardProps> = ({
 										card={card}
 										isSelected={false}
 										rules={rules}
-										onSelect={() => {}}
-										onPickColor={() => {}}
+										onSelect={() => setInspected({ card, source: 'discard', index: i })}
+										onPickColor={() => setInspected({ card, source: 'discard', index: i })}
 									/>
 								))}
 								{G.discard.length === 0 && (
@@ -2115,11 +2214,12 @@ const GameBoard: React.FC<AppBoardProps> = ({
 				<div className="game-start-banner">All players in — game on!</div>
 			)}
 
-			{/* MYSTERY BOX DRAFT — revealed cards + whose pick/placement it is.
-			    Non-blocking: during placement the board must stay clickable. */}
+			{/* REVEAL-AND-PICK DRAFT (Mystery Box, Alter Fate) — revealed cards +
+			    whose pick/placement it is. Non-blocking: during placement the
+			    board must stay clickable. */}
 			{pendingDraft && !ctx.gameover && (
 				<div className={`draft-overlay ${pendingDraft.placing ? 'draft-overlay--slim' : ''}`}>
-					<div className="draft-overlay__title"><Icon name="sparkles" size={14} /> Mystery Box</div>
+					<div className="draft-overlay__title"><Icon name="sparkles" size={14} /> {pendingDraft.title ?? 'Mystery Box'}</div>
 					{pendingDraft.placing ? (
 						<div className="draft-overlay__hint">
 							{isMyDraftPlace
@@ -2130,7 +2230,9 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						<>
 							<div className="draft-overlay__hint">
 								{isMyDraftPick
-									? 'Your pick — choose a card:'
+									? (pendingDraft.take === 'hand'
+										? 'Choose a card to keep — the rest are discarded:'
+										: 'Your pick — choose a card:')
 									: `${(draftPicker && (nameOf(draftPicker) ?? `P${draftPicker}`)) ?? '…'} is picking…`}
 							</div>
 							<div className="draft-overlay__cards">
@@ -2152,6 +2254,33 @@ const GameBoard: React.FC<AppBoardProps> = ({
 						</>
 					)}
 				</div>
+			)}
+
+			{/* YOUR-TURN FLASH — non-blocking visual pulse on the turn hand-off */}
+			{turnFlash && (
+				<div className="turn-flash" aria-hidden="true">
+					<div className="turn-flash__text">Your turn</div>
+				</div>
+			)}
+
+			{/* CARD INSPECTOR — tap-to-view for treasure/discard cards */}
+			{inspected && (
+				<CardInspector
+					card={inspected.card}
+					rules={rules}
+					source={inspected.source}
+					action={inspected.source === 'treasure' ? {
+						label: 'Take to hand',
+						onAct: () => {
+							onTakeTreasure(inspected.index);
+							setInspected(null);
+						},
+						disabledReason: !isMyTurn
+							? 'Wait for your turn to take treasure.'
+							: locked ? 'Waiting for the current move to finish.' : null,
+					} : undefined}
+					onClose={() => setInspected(null)}
+				/>
 			)}
 
 			{/* Game Over overlay */}
@@ -2235,15 +2364,31 @@ const NetworkModal: React.FC<{
 	onClose: () => void;
 	/** Seed from a ?join= invite link: focused join prompt with name entry. */
 	prefill?: { code: string; error: string | null; invited?: boolean } | null;
-}> = ({ isOpen, onClose, prefill = null }) => {
+	/** Per-match status snapshots (polled at App level). */
+	statuses?: Record<string, MatchStatus>;
+}> = ({ isOpen, onClose, prefill = null, statuses = {} }) => {
 	const network = useUIStore((s) => s.network);
 	const setNetwork = useUIStore((s) => s.setNetwork);
+	const sessions = useUIStore((s) => s.sessions);
+	const switchSession = useUIStore((s) => s.switchSession);
+	const removeSession = useUIStore((s) => s.removeSession);
 	const numPlayers = useUIStore((s) => s.numPlayers);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
+	const newLocalGame = useUIStore((s) => s.newLocalGame);
 	const playerName = useUIStore((s) => s.playerName);
 	const setPlayerName = useUIStore((s) => s.setPlayerName);
 	const turnAlerts = useUIStore((s) => s.turnAlerts);
 	const setTurnAlerts = useUIStore((s) => s.setTurnAlerts);
+	// New Game config (persists while the app is open; seeded from the store).
+	const [newGameMode, setNewGameMode] = React.useState<'local' | 'online'>('local');
+	const [newCount, setNewCount] = React.useState(() => Math.min(Math.max(numPlayers, 2), RULES.MAX_PLAYERS));
+	const [newSeatAI, setNewSeatAI] = React.useState<Record<number, boolean>>(() => {
+		const seats: Record<number, boolean> = {};
+		for (let i = 1; i < RULES.MAX_PLAYERS; i += 1) {
+			seats[i] = (botByPlayer[String(i) as PlayerID] ?? 'None') !== 'None';
+		}
+		return seats;
+	});
 	const [inputMatchID, setInputMatchID] = React.useState('');
 	const [busy, setBusy] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
@@ -2288,30 +2433,36 @@ const NetworkModal: React.FC<{
 
 	const nameFor = (seat: PlayerID): string => playerName.trim() || `Player ${seat}`;
 
-	// Seats configured as bots are reserved for the server's AI players.
-	const botSeats = (): Record<string, BotMode> => {
-		const bots: Record<string, BotMode> = {};
-		for (let i = 0; i < numPlayers; i += 1) {
-			const pid = String(i) as PlayerID;
-			const kind = botByPlayer[pid] ?? 'None';
-			if (kind !== 'None') bots[pid] = kind;
+	// New Game config: seat 0 is always you; every other seat is a person or an
+	// AI. "This device" starts a fresh local match; "Online" creates a server
+	// match where human seats are open for friends and AI seats are server-run.
+	const seatBots = (): Record<PlayerID, BotMode> => {
+		const bots: Record<PlayerID, BotMode> = {};
+		for (let i = 0; i < newCount; i += 1) {
+			bots[String(i) as PlayerID] = i !== 0 && newSeatAI[i] ? 'EvaluatorPlus' : 'None';
 		}
 		return bots;
 	};
+	const aiCount = Array.from({ length: newCount }, (_, i) => i).filter((i) => i !== 0 && newSeatAI[i]).length;
 
-	const handleCreate = async () => {
+	const handleStartNewGame = async () => {
+		const bots = seatBots();
+		if (newGameMode === 'local') {
+			newLocalGame(newCount, bots);
+			onClose();
+			return;
+		}
 		setBusy(true);
 		setError(null);
 		try {
-			const bots = botSeats();
-			const creatorSeat = Array.from({ length: numPlayers }, (_, i) => String(i) as PlayerID)
-				.find((pid) => !bots[pid]);
-			if (!creatorSeat) {
-				throw new Error('Every seat is set to AI — leave at least one human seat.');
+			const serverBots: Record<string, BotMode> = {};
+			for (const [pid, kind] of Object.entries(bots)) {
+				if (kind !== 'None') serverBots[pid] = kind;
 			}
-			const matchID = await createMatch(serverURL, numPlayers, bots);
+			const creatorSeat = '0' as PlayerID; // seat 0 is always human ("You")
+			const matchID = await createMatch(serverURL, newCount, serverBots);
 			const credentials = await joinMatch(serverURL, matchID, creatorSeat, nameFor(creatorSeat));
-			setNetwork({ matchID, seat: creatorSeat, credentials, numPlayers });
+			setNetwork({ matchID, seat: creatorSeat, credentials, numPlayers: newCount });
 			onClose();
 		} catch (e) {
 			setError(e instanceof Error ? e.message : 'Failed to create match');
@@ -2330,14 +2481,19 @@ const NetworkModal: React.FC<{
 		try {
 			// Forgiving lookup: handles pasted invite links and any letter case.
 			const match = await findMatchByCode(serverURL, inputMatchID);
+			// Already seated here? Just switch back — don't grab a second seat.
+			const held = sessions.find((s) => s.matchID === match.matchID);
+			if (held) {
+				switchSession(held.matchID);
+				onClose();
+				return;
+			}
 			const seat = firstFreeSeat(match);
 			if (seat === null) {
 				throw new Error('Match is full — every seat is taken.');
 			}
-			// Following an invite while seated elsewhere: free the old seat.
-			if (network && network.matchID !== match.matchID) {
-				await leaveMatch(serverURL, network.matchID, network.seat, network.credentials);
-			}
+			// Joining another match keeps the old seat: games run in parallel and
+			// "My games" switches between them. Only Leave Match frees a seat.
 			const credentials = await joinMatch(serverURL, match.matchID, seat, nameFor(seat));
 			setNetwork({ matchID: match.matchID, seat, credentials, numPlayers: match.players.length });
 			onClose();
@@ -2359,9 +2515,12 @@ const NetworkModal: React.FC<{
 
 	const handleDisconnect = async () => {
 		if (network) {
-			await leaveMatch(serverURL, network.matchID, network.seat, network.credentials);
+			await leaveMatch(serverURL, network.matchID, network.seat, network.credentials).catch(() => {});
+			// removeSession falls back to the next held game (or null).
+			removeSession(network.matchID);
+		} else {
+			setNetwork(null);
 		}
-		setNetwork(null);
 		setInputMatchID('');
 		setError(null);
 	};
@@ -2370,11 +2529,53 @@ const NetworkModal: React.FC<{
 		<div className="modal-overlay" onClick={onClose}>
 			<div className="modal-content network-modal" onClick={(e) => e.stopPropagation()}>
 				<div className="modal-header">
-					<h2>Network Game</h2>
+					<h2>Games</h2>
 					<button className="modal-close" onClick={onClose}>×</button>
 				</div>
 
 				<div className="modal-body">
+					{sessions.length > 0 && (
+						<div className="network-section">
+							<h3>My Games</h3>
+							<ul className="my-games">
+								{sessions.map((s) => {
+									const st = statuses[s.matchID];
+									const isActive = network?.matchID === s.matchID;
+									const yourMove = !!st && !st.gameover && !st.missing && st.allSeatsJoined && st.actionOn === s.seat;
+									const label = !st ? '…'
+										: st.missing ? 'Gone'
+										: st.gameover ? 'Finished'
+										: !st.allSeatsJoined ? 'Waiting for players'
+										: yourMove ? 'Your move!'
+										: 'Their move';
+									return (
+										<li key={s.matchID} className={`my-games__row ${isActive ? 'my-games__row--active' : ''}`}>
+											<button
+												className="my-games__switch"
+												onClick={() => { switchSession(s.matchID); onClose(); }}
+												disabled={isActive}
+											>
+												<code className="my-games__code">{s.matchID}</code>
+												<span className="my-games__seat">P{s.seat}</span>
+												<span className={`my-games__status ${yourMove ? 'my-games__status--you' : ''}`}>
+													{isActive ? 'Current' : label}
+												</span>
+											</button>
+											{(st?.missing || st?.gameover) && (
+												<button
+													className="my-games__drop"
+													onClick={() => removeSession(s.matchID)}
+													title="Remove from list"
+												>
+													<Icon name="x" size={12} />
+												</button>
+											)}
+										</li>
+									);
+								})}
+							</ul>
+						</div>
+					)}
 					{prefill?.invited && (!network || network.matchID !== prefill.code) ? (
 						<div className="network-section">
 							<h3>You're invited!</h3>
@@ -2396,7 +2597,9 @@ const NetworkModal: React.FC<{
 								{busy ? 'Joining…' : 'Join Match'}
 							</button>
 						</div>
-					) : network ? (
+					) : (
+						<>
+						{network && (
 						<div className="network-status">
 							<div className="network-status__connected">
 								<span className="network-status__dot" />
@@ -2426,11 +2629,10 @@ const NetworkModal: React.FC<{
 							</button>
 							{alertsNote && <p className="network-hint">{alertsNote}</p>}
 							<button className="btn btn--danger" onClick={handleDisconnect}>
-								Leave Match
+								Leave This Match
 							</button>
 						</div>
-					) : (
-						<>
+						)}
 							<div className="network-section">
 								<h3>Your Name</h3>
 								<input
@@ -2444,20 +2646,75 @@ const NetworkModal: React.FC<{
 							</div>
 
 							<div className="network-section">
-								<h3>Create New Match</h3>
+								<h3>New Game</h3>
+								<div className="new-game__modes">
+									<button
+										className={`new-game__mode ${newGameMode === 'local' ? 'new-game__mode--on' : ''}`}
+										onClick={() => setNewGameMode('local')}
+									>
+										This device
+									</button>
+									<button
+										className={`new-game__mode ${newGameMode === 'online' ? 'new-game__mode--on' : ''}`}
+										onClick={() => setNewGameMode('online')}
+									>
+										Online with friends
+									</button>
+								</div>
+								<div className="new-game__row">
+									<span className="new-game__label">Players</span>
+									<div className="new-game__counts">
+										{Array.from({ length: RULES.MAX_PLAYERS - 1 }, (_, i) => i + 2).map((n) => (
+											<button
+												key={n}
+												className={`new-game__count ${newCount === n ? 'new-game__count--on' : ''}`}
+												onClick={() => setNewCount(n)}
+											>
+												{n}
+											</button>
+										))}
+									</div>
+								</div>
+								<ul className="new-game__seats">
+									{Array.from({ length: newCount }, (_, i) => (
+										<li key={i} className="new-game__seat">
+											<span className="new-game__seat-name">
+												{i === 0 ? 'You' : `Seat ${i + 1}`}
+											</span>
+											{i === 0 ? (
+												<span className="new-game__seat-fixed">Human</span>
+											) : (
+												<div className="new-game__seat-kind">
+													<button
+														className={`new-game__kind ${!newSeatAI[i] ? 'new-game__kind--on' : ''}`}
+														onClick={() => setNewSeatAI((prev) => ({ ...prev, [i]: false }))}
+													>
+														{newGameMode === 'local' ? 'Human (this device)' : 'Friend'}
+													</button>
+													<button
+														className={`new-game__kind ${newSeatAI[i] ? 'new-game__kind--on' : ''}`}
+														onClick={() => setNewSeatAI((prev) => ({ ...prev, [i]: true }))}
+													>
+														AI
+													</button>
+												</div>
+											)}
+										</li>
+									))}
+								</ul>
 								<p className="network-hint">
-									Starts a {numPlayers}-player match using the current player setup
-									{Object.keys(botSeats()).length > 0
-										? ` (${Object.keys(botSeats()).length} AI seat${Object.keys(botSeats()).length > 1 ? 's' : ''} played by the server)`
-										: ''}
-									. Share the match ID with the other players.
+									{newGameMode === 'local'
+										? (aiCount === newCount - 1
+											? 'Solo game — you against the AI, all on this device.'
+											: 'Hotseat game on this device: pass it around; AI seats play themselves.')
+										: `Creates an online match${aiCount > 0 ? ` (${aiCount} AI seat${aiCount > 1 ? 's' : ''} played by the server)` : ''} — you get a code and link to invite the others.`}
 								</p>
 								<button
 									className="btn btn--primary"
-									onClick={handleCreate}
+									onClick={handleStartNewGame}
 									disabled={busy}
 								>
-									{busy ? 'Working…' : 'Create Match'}
+									{busy ? 'Working…' : newGameMode === 'local' ? 'Start Game' : 'Create & Get Invite Code'}
 								</button>
 							</div>
 
@@ -2497,8 +2754,7 @@ const NetworkModal: React.FC<{
 // App
 const App: React.FC = () => {
 	const numPlayers = useUIStore((s) => s.numPlayers);
-	const setNumPlayers = useUIStore((s) => s.setNumPlayers);
-	const resetBotsForCount = useUIStore((s) => s.resetBotsForCount);
+	const localMatchID = useUIStore((s) => s.localMatchID);
 	const botByPlayer = useUIStore((s) => s.botByPlayer);
 	const aiPaused = useUIStore((s) => s.aiPaused);
 	const network = useUIStore((s) => s.network);
@@ -2550,9 +2806,58 @@ const App: React.FC = () => {
 	// Turn-alert push subscriptions live in server memory — re-register on
 	// load so a server restart/deploy self-heals without a new prompt.
 	const turnAlertsOn = useUIStore((s) => s.turnAlerts);
+	const heldSessions = useUIStore((s) => s.sessions);
+	const switchSession = useUIStore((s) => s.switchSession);
+	// Re-register push for EVERY held match (server memory is deploy-ephemeral).
+	const heldKey = heldSessions.map((s) => s.matchID).join(',');
 	React.useEffect(() => {
-		if (network && turnAlertsOn) void resyncTurnAlerts(network);
-	}, [network, turnAlertsOn]);
+		if (!turnAlertsOn) return;
+		for (const session of heldSessions) void resyncTurnAlerts(session);
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- heldKey covers sessions identity
+	}, [heldKey, turnAlertsOn]);
+
+	// Deep-switch into a match: ?resume=<matchID> (from a tapped notification)
+	// or a service-worker message when the app was already open.
+	React.useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		const resume = params.get('resume');
+		if (resume) {
+			switchSession(resume);
+			params.delete('resume');
+			const qs = params.toString();
+			window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+		}
+		const onMessage = (event: MessageEvent): void => {
+			const data = event.data as { type?: string; matchID?: string } | null;
+			if (data?.type === 'resume-match' && data.matchID) switchSession(data.matchID);
+		};
+		navigator.serviceWorker?.addEventListener('message', onMessage);
+		return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+	}, [switchSession]);
+
+	// Status of every held match → globe badge ("games waiting on you", the
+	// active one excluded — you're already looking at it).
+	const matchStatuses = useMatchStatuses(heldSessions);
+	const waitingCount = heldSessions.filter((s) =>
+		s.matchID !== network?.matchID
+		&& matchStatuses[s.matchID]
+		&& !matchStatuses[s.matchID]!.missing
+		&& !matchStatuses[s.matchID]!.gameover
+		&& matchStatuses[s.matchID]!.allSeatsJoined
+		&& matchStatuses[s.matchID]!.actionOn === s.seat,
+	).length;
+	// One-shot bounce when the count RISES (continuous motion is noise).
+	const [badgeBounce, setBadgeBounce] = React.useState(false);
+	const prevWaitingRef = React.useRef(0);
+	React.useEffect(() => {
+		if (waitingCount > prevWaitingRef.current) {
+			setBadgeBounce(true);
+			const t = setTimeout(() => setBadgeBounce(false), 900);
+			prevWaitingRef.current = waitingCount;
+			return () => clearTimeout(t);
+		}
+		prevWaitingRef.current = waitingCount;
+	}, [waitingCount]);
 
 	// Local games: the human is always seat "0" and bots run in-browser.
 	// Network games: the seat was claimed through the lobby (with credentials),
@@ -2572,7 +2877,7 @@ const App: React.FC = () => {
 
 	// Create headless bot clients that auto-play when it's their turn
 	// (local games only — network bot seats are driven by the server).
-	useBotClients(HexStringsGame, numPlayers, network ? EMPTY_BOTS : botByPlayer, aiPaused);
+	useBotClients(HexStringsGame, numPlayers, network ? EMPTY_BOTS : botByPlayer, aiPaused, localMatchID);
 
 	React.useEffect(() => {
 		const update = () => {
@@ -2596,17 +2901,20 @@ const App: React.FC = () => {
 			{/* Setup controls in top-left corner */}
 			{!isLabRoute && (
 				<div className="setup-controls">
-					<button onClick={() => {
-						const next = Math.min(8, numPlayers + 1);
-						setNumPlayers(next);
-						resetBotsForCount(next);
-					}} disabled={network !== null} title={network ? 'Leave the network match to change players' : undefined}>+</button>
-					<span className="setup-controls__count">{clientNumPlayers}P</span>
-					<button onClick={() => {
-						const next = Math.max(2, numPlayers - 1);
-						setNumPlayers(next);
-						resetBotsForCount(next);
-					}} disabled={network !== null || numPlayers <= 2} title={network ? 'Leave the network match to change players' : undefined}>−</button>
+					{/* One Games button: new game (local or online), join, switch.
+					    The old +/- player buttons never actually restarted a match. */}
+					<button
+						className={`setup-controls__games ${badgeBounce ? 'setup-controls__network--bounce' : ''}`}
+						onClick={() => setNetworkModalOpen(true)}
+						title={waitingCount > 0
+							? `${waitingCount} game${waitingCount > 1 ? 's' : ''} waiting on you`
+							: 'Games — new, join, switch'}
+					>
+						<Icon name="globe" />
+						<span className="setup-controls__games-label">Games</span>
+						<span className="setup-controls__count">{clientNumPlayers}P{network ? ' · online' : ''}</span>
+						{waitingCount > 0 && <span className="network-badge">{waitingCount}</span>}
+					</button>
 					<button
 						className="setup-controls__network"
 						onClick={() => setSoundMuted(!soundMuted)}
@@ -2614,20 +2922,13 @@ const App: React.FC = () => {
 					>
 						<Icon name={soundMuted ? 'volume-off' : 'volume'} />
 					</button>
-					<button
-						className={`setup-controls__network ${network ? 'setup-controls__network--connected' : ''}`}
-						onClick={() => setNetworkModalOpen(true)}
-						title={network ? 'Connected to network game' : 'Network game'}
-					>
-						<Icon name="globe" />
-					</button>
 				</div>
 			)}
 			{isLabRoute
 				? <StateLab onExit={() => window.location.assign('/')} />
 				: <ClientComp
 						playerID={humanPlayerID}
-						matchID={network?.matchID}
+						matchID={network?.matchID ?? localMatchID}
 						credentials={network?.credentials}
 						viewer={humanPlayerID}
 						onSetViewer={() => {}}
@@ -2638,6 +2939,7 @@ const App: React.FC = () => {
 					isOpen={networkModalOpen}
 					onClose={() => setNetworkModalOpen(false)}
 					prefill={joinPrefill}
+					statuses={matchStatuses}
 				/>
 			)}
 			<div

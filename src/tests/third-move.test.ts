@@ -16,6 +16,8 @@ const rules = {
   EDGE_COLORS,
   COLOR_TO_DIR: buildColorToDir(EDGE_COLORS),
   PLACEMENT: { ...MODE_RULESETS.path.PLACEMENT, STARTING_RING: 0, FORK_SUPPORT: true },
+  // Score deltas here measure raw counts only — pin the completed-path bonus off.
+  SCORING: { ...MODE_RULESETS.path.SCORING, CONSOLIDATION_BONUS: 0 },
 };
 
 const G: GState = {

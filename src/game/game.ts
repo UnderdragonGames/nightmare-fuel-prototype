@@ -1,6 +1,6 @@
 import type { Ctx, Game, PlayerID } from 'boardgame.io';
 import { RULES, buildColorToDir } from './rulesConfig';
-import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, isRotatableNode, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, validateConvertExtras, discardConvertExtras, isRotatableNode, key, shuffleInPlace, inBounds, ringIndex, inferPlacementRotation, countRimToCenterPaths, rotateNeighbor, dirToColor } from './helpers';
 import type { GState, MovePlayActionArgs, MovePlayCardArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, MoveUseAbilityArgs, MoveDraftPickArgs, MoveDraftPlaceArgs, PlayerPrefs, PlayerState, HexTile, Co, Rules, NightmareAction } from './types';
 import { drawOne, initActionState, playActionCardFromHand, applyNightmareActions, actionEffectsInvalidReason, advanceDraft, cardHasLegalPlacement, tryAutoPlayDraftedAction } from './effects';
 import { resolveNightmareActions } from './nightmareActions';
@@ -355,10 +355,15 @@ export const HexStringsGame: Game<GState> = {
 							if (rules.ONE_COLOR_PER_CARD_PLAY) {
 								if (!card.colors.includes(args.pick)) return;
 							}
+							let convertExtras: number[] = [];
 							if (rules.MODE === 'path') {
 								if (!('source' in args)) return;
 								if (args.convert) {
 									// Consolidation: convert one existing lane's color in place.
+									// Costs COST_TO_CONSOLIDATE cards total (extra discards).
+									const extras = validateConvertExtras(hand.length, args.handIndex, args.extraDiscards, rules);
+									if (extras === null) return;
+									convertExtras = extras;
 									if (!canConsolidate(G, args.source, args.coord, args.convert, args.pick, rules)) return;
 									if (!applyConsolidation(G, args.source, args.coord, args.convert, args.pick)) return;
 								} else {
@@ -384,6 +389,7 @@ export const HexStringsGame: Game<GState> = {
 							emitEvent(G, { type: 'onPlacement', playerId: pid, coord, color: args.pick });
 							const [used] = hand.splice(args.handIndex, 1);
 							if (used) G.discard.push(used);
+							discardConvertExtras(hand, G.discard, args.handIndex, convertExtras);
 						},
 					},
 					playActionCard: {
@@ -632,7 +638,10 @@ export const HexStringsGame: Game<GState> = {
 							const hand = G.players[picker]!.hand;
 							hand.push(card);
 							const handIndex = hand.length - 1;
-							if (card.isAction) {
+							if (draft.take === 'hand') {
+								// Alter Fate-style: the pick simply joins the hand.
+								advanceDraftAndSetStage(G, events);
+							} else if (card.isAction) {
 								// "Immediately plays it" — cards needing input stay in hand.
 								tryAutoPlayDraftedAction(G, ctx, picker, handIndex);
 								advanceDraftAndSetStage(G, events);

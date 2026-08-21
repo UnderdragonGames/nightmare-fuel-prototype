@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Ctx } from 'boardgame.io';
 import { CARDS } from '../../game/cards';
-import { buildDeck, DIGITALLY_EXCLUDED_CARD_IDS } from '../../game/deck';
+import { buildDeck, DIGITALLY_EXCLUDED_CARD_IDS, DRAW_CARD_IDS } from '../../game/deck';
 import { resolveCardEffects } from '../../game/cardActions';
 import { initActionState } from '../../game/effects';
 import { HexStringsGame } from '../../game/game';
@@ -31,8 +31,23 @@ describe('digital deck exclusions', () => {
 		for (const id of DIGITALLY_EXCLUDED_CARD_IDS) {
 			expect(deck.some((c) => c.id === id)).toBe(false);
 		}
-		// Everything else still present
-		expect(deck.length).toBe((CARDS as Card[]).length - DIGITALLY_EXCLUDED_CARD_IDS.size);
+		// Everything else still present, plus extra copies of the draw cards
+		expect(deck.length).toBe(
+			(CARDS as Card[]).length -
+				DIGITALLY_EXCLUDED_CARD_IDS.size +
+				DRAW_CARD_IDS.length * rules.EXTRA_DRAW_CARD_COPIES,
+		);
+	});
+
+	it('mixes in EXTRA_DRAW_CARD_COPIES extra copies of each draw card', () => {
+		const deck = buildDeck({ ...rules, EXTRA_DRAW_CARD_COPIES: 3 }, () => 0.5);
+		for (const id of DRAW_CARD_IDS) {
+			expect(deck.filter((c) => c.id === id).length).toBe(1 + 3);
+		}
+		const plain = buildDeck({ ...rules, EXTRA_DRAW_CARD_COPIES: 0 }, () => 0.5);
+		for (const id of DRAW_CARD_IDS) {
+			expect(plain.filter((c) => c.id === id).length).toBe(1);
+		}
 	});
 });
 
@@ -110,7 +125,7 @@ describe('Mystery Box — interactive draft', () => {
 		const { G, events, playMysteryBox } = setup([byId(8), byId(82)]);
 		playMysteryBox();
 		expect(G.action.revealed).toHaveLength(2);
-		expect(G.action.pendingDraft).toEqual({ order: ['0', '1'], position: 0, placing: null });
+		expect(G.action.pendingDraft).toMatchObject({ order: ['0', '1'], position: 0, placing: null, take: 'play' });
 		expect(G.discard.map((c) => c.id)).toContain(63);
 		expect(events.calls).toContainEqual({ value: { '0': 'draft' } });
 	});

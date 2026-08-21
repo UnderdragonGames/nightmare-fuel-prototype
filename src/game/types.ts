@@ -37,7 +37,7 @@ export type CardAction =
 	| { type: 'moveCardToPlayerHand' }
 	| { type: 'draftInTurnOrder' }
 	| { type: 'autoPlayPickedCard' }
-	| { type: 'beginDraft' }
+	| { type: 'beginDraft'; take?: 'play' | 'hand'; solo?: boolean }
 	| { type: 'chooseAgenda' }
 	| { type: 'setAgendaOverride' }
 	| { type: 'reorderPlayerPrefs' }
@@ -145,18 +145,25 @@ export type ActionState = {
 	// Hand index of the card each player drafted in the most recent draft
 	// (consumed by autoPlayDrafted; null when not mid-draft).
 	draftedHandIndex: Record<PlayerID, number | null>;
-	// Interactive sequential draft (Mystery Box): each player in `order` picks
-	// one revealed card on their own client; a picked lane card must then be
-	// placed (`placing`) before the draft advances. Null when no draft is live.
+	// Interactive reveal-and-pick (Mystery Box, Alter Fate): each player in
+	// `order` picks one revealed card on their own client. take 'play' means
+	// the pick resolves immediately (actions auto-play; a lane card must be
+	// placed via `placing` before the draft advances); take 'hand' simply
+	// keeps the pick. Leftover revealed cards are discarded when it ends.
 	pendingDraft: {
 		order: PlayerID[];
 		position: number;
 		placing: { playerId: PlayerID; handIndex: number } | null;
+		take: 'play' | 'hand';
+		/** Card name shown in the overlay title (e.g. "Alter Fate"). */
+		title?: string;
 	} | null;
 };
 
 // Path-mode lane segment between adjacent nodes.
-export type PathLane = { from: Co; to: Co; color: Color };
+// `consolidated` marks a lane fixed by consolidation: it can never be
+// consolidated again (or recolored by lane-targeting cards).
+export type PathLane = { from: Co; to: Co; color: Color; consolidated?: boolean };
 
 export type HexTile = {
 	colors: Color[];
@@ -235,6 +242,9 @@ export type BaseScoringRules = {
 export type ObjectiveScoringRules = BaseScoringRules & {
 	// Primary / secondary / tertiary color point multipliers
 	COLOR_POINTS: [number, number, number];
+	// Flat bonus added to a color's raw count when it has a completed
+	// rim-to-center path (the consolidation goal). 0 disables the bonus.
+	CONSOLIDATION_BONUS: number;
 };
 
 export type PlacementRules = {
@@ -271,6 +281,9 @@ export type PlacementRules = {
 	COST_TO_BLOCK: number;
 	// Number of cards to discard to rotate a tile. Must match DISCARD_TO_ROTATE being enabled.
 	COST_TO_ROTATE: number;
+	// Total cards a consolidation conversion costs, played card included
+	// (2 = play one + discard one extra). 1 = no extra cost.
+	COST_TO_CONSOLIDATE: number;
 };
 
 export type Rules = {
@@ -285,6 +298,7 @@ export type Rules = {
 	// If true, shuffle EDGE_COLORS once per new game (and derive COLOR_TO_DIR from that shuffled order).
 	RANDOM_CARDINAL_DIRECTIONS: boolean;
 	RANDOM_START_ORDER: boolean;
+	EXTRA_DRAW_CARD_COPIES: number;
 	// Maps each color to its directional offset vector in hex coordinates
 	COLOR_TO_DIR: Record<Color, Co>;
 	// Number of cards each player holds in hand
@@ -336,7 +350,7 @@ export type GameEffect =
 	| { type: 'revealTop'; count: number }
 	| { type: 'discardRevealed' }
 	| { type: 'draftInTurnOrder'; order: PlayerID[]; picks: Record<PlayerID, number> }
-	| { type: 'beginDraft'; order: PlayerID[] }
+	| { type: 'beginDraft'; order: PlayerID[]; take?: 'play' | 'hand'; title?: string }
 	| { type: 'autoPlayDrafted'; order: PlayerID[] }
 	| { type: 'autoPlayPickedCard'; playerId: PlayerID; revealedIndex: number; effects?: GameEffect[] }
 	| { type: 'moveCardToPlayerHand'; playerId: PlayerID; card?: Card; usePlayedCard?: boolean }
@@ -363,7 +377,9 @@ export type MovePlayCardArgs =
 	// Path mode: place a lane from -> coord (must be adjacent).
 	// When `convert` is set, this is a consolidation CONVERSION instead: recolor one
 	// existing `convert`-colored lane on the edge (source, coord) to `pick`.
-	| { handIndex: number; pick: Color; coord: Co; source: Co; convert?: Color };
+	// Conversions cost COST_TO_CONSOLIDATE cards total: `extraDiscards` names the
+	// (cost - 1) additional hand indices to discard alongside the played card.
+	| { handIndex: number; pick: Color; coord: Co; source: Co; convert?: Color; extraDiscards?: number[] };
 export type MovePlayActionArgs = { handIndex: number; effects?: GameEffect[] };
 export type MoveDraftPickArgs = { index: number };
 export type MoveDraftPlaceArgs = { source: Co; coord: Co; pick: Color };

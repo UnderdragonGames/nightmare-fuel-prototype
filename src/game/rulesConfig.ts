@@ -34,6 +34,14 @@ const envFlag = (name: string): boolean | null => {
 	return value === '1' || value === 'true' || value === 'on';
 };
 
+// Integer rules knob: unset/invalid → null.
+const envInt = (name: string): number | null => {
+	const value = envValue(name);
+	if (value === undefined || value === '') return null;
+	const n = Number(value);
+	return Number.isInteger(n) ? n : null;
+};
+
 export const buildColorToDir = (edgeColors: readonly Color[]): Record<Color, Co> => {
 	if (edgeColors.length !== 6) {
 		throw new Error(`EDGE_COLORS must be length 6, got ${edgeColors.length}`);
@@ -73,6 +81,11 @@ const HEX_PLACEMENT: PlacementRules = {
 	STARTING_RING: 0,
 	COST_TO_BLOCK: 2,
 	COST_TO_ROTATE: 1,
+	// Total cards a consolidation conversion costs (the played card counts;
+	// 2 = discard one extra card). Makes consolidating dearer than building
+	// new paths (2026-08: "it's cheaper to make more paths than consolidate").
+	// VITE_CONSOLIDATION_COST tunes; 1 restores the old free conversion.
+	COST_TO_CONSOLIDATE: envInt('VITE_CONSOLIDATION_COST') ?? 2,
 };
 
 const HEX_SCORING: ObjectiveScoringRules = {
@@ -81,6 +94,11 @@ const HEX_SCORING: ObjectiveScoringRules = {
 	SHORTEST_PATH: true,
 	// Primary / secondary / tertiary weights (legacy behaviour)
 	COLOR_POINTS: [3, 2, 1],
+	// Completed rim-to-center path (the consolidation goal) adds this flat
+	// bonus to that color's raw count before pref weighting (2026-08 playtest:
+	// "I like the idea of extra points. Needs to be codified").
+	// Tune per-deploy with VITE_CONSOLIDATION_BONUS; 0 disables.
+	CONSOLIDATION_BONUS: envInt('VITE_CONSOLIDATION_BONUS') ?? 5,
 };
 
 export const HEX_RULES: Rules = {
@@ -100,6 +118,10 @@ export const HEX_RULES: Rules = {
 	COLOR_TO_DIR: buildColorToDir(BASE_EDGE_COLORS),
 	// Number of cards each player holds in hand
 	HAND_SIZE: 3,
+	// Extra copies of the draw-flavored action cards mixed into the deck
+	// (2026-08 decision: pace the deck-exhaust ending through draw CARDS, not
+	// an automatic per-turn bonus draw). VITE_EXTRA_DRAW_COPIES tunes it.
+	EXTRA_DRAW_CARD_COPIES: envInt('VITE_EXTRA_DRAW_COPIES') ?? 2,
 	// Maximum number of cards that can be stashed in the treasure pile
 	TREASURE_MAX: 4,
 	// Target total number of cards in the deck
@@ -155,8 +177,12 @@ export const PATH_RULES: Rules = {
 		NO_BUILD_FROM_RIM: true,
 		// Consolidation: once a color reaches the rim, it may CONVERT existing lanes along its path back toward center (recolor in place)
 		CONSOLIDATION: true,
-		// Game ends when this many continuous paths reach from rim back to center
-		CONSOLIDATION_END: 3,
+		// The game ends when this many colors have consolidated rim-to-center
+		// paths (0 disables — deck exhaust becomes the only ending). Briefly
+		// defaulted to 0 over "trigger advantage" concerns (2026-08); restored
+		// to 3 ("Let's keep consolidation at 3 actually") with the advantage
+		// addressed by COST_TO_CONSOLIDATE instead. VITE_CONSOLIDATION_END tunes.
+		CONSOLIDATION_END: envInt('VITE_CONSOLIDATION_END') ?? 3,
 		// Consolidation can reach center ring (ring 0) for game-ending paths
 		CONSOLIDATE_TO_RING: 0,
 		// New branches must start from ring 1 or further out (not from center ring 0)

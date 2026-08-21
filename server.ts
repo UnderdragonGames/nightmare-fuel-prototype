@@ -38,6 +38,13 @@ const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const shortMatchCode = (): string =>
 	Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
 
+const ALLOWED_ORIGINS = [
+	'http://localhost:5173',
+	'http://localhost:3000',
+	'http://127.0.0.1:5173',
+	'https://nightmarefuel.underdragongames.com',
+];
+
 const server = Server({
 	games: [HexStringsGame],
 	db: dbConfig,
@@ -45,15 +52,28 @@ const server = Server({
 	// uuid doubles as the credentials generator by default — keep credentials
 	// long even though match codes are short.
 	generateCredentials: () => randomUUID(),
-	origins: [
-		'http://localhost:5173',
-		'http://localhost:3000',
-		'http://127.0.0.1:5173',
-		'https://nightmarefuel.underdragongames.com',
-	],
+	origins: ALLOWED_ORIGINS,
 });
 
 const distDir = resolve(new URL('.', import.meta.url).pathname, 'dist');
+
+// CORS for the CUSTOM endpoints (status/cancel/push/feedback): boardgame.io's
+// `origins` config only covers its own lobby routes. Same-origin production
+// never notices, but the dev client (5173 → 8000) does.
+server.app.use(async (ctx, next) => {
+	const origin = ctx.get('Origin');
+	if (origin && ALLOWED_ORIGINS.includes(origin)) {
+		ctx.set('Access-Control-Allow-Origin', origin);
+		ctx.set('Vary', 'Origin');
+		if (ctx.method === 'OPTIONS') {
+			ctx.set('Access-Control-Allow-Methods', 'GET,POST');
+			ctx.set('Access-Control-Allow-Headers', 'Content-Type');
+			ctx.status = 204;
+			return;
+		}
+	}
+	await next();
+});
 
 // ─── Web push (turn alerts) ─────────────────────────────────────────────────
 //
@@ -82,7 +102,9 @@ const sendPush = async (matchID: string, seat: string, payload: { title: string;
 	const sub = pushSubscriptions.get(key);
 	if (!sub) return;
 	try {
-		await webpush.sendNotification(sub as webpush.PushSubscription, JSON.stringify({ ...payload, tag: payload.tag ?? `nf-${matchID}`, url: '/' }));
+		// url/matchID let a tapped notification open the app switched to the
+		// right game ("My games" multi-session support).
+		await webpush.sendNotification(sub as webpush.PushSubscription, JSON.stringify({ ...payload, tag: payload.tag ?? `nf-${matchID}`, url: `/?resume=${matchID}`, matchID }));
 	} catch (err) {
 		const status = (err as { statusCode?: number }).statusCode;
 		if (status === 404 || status === 410) {
@@ -284,6 +306,50 @@ server.app.use(async (ctx, next) => {
 	await next();
 });
 
+// ─── Match status (for the "My games" list / globe badge) ───────────────────
+//
+// Cheap unauthenticated read: whose action a match is waiting on. Exposes
+// only what every player at the table can already see.
+server.app.use(async (ctx, next) => {
+	const match = ctx.path.match(new RegExp(`^/games/${GAME_NAME}/([^/]+)/status$`));
+	if (!match || ctx.method !== 'GET') {
+		await next();
+		return;
+	}
+	try {
+		const db = dbConfig as unknown as {
+			fetch: (id: string, opts: { state: true; metadata: true }) => Promise<{
+				state?: {
+					ctx: { currentPlayer: string; turn: number; gameover?: unknown };
+					G: { action?: { pendingDraft?: { order: string[]; position: number; placing: { playerId: string } | null } | null } };
+				};
+				metadata?: MatchMetadata;
+			}>;
+		};
+		const { state, metadata } = await db.fetch(match[1]!, { state: true, metadata: true });
+		if (!state || !metadata) {
+			ctx.status = 404;
+			ctx.body = { error: 'match not found' };
+			return;
+		}
+		const draft = state.G.action?.pendingDraft ?? null;
+		ctx.body = {
+			gameover: !!state.ctx.gameover,
+			turn: state.ctx.turn,
+			currentPlayer: state.ctx.currentPlayer,
+			// During a Mystery Box draft the waiting player differs from the turn owner.
+			actionOn: draft
+				? (draft.placing ? draft.placing.playerId : draft.order[draft.position] ?? null)
+				: state.ctx.currentPlayer,
+			allSeatsJoined: Object.values(metadata.players).every((p) => !!p.name),
+		};
+	} catch (err) {
+		console.error('status fetch failed:', err);
+		ctx.status = 500;
+		ctx.body = { error: 'status failed' };
+	}
+});
+
 // ─── Cancel endpoint ────────────────────────────────────────────────────────
 //
 // Any seated player may cancel a match, but boardgame.io only lets the
@@ -445,10 +511,10 @@ const spawnBot = (matchID: string, seat: string, kind: BotKind, credentials: str
 	});
 	client.start();
 
-	const unsubscribe = client.subscribe((state) => {
+	const handle = (state: ReturnType<typeof client.getState>): void => {
 		if (!state) return;
 		if (state.ctx.gameover) return;
-		// Mystery Box draft: the bot may need to pick/place during ANY turn.
+		// Reveal-and-pick draft: the bot may need to pick/place during ANY turn.
 		if ((state.ctx.activePlayers as Record<string, string> | null)?.[seat] === 'draft') {
 			if (!botsPlaying.has(key)) {
 				botsPlaying.add(key);
@@ -483,10 +549,17 @@ const spawnBot = (matchID: string, seat: string, kind: BotKind, credentials: str
 				botsPlaying.delete(key);
 			}
 		})();
-	});
+	};
+
+	const unsubscribe = client.subscribe(handle);
+	// Nudge: when the bot itself plays a reveal-and-pick card, its turn loop
+	// exits and no further state change would re-trigger the subscription —
+	// without this the draft (and the game) would hang on the bot's own pick.
+	const nudge = setInterval(() => handle(client.getState()), 2000);
 
 	botRunners.set(key, {
 		stop: () => {
+			clearInterval(nudge);
 			unsubscribe();
 			client.stop();
 		},
@@ -588,7 +661,7 @@ const notifyTurnChanges = async (): Promise<void> => {
 		lastNotifyKey.set(matchID, key);
 		if (prev === undefined || prev === key || !target) continue;
 		const body = draft
-			? (draft.placing ? 'Mystery Box: place your drafted card!' : 'Mystery Box: your pick!')
+			? (draft.placing ? 'Place your drafted card!' : 'Your pick — choose a card!')
 			: "It's your turn!";
 		await sendPush(matchID, target, { title: 'Nightmare Fuel', body });
 	}

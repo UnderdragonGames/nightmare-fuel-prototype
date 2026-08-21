@@ -12,7 +12,7 @@ import type { GState, Color, Co, MovePlayCardArgs, MovePlayActionArgs, MoveStash
 import { emitEvent } from './hooks';
 import { playActionCardFromHand } from './effects';
 import { resolveCardEffects, type CardActionResolveContext } from './cardActions';
-import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, countRimToCenterPaths, isRotatableNode, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, validateConvertExtras, discardConvertExtras, countRimToCenterPaths, isRotatableNode, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
 import { computeScores, computeScoresRaw } from './scoring';
 
 // =============================================================================
@@ -119,13 +119,23 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 				}
 				e.colors.add(ln.color);
 			}
-			for (let i = 0; i < hand.length; i += 1) {
-				const card = hand[i]!;
-				for (const color of card.colors) {
-					for (const e of edges.values()) {
-						for (const fromColor of e.colors) {
-							if (canConsolidate(G, e.a, e.b, fromColor, color as Color, rules)) {
-								actions.push({ type: 'playCard', args: { handIndex: i, pick: color, source: e.a, coord: e.b, convert: fromColor } });
+			// Conversions cost COST_TO_CONSOLIDATE cards total; only enumerable
+			// when the hand can pay. Extra discards: lowest indices ≠ the played
+			// card (deterministic — the evaluator sees the full hand loss).
+			const convertCost = Math.max(1, rules.PLACEMENT.COST_TO_CONSOLIDATE ?? 1);
+			if (hand.length >= convertCost) {
+				for (let i = 0; i < hand.length; i += 1) {
+					const card = hand[i]!;
+					const extraDiscards: number[] = [];
+					for (let j = 0; j < hand.length && extraDiscards.length < convertCost - 1; j += 1) {
+						if (j !== i) extraDiscards.push(j);
+					}
+					for (const color of card.colors) {
+						for (const e of edges.values()) {
+							for (const fromColor of e.colors) {
+								if (canConsolidate(G, e.a, e.b, fromColor, color as Color, rules)) {
+									actions.push({ type: 'playCard', args: { handIndex: i, pick: color, source: e.a, coord: e.b, convert: fromColor, extraDiscards: [...extraDiscards] } });
+								}
 							}
 						}
 					}
@@ -181,9 +191,9 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 					} catch {
 						continue;
 					}
-					// Interactive multi-player flows (Mystery Box draft) are not
-					// enumerable as a single move — bots don't initiate them (v1).
-					if (effects.some((e) => e.type === 'beginDraft')) continue;
+					// Reveal-and-pick cards (Mystery Box, Alter Fate) ARE playable by
+					// bots: the play itself is one move; the picks that follow are
+					// handled by playDraftStep when the stage lands on each bot.
 					const sig = JSON.stringify(effects);
 					if (seen.has(sig)) continue;
 					seen.add(sig);
@@ -310,10 +320,15 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			const card = hand[args.handIndex];
 			if (!card) return null;
 			if (rules.ONE_COLOR_PER_CARD_PLAY && !card.colors.includes(args.pick)) return null;
+			let convertExtras: number[] = [];
 			if (rules.MODE === 'path') {
 				if (!('source' in args)) return null;
 				if (args.convert) {
 					// Consolidation: convert one existing lane's color in place.
+					// Costs COST_TO_CONSOLIDATE cards total (extra discards).
+					const extras = validateConvertExtras(hand.length, args.handIndex, args.extraDiscards, rules);
+					if (extras === null) return null;
+					convertExtras = extras;
 					if (!canConsolidate(newG, args.source, args.coord, args.convert, args.pick, rules)) return null;
 					if (!applyConsolidation(newG, args.source, args.coord, args.convert, args.pick)) return null;
 				} else {
@@ -338,6 +353,7 @@ export const applyMicroAction = (G: GState, action: Action, playerID: PlayerID):
 			emitEvent(newG, { type: 'onPlacement', playerId: playerID, coord, color: args.pick });
 			const [used] = hand.splice(args.handIndex, 1);
 			if (used) newG.discard.push(used);
+			discardConvertExtras(hand, newG.discard, args.handIndex, convertExtras);
 			break;
 		}
 
@@ -910,6 +926,13 @@ export const evaluateAction = (
 		value -= 1.0; // Cost to discourage frivolous blocking (it costs 2 cards)
 	}
 
+	if (action.type === 'playActionCard') {
+		// Reveal-and-pick cards: the sim stops at the reveal, so the delta reads
+		// as pure card loss. The pick that follows roughly refunds the card.
+		const effects = action.args.effects ?? [];
+		if (effects.some((e) => e.type === 'beginDraft')) value += 3;
+	}
+
 	return value;
 };
 
@@ -1357,6 +1380,16 @@ export const playDraftStep = (client: BGIOClient, playerID: PlayerID): boolean =
 };
 
 /**
+ * Whether the bot may make normal (active-stage) moves right now. After it
+ * plays a reveal-and-pick card, the stage flips to 'draft' — the turn loop
+ * must yield so playDraftStep (driven by the runner's nudge) takes over.
+ */
+const inActiveStage = (state: { ctx: Ctx }, playerID: PlayerID): boolean => {
+	const active = state.ctx.activePlayers as Record<string, string> | null | undefined;
+	return !active || active[playerID] === 'active';
+};
+
+/**
  * Play one turn using truly random action selection.
  */
 export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Promise<void> => {
@@ -1367,7 +1400,7 @@ export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Pro
 		await waitForStateUpdate();
 
 		const state = client.getState();
-		if (!state || state.ctx.currentPlayer !== playerID) break;
+		if (!state || state.ctx.currentPlayer !== playerID || !inActiveStage(state, playerID)) break;
 
 		const G = state.G;
 		const actions = enumerateActions(G, playerID).filter((a) => a.type !== 'endTurnAndRefill');
@@ -1394,7 +1427,7 @@ export const playOneRandom = async (client: BGIOClient, playerID: PlayerID): Pro
 		await waitForStateUpdate();
 
 		const stateAfter = client.getState();
-		if (!stateAfter || stateAfter.ctx.currentPlayer !== playerID) break;
+		if (!stateAfter || stateAfter.ctx.currentPlayer !== playerID || !inActiveStage(stateAfter, playerID)) break;
 
 		const stateChanged =
 			stateAfter.G.stats.placements !== stateBefore.placements ||
@@ -1451,7 +1484,7 @@ export const playOneEvaluator = async (client: BGIOClient, playerID: PlayerID): 
 		await waitForStateUpdate();
 
 		const state = client.getState();
-		if (!state || state.ctx.currentPlayer !== playerID) break;
+		if (!state || state.ctx.currentPlayer !== playerID || !inActiveStage(state, playerID)) break;
 
 		const G = state.G;
 		const ctx = state.ctx;
@@ -1476,7 +1509,7 @@ export const playOneEvaluator = async (client: BGIOClient, playerID: PlayerID): 
 		await waitForStateUpdate();
 
 		const stateAfter = client.getState();
-		if (!stateAfter || stateAfter.ctx.currentPlayer !== playerID) break;
+		if (!stateAfter || stateAfter.ctx.currentPlayer !== playerID || !inActiveStage(stateAfter, playerID)) break;
 
 		const stateChanged =
 			stateAfter.G.stats.placements !== stateBefore.placements ||
@@ -1503,7 +1536,7 @@ export const playOneEvaluatorPlus = async (client: BGIOClient, playerID: PlayerI
 		await waitForStateUpdate();
 
 		const state = client.getState();
-		if (!state || state.ctx.currentPlayer !== playerID) break;
+		if (!state || state.ctx.currentPlayer !== playerID || !inActiveStage(state, playerID)) break;
 
 		const G = state.G;
 		const ctx = state.ctx;
@@ -1531,7 +1564,7 @@ export const playOneEvaluatorPlus = async (client: BGIOClient, playerID: PlayerI
 		await waitForStateUpdate();
 
 		const stateAfter = client.getState();
-		if (!stateAfter || stateAfter.ctx.currentPlayer !== playerID) break;
+		if (!stateAfter || stateAfter.ctx.currentPlayer !== playerID || !inActiveStage(stateAfter, playerID)) break;
 
 		const stateChanged =
 			stateAfter.G.stats.placements !== stateBefore.placements ||

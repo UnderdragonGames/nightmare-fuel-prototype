@@ -3,13 +3,16 @@ import type { Card, Color, Rules } from '../game/types';
 import { serializeCard } from '../game/helpers';
 import { CardZone } from './CardZone';
 
-// Treasure card component (similar to NeuralCard but with Take button)
+// Treasure card component (similar to NeuralCard but with Take button).
+// Tapping the CARD inspects it (full-size, readable); only the explicit Take
+// button takes it — viewing must never accidentally consume a treasure.
 export const TreasureCard: React.FC<{
 	card: Card;
 	rules: Rules;
 	onTake: () => void;
+	onInspect?: () => void;
 	size?: 'normal' | 'expanded';
-}> = ({ card, rules, onTake, size = 'normal' }) => {
+}> = ({ card, rules, onTake, onInspect, size = 'normal' }) => {
 	const sortedColors = [...card.colors].sort(
 		(a, b) => (rules.COLORS as Color[]).indexOf(a) - (rules.COLORS as Color[]).indexOf(b)
 	);
@@ -32,7 +35,7 @@ export const TreasureCard: React.FC<{
 
 	if (card.isAction) {
 		return (
-			<div className={`neural-card neural-card--action neural-card--treasure${expandedClass}`} onClick={onTake}>
+			<div className={`neural-card neural-card--action neural-card--treasure${expandedClass}`} onClick={onInspect ?? onTake}>
 				<div className="neural-card__name">{card.name}</div>
 				{card.text && (
 					<div className="neural-card__text neural-card__text--action">
@@ -56,7 +59,7 @@ export const TreasureCard: React.FC<{
 	}
 
 	return (
-		<div className={`neural-card neural-card--treasure${expandedClass}`} onClick={onTake}>
+		<div className={`neural-card neural-card--treasure${expandedClass}`} onClick={onInspect ?? onTake}>
 			<div className="neural-card__art">
 				<svg viewBox="0 0 80 70" className="neural-card__pathways">
 					<circle cx="40" cy="35" r="6" className="neural-card__hub" />
@@ -88,10 +91,11 @@ export const Treasure: React.FC<{
 	rules: Rules;
 	cards: Card[];
 	onTake: (index: number) => void;
+	onInspect?: (index: number) => void;
 	isExpanded: boolean;
 	onExpandChange: (expanded: boolean) => void;
 	isMobile?: boolean;
-}> = ({ rules, cards, onTake, isExpanded, onExpandChange, isMobile }) => {
+}> = ({ rules, cards, onTake, onInspect, isExpanded, onExpandChange, isMobile }) => {
 	return (
 		<CardZone
 			corner="top-right"
@@ -99,7 +103,7 @@ export const Treasure: React.FC<{
 			isExpanded={isExpanded}
 			onExpandChange={onExpandChange}
 			selectedIndex={null}
-			onCardClick={(i) => onTake(i)}
+			onCardClick={(i) => (onInspect ?? onTake)(i)}
 			label="Treasure"
 			isMobile={isMobile}
 		>
@@ -109,6 +113,7 @@ export const Treasure: React.FC<{
 					card={card}
 					rules={rules}
 					onTake={() => onTake(i)}
+					onInspect={onInspect ? () => onInspect(i) : undefined}
 					size="expanded"
 				/>
 			))}

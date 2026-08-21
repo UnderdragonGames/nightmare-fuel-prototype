@@ -84,14 +84,15 @@ describe('Card #4 "Alter Fate"', () => {
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
 			playerOrder: ['0'],
-			revealedPickIndex: 2,
 			lastPlacedColor: null,
 		});
 
-		// Player should have exactly 1 card in hand (the picked one).
-		expect(G.players['0']!.hand.length).toBe(1);
-		// 4 remaining revealed cards + the played action card = 5 in discard.
-		expect(G.discard.length).toBe(5);
+		// Interactive flow: the play reveals 5 and opens a solo hand-pick (the
+		// pick itself is a draft-stage move — covered in cards/04-alter-fate).
+		expect(G.action.revealed.length).toBe(5);
+		expect(G.action.pendingDraft).toMatchObject({ order: ['0'], take: 'hand' });
+		// The played action card itself is discarded immediately.
+		expect(G.discard.length).toBe(1);
 		// 1 card should remain in the deck (the 6th one that wasn't revealed).
 		expect(G.secret.deck.length).toBe(1);
 		expect(G.secret.deck[0]!.id).toBe(101);
@@ -112,13 +113,14 @@ describe('Card #4 "Alter Fate"', () => {
 		playResolved(G, '0', 0, {
 			currentPlayerId: '0',
 			playerOrder: ['0'],
-			revealedPickIndex: 0,
 			lastPlacedColor: null,
 		});
 
-		// Picked 1, discarded the other 2 revealed + action card = 3 in discard.
-		expect(G.players['0']!.hand.length).toBe(1);
-		expect(G.discard.length).toBe(3);
+		// Short deck: only 3 cards reveal, and the solo pick still opens.
+		expect(G.action.revealed.length).toBe(3);
+		expect(G.action.pendingDraft).toMatchObject({ order: ['0'], take: 'hand' });
+		expect(G.players['0']!.hand.length).toBe(0);
+		expect(G.discard.length).toBe(1); // just the played Alter Fate
 		expect(G.secret.deck.length).toBe(0);
 	});
 });

@@ -1,5 +1,5 @@
 import type { GState, Color, Co } from './types';
-import { buildAllCoords, key, neighbors, ringIndex, parse, inBounds } from './helpers';
+import { buildAllCoords, key, neighbors, ringIndex, parse, inBounds, listRimToCenterColors } from './helpers';
 
 const computeIntersectionCountByColorPath = (G: GState): Record<Color, number> => {
 	const radius = G.radius;
@@ -109,7 +109,21 @@ const computeIntersectionCountByColorPath = (G: GState): Record<Color, number> =
 	return counts;
 };
 
+// Raw per-color counts plus the consolidation bonus: a color with a completed
+// rim-to-center path (the consolidation goal) earns SCORING.CONSOLIDATION_BONUS
+// extra raw points before pref weighting.
 const computeIntersectionCountByColor = (G: GState): Record<Color, number> => {
+	const counts = computeIntersectionCountByColorBase(G);
+	const bonus = G.rules.SCORING.CONSOLIDATION_BONUS ?? 0;
+	if (bonus > 0) {
+		for (const color of listRimToCenterColors(G)) {
+			counts[color] += bonus;
+		}
+	}
+	return counts;
+};
+
+const computeIntersectionCountByColorBase = (G: GState): Record<Color, number> => {
 	if (G.rules.MODE === 'path') {
 		return computeIntersectionCountByColorPath(G);
 	}

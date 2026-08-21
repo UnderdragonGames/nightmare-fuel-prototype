@@ -7,11 +7,79 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-08-21 — v0.9.0
+
+### Consolidation ending restored at 3; a conversion now costs 2 cards
+- **Feedback (Julian):** "Let's keep consolidation at 3 actually… but maybe a consolidation move should cost extra, 2 perhaps. So it's cheaper to make more paths than consolidate."
+- **Change:** `CONSOLIDATION_END` defaults back to **3** — three consolidated rim-to-center paths end the game again (the v0.7.0 "deck exhaust only" experiment lasted one review cycle). The trigger-advantage worry is now addressed through price instead: new `PLACEMENT.COST_TO_CONSOLIDATE` (default **2**, `VITE_CONSOLIDATION_COST`, 1 restores free conversions) makes every conversion cost the played card **plus one extra discard**. Building a new lane still costs one card, so extending paths is strictly cheaper than taking over existing ones. UI: tapping a convertible edge now opens a gold "Consolidate — discard 1 more card" tray (like block/rotate); bots pay the same price and only consolidate when their hand can afford it.
+- **Outcome:** _pending — does the 2-card price actually slow the consolidation race, and is the ending fun again?_
+
+### [ux] One "Games" dialog for starting, joining, and switching games
+- **Feedback (Julian):** "It's not very intuitive how to start a new game, and the +/- buttons for players don't make sense. There should be a single 'game' dialogue for adding players and starting games, in particular for single player, as it's ambiguous right now. I think we also have a menu for multiple network games right? So they could all probably share an intuitive ux?"
+- **Diagnosis:** worse than unintuitive — the +/- buttons never actually restarted anything. Local matches live in an in-memory store keyed by match ID, and the ID never changed, so changing the player count just re-attached to the old board.
+- **Change:** the toolbar's +/- and globe collapse into one **Games** button (player count + online status shown inline, badge/bounce kept). The dialog now covers everything: **New Game** with a This device / Online with friends toggle, player-count chips, and per-seat rows (You / Human / AI — "Solo game" and "Hotseat" hints spell out the single-player case); **Join Existing Match**; **My Games** switching. Starting a local game generates a fresh match ID, so it genuinely resets — and the seat setup carries into the Players panel (AI seats arrive as Eval+).
+- **Outcome:** _pending — watch a new playtester start a solo game without help._
+
+## 2026-08-21 — v0.8.0
+
+### Consolidated paths are fixed (no re-consolidation)
+- **Feedback (Julian):** "Consolidated paths shouldn't be re-consolidatable (they should be fixed)."
+- **Change:** a lane converted by consolidation is now marked `consolidated` and locked for good: it can never be consolidated again by any color, and lane-recoloring action cards (This Prey is Mine) refuse it with "That lane is consolidated — it is fixed and cannot change color." Un-consolidated lanes on the same edge (doubled segments) still convert normally, and geometry moves (rotation, nightmare effects) are untouched.
+- **Outcome:** _pending — watch whether locking consolidations changes the takeover tug-of-war feel._
+
+### Consolidation completion bonus is now a codified setting
+- **Feedback (Julian):** "Extra points for consolidation needs to be a setting. I like the idea of extra points. Needs to be codified."
+- **Change:** new scoring knob `SCORING.CONSOLIDATION_BONUS` (default **5**, tune per-deploy with `VITE_CONSOLIDATION_BONUS`, 0 disables): each color with a completed rim-to-center path adds the bonus to that color's raw count before preference weighting (so a completed primary color is worth `5 × 3 = 15` extra points by default). This gives consolidation a scoring race to run now that it no longer ends the game (v0.7.0).
+- **Outcome:** _pending — is 5 the right size relative to ~1-point-per-lane placement scoring?_
+
+### Rollback: hand cap and per-turn bonus draw removed; extra draw cards instead
+- **Feedback (Julian):** "Hand cap, is that new? Not sure I like that" — yes, `HAND_LIMIT` was new, introduced alongside the v0.7.0 bonus draw; both are gone. "Not sure I like bonus draw either, I'd rather add more draw cards, there are action cards that draw, right? I haven't seen them come up, but they should be in there."
+- **Change:** `TURN_DRAW_BONUS` and `HAND_LIMIT` are removed (end-of-turn refill is back to plain HAND_SIZE + stash bonus, no cap). The draw action cards were already in the deck but as single copies each in ~116 cards — easy to never see. The deck now mixes in `EXTRA_DRAW_CARD_COPIES` (default **2**, `VITE_EXTRA_DRAW_COPIES`) extra copies of each draw card: Allow a Brief Reprieve (everyone draws 1), Armed to the Teeth (draw 5), Embrace Chaos (all discard and draw 3) — 6 extra cards, so a draw effect surfaces roughly every other hand-cycle instead of almost never. Deck-exhaust pacing now flows through cards players actually play.
+- **Outcome:** _pending — watch game length without the automatic burn-down._
+
 ## 2026-08-06 — v0.6.0
 
 ### [ux] Mobile install banner (PWA)
 - **Feedback (Julian):** "I'd like to add a banner for mobile to install the PWA if it's not already installed. So it should detect it, show the banner if it's not in a PWA, dismissable of course, and when pressed to show instructions."
 - **Change:** on mobile browsers that are NOT already running as an installed app (display-mode / iOS `navigator.standalone` detection), a dismissible banner sits in the quiet band between board and controls: "Add to Home Screen for the full game — and turn alerts." Tapping it triggers the real Chromium install prompt when available (`beforeinstallprompt`), otherwise platform-matched instructions (iOS: Share → Add to Home Screen; Android: menu → Install app). Dismissal is remembered per device; the banner also disappears live if the app gets installed.
+
+## 2026-08-06 — v0.7.0
+
+### Endgame fairness: deck exhaustion is the only ending; per-turn bonus draw
+- **Feedback (Julian):** "the player whose turn it is always has an advantage and will likely be the one to end the game, and when they end the game, they will likely have more points because they've taken their turn." On the mitigation options: final-round variants rejected ("not necessarily fair to give extra turns to everyone… there's still an advantage to the last player"); decision: "don't end with consolidation, but only with deck run out, and have more card drawing."
+- **Change:** `CONSOLIDATION_END` now defaults to **0** — completing rim-to-center paths still scores but no longer ends the game (re-enable with `VITE_CONSOLIDATION_END=3`). The only ending is deck exhaustion, which already grants **equal turns** to every player. To keep games from dragging, every end of turn draws `TURN_DRAW_BONUS` (default 1, `VITE_TURN_DRAW_BONUS`) extra cards on top of the refill; at `HAND_LIMIT` (default 10, `VITE_HAND_LIMIT`) the bonus card burns to the discard instead, so hoarding can't stall the game clock. Rough pacing: ~116-card deck ÷ (≈2 spent + 1 bonus per turn) ≈ 38 turns total, split equally.
+- **Also noted:** `DECK_SIZE`/`DECK_COUNTS` in the config were dead — `buildDeck` deals one copy of every non-excluded card (~116) regardless; left as-is, documented here.
+- **Outcome:** fully reverted within two review cycles, before ever being played. The pacing half first (2026-08-21): "Hand cap, is that new? Not sure I like that … Not sure I like bonus draw either, I'd rather add more draw cards" — bonus draw and hand cap removed in v0.8.0, replaced with extra copies of the draw action cards. Then the ending half: "Let's keep consolidation at 3 actually" — restored in v0.9.0, with the trigger advantage priced away via the 2-card consolidation cost instead.
+
+## 2026-08-06 — v0.6.0
+
+### Bots now initiate reveal-and-pick cards
+- **Feedback (Julian):** "Why don't bots initiate those? They should play it if it's in their hand, doesn't seem unsolvable."
+- **Change:** it wasn't — v1 caution, now removed. Bots enumerate Mystery Box and Alter Fate as playable; when a bot plays one, its turn loop yields to the draft stage, it makes its own pick (and placement) via the same handler that already covered human-initiated drafts, then resumes its turn. The evaluator gets a small bonus for these cards (the simulator can't see the pick-back, so the raw delta reads as card loss). Server bots get a periodic nudge so a bot's own pick can't hang the game.
+- **Outcome:** _pending — watch a bot game for a Mystery Box played by the bot._
+
+### [ux] Your-turn visual flash
+- **Feedback (Julian):** "we need visual feedback for when it's your turn in addition to the sound and notification."
+- **Change:** when the turn passes to you, the screen edges pulse with a purple vignette and a large "Your turn" label fades in and out (~1.6s), on the same trigger as the chime. Non-blocking (clicks pass through), sits under every modal, and `prefers-reduced-motion` gets a motionless fade instead.
+
+### Alter Fate becomes an interactive top-5 selector
+- **Feedback (Julian):** "that card should bring up a little selector for the top five cards of the deck."
+- **Diagnosis:** the old flow required typing a blind numeric pick *before* the reveal (same disease Mystery Box had).
+- **Change:** playing Alter Fate reveals the top 5 face-up in the reveal-and-pick overlay (now card-agnostic: it shows the card's own name and a take-mode-specific hint). You tap the card to keep — "the rest are discarded" happens automatically. Built as a `take: 'hand'` / solo mode of the Mystery Box draft machinery, so bots handle the pick too (they no longer initiate Alter Fate themselves, consistent with other interactive cards).
+- **Outcome:** _pending — first live Alter Fate play._
+
+### [ux] Tap treasure/discard cards to view them full-size
+- **Feedback (Julian):** "You should be able to tap on an action card in the treasure or discard and view it."
+- **Change:** tapping any card in the treasure zone or the discard browser (desktop and mobile) opens a full-size inspector — name, action text, color pips. Treasure taps no longer take the card instantly: the inspector carries an explicit "Take to hand" button (disabled off-turn, with the reason shown), so viewing can't accidentally consume a treasure; the small Take button on the card remains as the quick path. Esc/backdrop closes just the inspector.
+
+### Multiple games per device ("My games")
+- **Feedback (Julian):** asked what happens when a user opens a different game in the PWA; answer was ugly — joining game B silently freed the seat in game A, re-gating A behind its waiting room and stopping its bots. Approved the fix and the mobile treatment: "Use the globe icon and add a badge and bouncing?"
+- **Change:** the device now holds a seat in every joined match. Joining or creating another game keeps existing seats; the network menu gets a **My Games** list (code, your seat, whose move / finished / waiting) with one-tap switching, and Create/Join stay available while connected. The globe icon shows a **badge counting games waiting on you** (active game excluded) and does a **one-shot bounce when the count rises** — deliberately not a continuous bounce (noise, battery, and `prefers-reduced-motion` all argue against it). Turn-alert notifications now carry the match code, so tapping one switches the app to that game. Legacy single-session storage migrates automatically.
+- **Also fixed on the way:** the waiting-room overlay used to cover the toolbar, locking you out of the network menu while a match waited for players; custom server endpoints (status/cancel/push/feedback) were missing CORS headers (invisible in same-origin production, broken in dev).
+
+### [ux] Mobile install banner (Add to Home Screen)
+- **Feedback (Julian):** "I'd like to add a banner for mobile to install the PWA if it's not already installed… dismissable of course, and when pressed to show instructions."
+- **Change:** on mobile browsers (not the installed app), a slim dismissable banner offers "Add to Home Screen for the full game — and turn alerts." Tapping it fires Chromium's native install prompt when available; otherwise (notably iOS Safari) it opens platform-matched step-by-step instructions. Dismissal is remembered per device; the banner also hides itself live if the user installs.
 
 ## 2026-08-06 — v0.5.0
 
