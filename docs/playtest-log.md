@@ -7,6 +7,14 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-10-28 — v0.9.2
+
+### Mystery Box no longer hangs when the draft reaches a bot
+- **Feedback (Julian):** "Mystery box seems to get stuck when it goes to the next evaluator player."
+- **Diagnosis:** reproduced with real boardgame.io clients (it failed on every run, for both Evaluator and Eval+ seats). Draft moves ran *optimistically* on the bot's own client. In local games, a bot reacting inside the master's state broadcast had its move checked against the not-yet-saved previous state and rejected, but its client had already applied the move. A client that's ahead of the master ignores every older update, and because the drafting bot is the only active player, no newer update ever arrives: a permanent hang. Online games were protected by the server's per-match action queue.
+- **Change:** `draftPick`/`draftPlace` now run only on the master (`client: false`), so a rejected draft move can no longer strand a client. They were also computing on hidden information anyway (a drafted draw card auto-plays against a client view whose deck is empty). Bot runners, local and server, now share one draft scheduler that dispatches outside the broadcast and re-checks when a pick needs a follow-up placement, so bots don't idle for a nudge cycle per hop.
+- **Outcome:** _pending — confirm in the next game with Mystery Box and AI seats._
+
 ## 2026-08-21 — v0.9.1
 
 ### [ux] Feedback form: free-text questions always visible

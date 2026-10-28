@@ -622,10 +622,20 @@ export const HexStringsGame: Game<GState> = {
 			// Mystery Box draft: the picking player (possibly not the turn owner)
 			// is moved into this stage; everyone else has no moves. Neither move
 			// is undoable — picks reveal hidden information and hand control.
+			//
+			// Both are `client: false` (master-only, never run optimistically).
+			// A client that optimistically applies a move the master then rejects
+			// sits one _stateID ahead and ignores every older master update — and
+			// since the drafter is the ONLY active player, no newer update ever
+			// arrives: a permanent hang (2026-10 playtest: "Mystery box seems to get
+			// stuck when it goes to the next evaluator player"). Optimistic results
+			// were wrong anyway: a drafted draw card auto-plays against the
+			// playerView, whose deck is empty.
 			draft: {
 				moves: {
 					draftPick: {
 						undoable: false,
+						client: false,
 						move: (context, args: MoveDraftPickArgs) => {
 							const { G, ctx, events, playerID } = context;
 							const draft = G.action.pendingDraft;
@@ -656,6 +666,7 @@ export const HexStringsGame: Game<GState> = {
 					},
 					draftPlace: {
 						undoable: false,
+						client: false,
 						move: (context, args: MoveDraftPlaceArgs) => {
 							const { G, events, playerID } = context;
 							const rules = G.rules;

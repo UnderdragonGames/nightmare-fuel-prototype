@@ -11,7 +11,7 @@ import { Local } from 'boardgame.io/multiplayer';
 import type { Game, PlayerID } from 'boardgame.io';
 import type { GState } from './game/types';
 import type { BotKind } from './game/bots';
-import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, playDraftStep } from './game/bots';
+import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, runDraftStepDeferred, isDraftActor } from './game/bots';
 
 type RawClientInstance = ReturnType<typeof RawClient<GState>>;
 
@@ -79,14 +79,15 @@ export function useBotClients(
 				if (aiPaused) return;
 				// Mystery Box draft: the bot may need to pick/place mid-turn of
 				// ANY player — handle it before the own-turn gate.
-				if ((state.ctx.activePlayers as Record<string, string> | null)?.[pid] === 'draft') {
+				if (isDraftActor(state, pid)) {
 					if (!playingRef.current.has(pid)) {
 						playingRef.current.add(pid);
-						try {
-							playDraftStep(client as unknown as Parameters<typeof playDraftStep>[0], pid);
-						} finally {
-							playingRef.current.delete(pid);
-						}
+						runDraftStepDeferred(
+							client as unknown as Parameters<typeof runDraftStepDeferred>[0],
+							pid,
+							() => playingRef.current.delete(pid),
+							() => onState(client.getState()),
+						);
 					}
 					return;
 				}

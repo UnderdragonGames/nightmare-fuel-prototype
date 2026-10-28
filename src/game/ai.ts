@@ -1379,6 +1379,48 @@ export const playDraftStep = (client: BGIOClient, playerID: PlayerID): boolean =
 	return true;
 };
 
+/** Whether `playerID` is the one the draft stage is waiting on. */
+export const isDraftActor = (state: { ctx: Ctx } | undefined, playerID: PlayerID): boolean =>
+	(state?.ctx.activePlayers as Record<string, string> | null | undefined)?.[playerID] === 'draft';
+
+/**
+ * How bot runners (local useBotClients, server spawnBot) take a draft step.
+ * The caller holds an in-flight guard and passes `release` to clear it, and
+ * `recheck` to re-run its state handler.
+ *
+ * - Deferred to the next macrotask, never sent from inside a subscription
+ *   callback: a master broadcasts a new state BEFORE persisting it, so a move
+ *   sent synchronously from the broadcast is validated against the previous
+ *   state and rejected.
+ * - Re-checks after releasing the guard when the state advanced: the Local
+ *   master can apply the move synchronously inside playDraftStep, delivering
+ *   the follow-up ("now place your lane") while the guard is still set — that
+ *   callback is swallowed, so without a re-check the bot would idle until the
+ *   runner's next periodic nudge.
+ */
+export const runDraftStepDeferred = (
+	client: BGIOClient,
+	playerID: PlayerID,
+	release: () => void,
+	recheck: () => void,
+): void => {
+	setTimeout(() => {
+		let advanced = false;
+		try {
+			const before = client.getState() as ({ _stateID?: number } & { ctx: Ctx }) | undefined;
+			if (isDraftActor(before, playerID) && playDraftStep(client, playerID)) {
+				const after = client.getState() as { _stateID?: number } | undefined;
+				advanced = after?._stateID !== before?._stateID;
+			}
+		} catch (err) {
+			console.error(`bot ${playerID} failed a draft step:`, err);
+		} finally {
+			release();
+		}
+		if (advanced) recheck();
+	}, 0);
+};
+
 /**
  * Whether the bot may make normal (active-stage) moves right now. After it
  * plays a reveal-and-pick card, the stage flips to 'draft' — the turn loop
