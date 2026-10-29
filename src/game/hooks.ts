@@ -49,13 +49,17 @@ export const emitEvent = (G: GState, event: GameEvent): EmitResult => {
 
 		if (hook.behavior === 'block') blocked = true;
 
-		for (const effect of hook.sideEffects) {
-			applySideEffect(G, effect);
-		}
-
 		firedHookIds.push(hook.id);
 
+		// Side effects run when a hook ENDS, not every time it fires. For
+		// one-shot hooks those are the same moment. A persistent hook ends
+		// elsewhere (e.g. resolveDrawHooksIfReady), which runs them then —
+		// running them per fire discarded Barren Wasteland on the first blocked
+		// draw while its block stayed live.
 		if (hook.oneShot) {
+			for (const effect of hook.sideEffects) {
+				applySideEffect(G, effect);
+			}
 			const idx = G.action.hooks.indexOf(hook);
 			if (idx >= 0) G.action.hooks.splice(idx, 1);
 		}

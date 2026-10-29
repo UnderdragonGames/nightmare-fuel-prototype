@@ -7,6 +7,36 @@ later playtest confirms or refutes the change.
 
 ---
 
+## 2026-10-29 — v0.9.3
+
+### Barren Wasteland could freeze the game: nobody ever drew again
+- **Feedback (Julian):** "I press 'End my turn,' and it briefly flashes to the bots, which seem to take no action. Then it comes back to me, and I don't have any new cards." Confirmed the cause: "it looks like P2 is supposed to play the last card."
+- **Diagnosis (from the exported game state):** a Barren Wasteland draw block was live, and it lifts only when *every* hand is empty. Three separate problems:
+  1. **The card vanished early.** A hook's side effects ran every time it fired, so the first blocked draw moved Barren Wasteland from the face-up draw pile to the discard while the block stayed active. The one visible sign of *why* nobody was drawing disappeared.
+  2. **Bots couldn't play six action cards at all:** Help Yourself Out, Malfunction, Placebo, Re-examine Priorities, Seize the Opportunity, This Prey is Mine. Their move generator never supplied a target (a hex, a lane, a priority order), so they were never offered. With the treasure full (4/4), a bot holding one couldn't even stash it.
+  3. **The basic Evaluator keeps a card it doesn't value.** It ends its turn unless a move beats a small value threshold. That's normally fine, but under a draw block it means the table never empties.
+- **Change:**
+  1. Hook side effects now run when a hook *ends*. One-shot hooks are unchanged; Barren Wasteland now stays face-up until the block actually releases.
+  2. Bots generate targets for action cards from the board (lanes × colors, legal placements in the last-placed color, occupied nodes, reorderings of their own priorities), keeping only targets that pass the same validity check as the human UI. **Gameplay effect:** bots now play these six cards in ordinary games too, where before they held or stashed them.
+  3. Under a draw block, a bot about to end its turn holding cards takes the best move that shrinks its hand or lifts the block, even below its usual threshold. That includes Embrace Chaos, which refills hands but frees everyone.
+- **Escape on older versions:** take Embrace Chaos from the treasure and play it. Every hand is discarded, the block lifts, and everyone draws 3.
+- **Outcome:** _pending — watch the next Barren Wasteland game with AI seats, and whether bots using Malfunction/This Prey is Mine against you feels right._
+
+## 2026-10-28 — v0.9.2
+
+### Mystery Box no longer hangs when the draft reaches a bot
+- **Feedback (Julian):** "Mystery box seems to get stuck when it goes to the next evaluator player."
+- **Diagnosis:** reproduced with real boardgame.io clients (it failed on every run, for both Evaluator and Eval+ seats). Draft moves ran *optimistically* on the bot's own client. In local games, a bot reacting inside the master's state broadcast had its move checked against the not-yet-saved previous state and rejected, but its client had already applied the move. A client that's ahead of the master ignores every older update, and because the drafting bot is the only active player, no newer update ever arrives: a permanent hang. Online games were protected by the server's per-match action queue.
+- **Change:** `draftPick`/`draftPlace` now run only on the master (`client: false`), so a rejected draft move can no longer strand a client. They were also computing on hidden information anyway (a drafted draw card auto-plays against a client view whose deck is empty). Bot runners, local and server, now share one draft scheduler that dispatches outside the broadcast and re-checks when a pick needs a follow-up placement, so bots don't idle for a nudge cycle per hop.
+- **Outcome:** _pending — confirm in the next game with Mystery Box and AI seats._
+
+## 2026-08-21 — v0.9.1
+
+### [ux] Feedback form: free-text questions always visible
+- **Feedback (Julian):** "I don't want the additional text feedback to be hidden, that's the most important feedback. Why would we hide it?"
+- **Diagnosis:** the v0.5.0 form collapsed the five free-text questions (why, painful moment, delightful moment, magic wand, what-were-you-doing) behind an "Add details (optional)" link — a completion-rate-over-completeness bet that buried the richest answers.
+- **Change:** the text questions now always render below the tap questions, each marked "(optional)". Nothing about the requirements changed — taps still gate the Send button, text stays optional, and the form area scrolls — the prompts are just in plain sight where they invite an answer.
+
 ## 2026-08-21 — v0.9.0
 
 ### Consolidation ending restored at 3; a conversion now costs 2 cards

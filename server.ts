@@ -8,7 +8,7 @@ import { resolve } from 'path';
 import { readFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { HexStringsGame } from './src/game/game.js';
-import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, playDraftStep, type BotKind } from './src/game/bots.js';
+import { playOneRandom, playOneEvaluator, playOneEvaluatorPlus, runDraftStepDeferred, isDraftActor, type BotKind } from './src/game/bots.js';
 import type { GState } from './src/game/types.js';
 
 const GAME_NAME = 'hex-strings';
@@ -515,16 +515,16 @@ const spawnBot = (matchID: string, seat: string, kind: BotKind, credentials: str
 		if (!state) return;
 		if (state.ctx.gameover) return;
 		// Reveal-and-pick draft: the bot may need to pick/place during ANY turn.
-		if ((state.ctx.activePlayers as Record<string, string> | null)?.[seat] === 'draft') {
+		// Same scheduling as local bots (see runDraftStepDeferred).
+		if (isDraftActor(state, seat)) {
 			if (!botsPlaying.has(key)) {
 				botsPlaying.add(key);
-				try {
-					playDraftStep(client as unknown as Parameters<typeof playDraftStep>[0], seat);
-				} catch (err) {
-					console.error(`bot ${key} failed a draft step:`, err);
-				} finally {
-					botsPlaying.delete(key);
-				}
+				runDraftStepDeferred(
+					client as unknown as Parameters<typeof runDraftStepDeferred>[0],
+					seat,
+					() => botsPlaying.delete(key),
+					() => handle(client.getState()),
+				);
 			}
 			return;
 		}

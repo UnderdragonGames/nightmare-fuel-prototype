@@ -128,6 +128,8 @@ export type HookDef = {
 	oneShot: boolean;
 	targetPlayerId?: PlayerID;
 	stat?: Stat;
+	// Run when the hook ENDS: on firing for one-shot hooks; for persistent
+	// hooks, by whatever removes them (e.g. resolveDrawHooksIfReady).
 	sideEffects: HookSideEffect[];
 };
 

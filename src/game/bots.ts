@@ -18,6 +18,8 @@ export {
 	playOneEvaluator,
 	playOneEvaluatorPlus,
 	playDraftStep,
+	runDraftStepDeferred,
+	isDraftActor,
 	enumerateActions,
 	applyMicroAction,
 	applyEndTurn,
