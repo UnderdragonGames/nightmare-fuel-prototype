@@ -239,6 +239,14 @@ describe('hook system', () => {
 			expect(drawn).toBeNull();
 			expect(G.secret.deck).toHaveLength(2); // Deck unchanged
 
+			// A blocked draw must NOT release the card: it stays face-up on the
+			// draw pile (the visible "nobody draws" signal) until hands empty.
+			// Regression: the release side effect used to run on every blocked
+			// draw, discarding the card while the block hook stayed live.
+			expect(drawOne(G, '1')).toBeNull();
+			expect(G.action.faceUpDrawPile.some((c) => c.id === barren.id)).toBe(true);
+			expect(G.discard.some((c) => c.id === barren.id)).toBe(false);
+
 			// Make all hands empty
 			G.players['0']!.hand = [];
 			G.players['1']!.hand = [];

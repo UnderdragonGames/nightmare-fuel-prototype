@@ -10,9 +10,9 @@
 import type { Ctx, PlayerID } from 'boardgame.io';
 import type { GState, Color, Co, MovePlayCardArgs, MovePlayActionArgs, MoveStashArgs, MoveTakeTreasureArgs, MoveRotateTileArgs, MoveBlockTileArgs, Card, PlayerPrefs } from './types';
 import { emitEvent } from './hooks';
-import { playActionCardFromHand } from './effects';
+import { playActionCardFromHand, actionEffectsInvalidReason } from './effects';
 import { resolveCardEffects, type CardActionResolveContext } from './cardActions';
-import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, validateConvertExtras, discardConvertExtras, countRimToCenterPaths, isRotatableNode, key, neighbors, ringIndex, rotateNeighbor, dirToColor } from './helpers';
+import { buildAllCoords, canPlace, canPlacePath, canConsolidate, applyConsolidation, validateConvertExtras, discardConvertExtras, countRimToCenterPaths, isRotatableNode, key, neighbors, parse, ringIndex, rotateNeighbor, dirToColor } from './helpers';
 import { computeScores, computeScoresRaw } from './scoring';
 
 // =============================================================================
@@ -87,6 +87,73 @@ const generateCombinations = (n: number, k: number): number[][] => {
  * Enumerate all legal actions for a player in the current state.
  * This is the canonical enumerator - all other code should call this.
  */
+/** Most targeted variants of one action card offered to the evaluator. */
+const MAX_TARGETED_PLAYS = 6;
+
+/**
+ * Board-derived targets for action cards whose plain contexts don't resolve
+ * (a hex, a lane + color, a lane in the last-placed color, an own-priority
+ * reordering). Card-agnostic: every candidate is just a resolve context; the
+ * card's own resolver decides which fields it needs, and the caller filters
+ * through actionEffectsInvalidReason exactly as the human UI does.
+ */
+const targetingContexts = (G: GState, playerID: PlayerID, base: CardActionResolveContext): CardActionResolveContext[] => {
+	const out: CardActionResolveContext[] = [];
+	const rules = G.rules;
+
+	// Own-priority reorderings (Re-examine Priorities): every non-identity permutation.
+	const prefs = G.players[playerID]?.prefs;
+	if (prefs) {
+		const own: Color[] = [prefs.primary, prefs.secondary, prefs.tertiary];
+		for (const a of own) for (const b of own) for (const c of own) {
+			if (a === b || b === c || a === c) continue;
+			if (a === prefs.primary && b === prefs.secondary) continue;
+			out.push({ ...base, playerPrefs: { primary: a, secondary: b, tertiary: c } });
+		}
+	}
+
+	// Lane targets × every color (This Prey is Mine): one per undirected edge.
+	const nodes = new Map<string, Co>();
+	const edges = new Map<string, { from: Co; to: Co }>();
+	for (const ln of G.lanes) {
+		nodes.set(key(ln.from), ln.from);
+		nodes.set(key(ln.to), ln.to);
+		const ek = [key(ln.from), key(ln.to)].sort().join('|');
+		if (!edges.has(ek)) edges.set(ek, { from: ln.from, to: ln.to });
+	}
+	for (const e of edges.values()) {
+		for (const color of rules.COLORS) out.push({ ...base, moveFrom: e.from, moveTo: e.to, replaceColor: color });
+	}
+
+	// Legal placements in the last-placed color (Seize the Opportunity).
+	const last = G.action.lastPlacedColor;
+	if (last && rules.MODE === 'path') {
+		const dir = rules.COLOR_TO_DIR[last];
+		for (const source of buildAllCoords(G.radius)) {
+			const dest = { q: source.q + dir.q, r: source.r + dir.r };
+			if (canPlacePath(G, source, dest, last, rules)) out.push({ ...base, moveFrom: source, moveTo: dest, replaceColor: last });
+		}
+	}
+
+	// Hex/node targets (Malfunction, Placebo, Help Yourself Out): occupied spots.
+	for (const [k, tile] of Object.entries(G.board)) {
+		if (tile.colors.length > 0) nodes.set(k, parse(k));
+	}
+	const nodeList = [...nodes.values()];
+	for (const coord of nodeList) {
+		out.push({ ...base, coord });
+		for (const to of neighbors(coord)) out.push({ ...base, coord, moveFrom: coord, moveTo: to });
+	}
+	return out;
+};
+
+/** Evenly spaced sample — keeps variety without biasing to the board's first lanes. */
+const spreadSample = <T,>(items: T[], max: number): T[] => {
+	if (items.length <= max) return items;
+	const step = items.length / max;
+	return Array.from({ length: max }, (_, i) => items[Math.floor(i * step)]!);
+};
+
 export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 	const actions: Action[] = [];
 	const rules = G.rules;
@@ -155,9 +222,10 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 		}
 	}
 
-	// Enumerate playActionCard moves with bounded contexts.
-	// Coord-targeting cards (Malfunction, Help Yourself Out, ...) are skipped in
-	// v1 — their contexts fail to resolve and the card is simply not offered.
+	// Enumerate playActionCard moves with bounded contexts. Cards needing a
+	// board target (Malfunction, This Prey is Mine, Re-examine Priorities, ...)
+	// fall back to targetingContexts — previously they were never offered, so
+	// a bot could hold one forever (and stall a Barren Wasteland draw block).
 	if (rules.ACTION_CARDS !== 'disabled') {
 		const p = G.players[playerID];
 		const played = p?.actionPlaysThisTurn ?? 0;
@@ -200,6 +268,23 @@ export const enumerateActions = (G: GState, playerID: PlayerID): Action[] => {
 					actions.push({ type: 'playActionCard', args: { handIndex: i, effects } });
 					added += 1;
 				}
+				if (added > 0) continue;
+				// Targeted cards: only valid targets (same check the human UI runs).
+				const targeted: Action[] = [];
+				for (const ctx of targetingContexts(G, playerID, base)) {
+					let effects;
+					try {
+						effects = resolveCardEffects(card, ctx);
+					} catch {
+						continue;
+					}
+					if (actionEffectsInvalidReason(G, effects) !== null) continue;
+					const sig = JSON.stringify(effects);
+					if (seen.has(sig)) continue;
+					seen.add(sig);
+					targeted.push({ type: 'playActionCard', args: { handIndex: i, effects } });
+				}
+				actions.push(...spreadSample(targeted, MAX_TARGETED_PLAYS));
 			}
 		}
 	}
@@ -1134,6 +1219,40 @@ export const selectBestAction = (G: GState, ctx: Ctx, playerID: PlayerID): Actio
 	return bestAction;
 };
 
+/** Barren Wasteland-style block: nobody draws until EVERY hand is empty. */
+const drawBlockActive = (G: GState): boolean =>
+	G.action.hooks.some((h) => h.event === 'onDraw' && h.behavior === 'block');
+
+/**
+ * Under a draw block, a card kept in hand is dead weight that stalls the whole
+ * table: the block only lifts once every hand is empty, and ending the turn
+ * holding a card means nobody ever draws again. When the bot would otherwise
+ * end its turn, take the best move that shrinks its hand OR lifts the block
+ * (Embrace Chaos refills the hand but frees everyone) — even one scoring below
+ * the usual threshold. Searches the FULL move list: generateCandidates prunes
+ * moves a stuck bot may need. Returns null when there's nothing to do.
+ */
+export const selectDrawBlockEscape = (G: GState, ctx: Ctx, playerID: PlayerID): Action | null => {
+	if (!drawBlockActive(G)) return null;
+	const handSize = G.players[playerID]?.hand.length ?? 0;
+	if (handSize === 0) return null;
+	let best: Action | null = null;
+	let bestValue = -Infinity;
+	for (const action of enumerateActions(G, playerID)) {
+		if (action.type === 'endTurnAndRefill' || action.type === 'takeFromTreasure') continue;
+		const gAfter = applyMicroAction(G, action, playerID);
+		if (!gAfter) continue;
+		const shrinks = (gAfter.players[playerID]?.hand.length ?? 0) < handSize;
+		if (!shrinks && drawBlockActive(gAfter)) continue;
+		const value = evaluateAction(G, gAfter, action, playerID, ctx);
+		if (value > bestValue) {
+			bestValue = value;
+			best = action;
+		}
+	}
+	return best;
+};
+
 // =============================================================================
 // Part 2.5: Volatility-Triggered Shallow Lookahead (Optional)
 // =============================================================================
@@ -1531,7 +1650,7 @@ export const playOneEvaluator = async (client: BGIOClient, playerID: PlayerID): 
 		const G = state.G;
 		const ctx = state.ctx;
 
-		const action = selectBestAction(G, ctx, playerID);
+		const action = selectBestAction(G, ctx, playerID) ?? selectDrawBlockEscape(G, ctx, playerID);
 
 		if (!action) {
 			client.moves.endTurnAndRefill();
@@ -1584,9 +1703,9 @@ export const playOneEvaluatorPlus = async (client: BGIOClient, playerID: PlayerI
 		const ctx = state.ctx;
 
 		// Use lookahead in volatile situations
-		const action = isVolatileState(G, playerID, ctx)
+		const action = (isVolatileState(G, playerID, ctx)
 			? selectWithLookahead(G, ctx, playerID)
-			: selectBestAction(G, ctx, playerID);
+			: selectBestAction(G, ctx, playerID)) ?? selectDrawBlockEscape(G, ctx, playerID);
 
 		if (!action) {
 			client.moves.endTurnAndRefill();
